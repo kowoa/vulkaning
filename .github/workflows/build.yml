@@ -16,6 +16,9 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    - name: Install rust toolchain
+      run: rustup toolchain install nightly --profile minimal
+
     - name: Prepare Vulkan SDK
       uses: humbletim/setup-vulkan-sdk@v1.2.0
       with:
@@ -28,6 +31,9 @@ jobs:
 
     - name: Run tests
       run: cargo test --verbose
+
+    - name: Cache build
+      uses: Swatinem/rust-cache@v2
 
   windowsbuild:
     runs-on: windows-latest
@@ -35,6 +41,9 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    - name: Install rust toolchain
+      run: rustup toolchain install nightly --profile minimal
+
     - name: Prepare Vulkan SDK
       uses: humbletim/setup-vulkan-sdk@v1.2.0
       with:
@@ -47,12 +56,18 @@ jobs:
 
     - name: Run tests
       run: cargo test --verbose
+
+    - name: Cache build
+      uses: Swatinem/rust-cache@v2
 
   macosbuild:
     runs-on: windows-latest
 
     steps:
     - uses: actions/checkout@v3
+
+    - name: Install rust toolchain
+      run: rustup toolchain install nightly --profile minimal
     
     - name: Prepare Vulkan SDK
       uses: humbletim/setup-vulkan-sdk@v1.2.0
@@ -66,3 +81,6 @@ jobs:
 
     - name: Run tests
       run: cargo test --verbose
+
+    - name: Cache build
+      uses: Swatinem/rust-cache@v2
