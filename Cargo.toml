@@ -8,3 +8,8 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.75"
 ash = { version = "0.37.3", features = ["linked"] }
+bytemuck = { version = "1.14.0", features = ["derive"] }
+glam = { version = "0.24.2", features = ["bytemuck"] }
+image = "0.24.7"
+raw-window-handle = "0.6.0"
+winit = "0.29.3"
