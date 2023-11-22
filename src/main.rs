@@ -1,14 +1,16 @@
 use vulkaning::Renderer;
 use winit::{
     event_loop::EventLoop,
-    window::{Window, WindowBuilder}, event::{Event, WindowEvent, ElementState, KeyEvent}, keyboard::{NamedKey, Key},
+    window::{Window, WindowBuilder},
+    event::{Event, WindowEvent, ElementState, KeyEvent},
+    keyboard::{NamedKey, Key},
 };
 
 fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
 
     let (window, event_loop) = create_window()?;
-    let renderer = Renderer::new();
+    let renderer = Renderer::new(&window, &event_loop)?;
 
     log::info!("Starting render loop ...");
     event_loop.run(move |event, elwt| {
