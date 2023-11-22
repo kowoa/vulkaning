@@ -1,7 +1,7 @@
 use vulkaning::Renderer;
 use winit::{
     event_loop::EventLoop,
-    window::{Window, WindowBuilder},
+    window::{Window, WindowBuilder}, event::{Event, WindowEvent, ElementState, KeyEvent}, keyboard::{NamedKey, Key},
 };
 
 fn main() -> Result<(), anyhow::Error> {
@@ -11,6 +11,42 @@ fn main() -> Result<(), anyhow::Error> {
     let renderer = Renderer::new();
 
     log::info!("Starting render loop ...");
+    event_loop.run(move |event, elwt| {
+        match event {
+            Event::WindowEvent {
+                event,
+                window_id
+            } if window_id == window.id() => match event {
+                WindowEvent::CloseRequested => elwt.exit(),
+                WindowEvent::KeyboardInput {
+                    event:
+                        KeyEvent {
+                            logical_key: key,
+                            state: ElementState::Released,
+                            ..
+                        },
+                    ..
+                } => {
+                    match key.as_ref() {
+                        Key::Named(NamedKey::Escape) => elwt.exit(),
+                        _ => ()
+                    }
+                }
+                WindowEvent::RedrawRequested => {
+                    renderer.draw_frame();
+                    window.pre_present_notify();
+                    renderer.present_frame();
+                }
+                _ => ()
+            },
+            Event::AboutToWait => {
+                window.request_redraw();
+            }
+            _ => ()
+        }
+    })?;
+
+    
     Ok(())
 }
 
