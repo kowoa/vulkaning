@@ -1,8 +1,8 @@
-mod vk_core;
+mod vk_engine;
 mod vk_utils;
 mod vk_initializers;
 
-use vk_core::VkCoreStructures;
+use vk_engine::VkCoreStructures;
 
 use winit::{event_loop::EventLoop, window::{Window, WindowBuilder}, keyboard::{NamedKey, Key}, event::{ElementState, KeyEvent, WindowEvent, Event}};
 
