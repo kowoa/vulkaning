@@ -1,15 +1,12 @@
-use std::{collections::HashSet, ffi::{CStr, c_char, CString, c_void}};
+use std::{collections::HashSet, ffi::{CStr, CString, c_void}};
 
 use anyhow::anyhow;
 use ash::vk;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
-use winit::{event_loop::EventLoop};
+use winit::event_loop::EventLoop;
 
-mod utils;
-use utils::c_char_to_string;
-
-mod create_info;
-use create_info::*;
+use crate::renderer::vk_utils;
+use crate::renderer::vk_initializers;
 
 const ENABLE_VALIDATION_LAYERS: bool = cfg!(debug_assertions);
 const REQUIRED_VALIDATION_LAYERS: [&'static str; 1] = [
@@ -19,7 +16,7 @@ const REQUIRED_DEVICE_EXTENSIONS: [&'static CStr; 1] = [
     ash::extensions::khr::Swapchain::name()
 ];
 
-pub struct VulkanCore {
+pub struct VkCoreStructures {
     entry: ash::Entry,
     instance: ash::Instance,
     debug_messenger: vk::DebugUtilsMessengerEXT,
@@ -37,13 +34,19 @@ struct QueueFamilyIndices {
     present_family: Option<u32>
 }
 
+struct SwapchainSupportDetails {
+    capabilities: vk::SurfaceCapabilitiesKHR,
+    formats: Vec<vk::SurfaceFormatKHR>,
+    present_modes: Vec<vk::PresentModeKHR>,
+}
+
 impl QueueFamilyIndices {
     pub fn is_complete(&self) -> bool {
         self.graphics_family.is_some() && self.present_family.is_some()
     }
 }
 
-impl VulkanCore {
+impl VkCoreStructures {
     pub fn new(
         window: &winit::window::Window,
         event_loop: &EventLoop<()>,
@@ -56,6 +59,12 @@ impl VulkanCore {
             Self::create_surface(&entry, &instance, window)?;
         let physical_device =
             Self::create_physical_device(&instance, &surface, &surface_loader)?;
+        let (device, graphics_queue, present_queue) = Self::create_logical_device(
+            &instance,
+            &physical_device,
+            &surface,
+            &surface_loader,
+        )?;
 
         Ok(Self {
             entry,
@@ -65,14 +74,21 @@ impl VulkanCore {
             surface,
             surface_loader,
             physical_device,
+            device,
+            graphics_queue,
+            present_queue,
         })
     }
 
-    pub fn destroy(&mut self,
-        allocation_callbacks: Option<&vk::AllocationCallbacks>
-    ) {
+    pub fn destroy(&mut self) {
         unsafe {
-            self.instance.destroy_instance(allocation_callbacks);
+            self.device.destroy_device(None);
+            self.surface_loader.destroy_surface(self.surface, None);
+            if ENABLE_VALIDATION_LAYERS {
+                self.debug_messenger_loader
+                    .destroy_debug_utils_messenger(self.debug_messenger, None);
+            }
+            self.instance.destroy_instance(None);
         }
     }
 
@@ -96,7 +112,8 @@ impl VulkanCore {
             .map(|s| s.as_c_str())
             .collect::<Vec<_>>();
 
-        let debug_info = debug_utils_messenger_create_info();
+        let debug_info =
+            vk_initializers::debug_utils_messenger_create_info();
         let instance_info = vk::InstanceCreateInfo {
             p_next: if ENABLE_VALIDATION_LAYERS {
                 &debug_info
@@ -129,7 +146,8 @@ impl VulkanCore {
             ash::extensions::ext::DebugUtils::new(entry, instance);
 
         if ENABLE_VALIDATION_LAYERS {
-            let info = debug_utils_messenger_create_info();
+            let info =
+                vk_initializers::debug_utils_messenger_create_info();
             let debug_messenger = unsafe {
                 debug_messenger_loader
                     .create_debug_utils_messenger(&info, None)?
@@ -188,6 +206,68 @@ impl VulkanCore {
             None => Err(anyhow!("Failed to find a suitable GPU")),
         }
     }
+
+    fn create_logical_device(
+        instance: &ash::Instance,
+        physical_device: &vk::PhysicalDevice,
+        surface: &vk::SurfaceKHR,
+        surface_loader: &ash::extensions::khr::Surface,
+    ) -> anyhow::Result<(ash::Device, vk::Queue, vk::Queue)> {
+        let indices = find_queue_families(
+            instance,
+            physical_device,
+            surface,
+            surface_loader,
+        )?;
+
+        let graphics_family = indices
+            .graphics_family
+            .ok_or(anyhow!("Graphics queue family not initialized"))?;
+        let present_family = indices
+            .present_family
+            .ok_or(anyhow!("Presentation queue family not initialized"))?;
+        let unique_queue_families =
+            HashSet::from([graphics_family, present_family]);
+
+        let queue_priorities = [1.0f32];
+        let queue_infos = unique_queue_families
+            .iter()
+            .map(|family| vk::DeviceQueueCreateInfo {
+                queue_family_index: *family,
+                p_queue_priorities: queue_priorities.as_ptr(),
+                queue_count: queue_priorities.len() as u32,
+                ..Default::default()
+            })
+            .collect::<Vec<_>>();
+
+        let physical_device_features = vk::PhysicalDeviceFeatures::default();
+
+        let req_ext_names = REQUIRED_DEVICE_EXTENSIONS
+            .iter()
+            .map(|ext| ext.as_ptr())
+            .collect::<Vec<_>>();
+        let device_info = vk::DeviceCreateInfo {
+            p_queue_create_infos: queue_infos.as_ptr(),
+            p_enabled_features: &physical_device_features,
+            queue_create_info_count: queue_infos.len() as u32,
+            enabled_extension_count: req_ext_names.len() as u32,
+            pp_enabled_extension_names: req_ext_names.as_ptr(),
+            ..Default::default()
+        };
+
+        let device = unsafe {
+            instance.create_device(*physical_device, &device_info, None)?
+        };
+
+        let graphics_queue = unsafe {
+            device.get_device_queue(graphics_family, 0)
+        };
+        let present_queue = unsafe {
+            device.get_device_queue(present_family, 0)
+        };
+
+        Ok((device, graphics_queue, present_queue))
+    }
 }
 
 fn check_required_validation_layers(
@@ -199,7 +279,7 @@ fn check_required_validation_layers(
         .enumerate_instance_layer_properties()?
         .iter()
         .map(|props| {
-            c_char_to_string(&props.layer_name)
+            vk_utils::c_char_to_string(&props.layer_name)
         })
         .collect::<Result<HashSet<_>, _>>()?;
 
@@ -252,7 +332,7 @@ fn physical_device_is_suitable(
             vk::PhysicalDeviceType::OTHER => "Unknown",
             _ => panic!("Unknown device type"),
         };
-        let dev_name = utils::c_char_to_string(&dev_properties.device_name)?;
+        let dev_name = vk_utils::c_char_to_string(&dev_properties.device_name)?;
         println!(
             "\tDevice name: {}, ID: {}, Type: {}",
             dev_name, dev_properties.device_id, dev_type
@@ -288,7 +368,7 @@ fn physical_device_is_suitable(
     }
 
     let indices =
-        find_queue_families(device, instance, surface, surface_loader)?;
+        find_queue_families(instance, device, surface, surface_loader)?;
 
     let exts_supported = check_required_device_extensions(device, instance)?;
 
@@ -301,8 +381,8 @@ fn physical_device_is_suitable(
 }
 
 fn find_queue_families(
-    device: &vk::PhysicalDevice,
     instance: &ash::Instance,
+    device: &vk::PhysicalDevice,
     surface: &vk::SurfaceKHR,
     surface_loader: &ash::extensions::khr::Surface,
 ) -> anyhow::Result<QueueFamilyIndices> {
@@ -345,12 +425,16 @@ fn check_required_device_extensions(
     let available_exts =
         unsafe { instance.enumerate_device_extension_properties(*device)? }
             .iter()
-            .map(|ext| c_char_to_string(&ext.extension_name))
-            .collect::<Vec<_>>();
+            .map(|ext| vk_utils::c_char_to_string(&ext.extension_name))
+            .collect::<Result<Vec<_>, _>>()?;
 
     Ok(REQUIRED_DEVICE_EXTENSIONS
         .iter()
-        .all(|ext| available_exts.contains(&ext.to_str().unwrap().to_string())))
+        .map(|ext| ext.to_str())
+        .collect::<Result<Vec<_>, _>>()?
+        .iter()
+        .all(|ext| available_exts.contains(&ext.to_string()))
+    )
 }
 
 fn query_swapchain_support(
