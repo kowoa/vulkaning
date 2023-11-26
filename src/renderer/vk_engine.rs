@@ -1,3 +1,6 @@
+// Engine initialization
+// VkInstance, VkPhysicalDevice, VkDevice, VkQueue, VkSwapchainKHR, VkCommandPool
+
 use std::{collections::HashSet, ffi::{CStr, CString, c_void}};
 
 use anyhow::anyhow;
