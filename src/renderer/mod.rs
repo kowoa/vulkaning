@@ -1,13 +1,17 @@
-mod vk_engine;
 mod vk_utils;
+mod vk_common;
+mod vk_core_objs;
+mod vk_swapchain_objs;
 mod vk_initializers;
 
-use vk_engine::VkCoreStructures;
+use vk_core_objs::VkCoreObjs;
+use vk_swapchain_objs::VkSwapchainObjs;
 
 use winit::{event_loop::EventLoop, window::{Window, WindowBuilder}, keyboard::{NamedKey, Key}, event::{ElementState, KeyEvent, WindowEvent, Event}};
 
 pub struct Renderer {
-    vk_core: VkCoreStructures,
+    core_objs: VkCoreObjs,
+    swapchain_objs: VkSwapchainObjs,
 }
 
 impl Renderer {
@@ -15,10 +19,12 @@ impl Renderer {
         window: &winit::window::Window,
         event_loop: &winit::event_loop::EventLoop<()>,
     ) -> anyhow::Result<Self> {
-        let vk_core = VkCoreStructures::new(window, event_loop)?;
+        let core_objs = VkCoreObjs::new(window, event_loop)?;
+        let swapchain_objs = VkSwapchainObjs::new(&core_objs, window)?;
 
         Ok(Self {
-            vk_core,
+            core_objs,
+            swapchain_objs
         })
     }
 
@@ -73,9 +79,8 @@ impl Renderer {
 
 impl Drop for Renderer {
     fn drop(&mut self) {
-        unsafe {
-            self.vk_core.destroy();
-        }
+        self.swapchain_objs.destroy(&self.core_objs);
+        self.core_objs.destroy();
     }
 }
 

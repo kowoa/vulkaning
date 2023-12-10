@@ -10,7 +10,7 @@ fn main() -> Result<(), anyhow::Error> {
     let renderer = Renderer::new(&window, &event_loop)?;
 
     log::info!("Starting render loop ...");
-    renderer.render_loop(window, event_loop)?;
+    //renderer.render_loop(window, event_loop)?;
     
     Ok(())
 }
