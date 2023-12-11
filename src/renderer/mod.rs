@@ -85,6 +85,7 @@ impl Renderer {
 
 impl Drop for Renderer {
     fn drop(&mut self) {
+        self.command_objs.destroy(&self.core_objs);
         self.swapchain_objs.destroy(&self.core_objs);
         self.core_objs.destroy();
     }

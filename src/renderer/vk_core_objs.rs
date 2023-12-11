@@ -53,12 +53,13 @@ impl VkCoreObjs {
             create_surface(&entry, &instance, window)?;
         let physical_device =
             create_physical_device(&instance, &surface, &surface_loader)?;
-        let (device, graphics_queue, present_queue) = create_logical_device(
-            &instance,
-            &physical_device,
-            &surface,
-            &surface_loader,
-        )?;
+        let (device, graphics_queue, present_queue, queue_family_indices) =
+            create_logical_device(
+                &instance,
+                &physical_device,
+                &surface,
+                &surface_loader,
+            )?;
 
         Ok(Self {
             entry,
@@ -71,6 +72,7 @@ impl VkCoreObjs {
             device,
             graphics_queue,
             present_queue,
+            queue_family_indices,
         })
     }
 
@@ -209,8 +211,8 @@ fn create_logical_device(
     physical_device: &vk::PhysicalDevice,
     surface: &vk::SurfaceKHR,
     surface_loader: &ash::extensions::khr::Surface,
-) -> anyhow::Result<(ash::Device, vk::Queue, vk::Queue)> {
-    let indices = vk_common::find_queue_families(
+) -> anyhow::Result<(ash::Device, vk::Queue, vk::Queue, QueueFamilyIndices)> {
+    let indices = find_queue_families(
         instance,
         physical_device,
         surface,
@@ -259,7 +261,7 @@ fn create_logical_device(
     let graphics_queue = unsafe { device.get_device_queue(graphics_family, 0) };
     let present_queue = unsafe { device.get_device_queue(present_family, 0) };
 
-    Ok((device, graphics_queue, present_queue))
+    Ok((device, graphics_queue, present_queue, indices))
 }
 
 fn check_required_validation_layers(entry: &ash::Entry) -> anyhow::Result<()> {
@@ -306,12 +308,14 @@ fn physical_device_is_suitable(
 ) -> anyhow::Result<bool> {
     #[cfg(debug_assertions)]
     {
-        let dev_properties =
-            unsafe { instance.get_physical_device_properties(*physical_device) };
+        let dev_properties = unsafe {
+            instance.get_physical_device_properties(*physical_device)
+        };
         let dev_features =
             unsafe { instance.get_physical_device_features(*physical_device) };
         let dev_queue_families = unsafe {
-            instance.get_physical_device_queue_family_properties(*physical_device)
+            instance
+                .get_physical_device_queue_family_properties(*physical_device)
         };
         let dev_type = match dev_properties.device_type {
             vk::PhysicalDeviceType::CPU => "CPU",
@@ -356,14 +360,15 @@ fn physical_device_is_suitable(
         );
     }
 
-    let indices = vk_common::find_queue_families(
+    let indices = find_queue_families(
         instance,
         physical_device,
         surface,
         surface_loader,
     )?;
 
-    let exts_supported = check_required_device_extensions(physical_device, instance)?;
+    let exts_supported =
+        check_required_device_extensions(physical_device, instance)?;
 
     let swapchain_adequate = {
         let details = vk_common::query_swapchain_support(
@@ -381,11 +386,12 @@ fn check_required_device_extensions(
     physical_device: &vk::PhysicalDevice,
     instance: &ash::Instance,
 ) -> anyhow::Result<bool> {
-    let available_exts =
-        unsafe { instance.enumerate_device_extension_properties(*physical_device)? }
-            .iter()
-            .map(|ext| vk_utils::c_char_to_string(&ext.extension_name))
-            .collect::<Result<Vec<_>, _>>()?;
+    let available_exts = unsafe {
+        instance.enumerate_device_extension_properties(*physical_device)?
+    }
+    .iter()
+    .map(|ext| vk_utils::c_char_to_string(&ext.extension_name))
+    .collect::<Result<Vec<_>, _>>()?;
 
     Ok(REQUIRED_DEVICE_EXTENSIONS
         .iter()
@@ -397,7 +403,7 @@ fn check_required_device_extensions(
 
 pub struct QueueFamilyIndices {
     pub graphics_family: Option<u32>,
-    pub present_family: Option<u32>
+    pub present_family: Option<u32>,
 }
 
 impl QueueFamilyIndices {
@@ -429,8 +435,11 @@ fn find_queue_families(
         }
 
         let present_support = unsafe {
-            surface_loader
-                .get_physical_device_surface_support(*physical_device, i, *surface)?
+            surface_loader.get_physical_device_surface_support(
+                *physical_device,
+                i,
+                *surface,
+            )?
         };
         if present_support {
             indices.present_family = Some(i);
