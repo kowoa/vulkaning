@@ -1,17 +1,21 @@
-mod vk_utils;
 mod vk_common;
+mod vk_initializers;
+mod vk_utils;
+
 mod vk_core_objs;
 mod vk_swapchain_objs;
-mod vk_initializers;
+mod vk_command_objs;
 
 use vk_core_objs::VkCoreObjs;
 use vk_swapchain_objs::VkSwapchainObjs;
+use vk_command_objs::VkCommandObjs;
 
 use winit::{event_loop::EventLoop, window::{Window, WindowBuilder}, keyboard::{NamedKey, Key}, event::{ElementState, KeyEvent, WindowEvent, Event}};
 
 pub struct Renderer {
     core_objs: VkCoreObjs,
     swapchain_objs: VkSwapchainObjs,
+    command_objs: VkCommandObjs,
 }
 
 impl Renderer {
@@ -21,10 +25,12 @@ impl Renderer {
     ) -> anyhow::Result<Self> {
         let core_objs = VkCoreObjs::new(window, event_loop)?;
         let swapchain_objs = VkSwapchainObjs::new(&core_objs, window)?;
+        let command_objs = VkCommandObjs::new(&core_objs)?;
 
         Ok(Self {
             core_objs,
-            swapchain_objs
+            swapchain_objs,
+            command_objs,
         })
     }
 

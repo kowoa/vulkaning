@@ -37,6 +37,7 @@ pub struct VkCoreObjs {
 
     pub graphics_queue: vk::Queue,
     pub present_queue: vk::Queue,
+    pub queue_family_indices: QueueFamilyIndices,
 }
 
 impl VkCoreObjs {
@@ -298,7 +299,7 @@ fn get_required_extension_names(
 }
 
 fn physical_device_is_suitable(
-    device: &vk::PhysicalDevice,
+    physical_device: &vk::PhysicalDevice,
     instance: &ash::Instance,
     surface: &vk::SurfaceKHR,
     surface_loader: &ash::extensions::khr::Surface,
@@ -306,11 +307,11 @@ fn physical_device_is_suitable(
     #[cfg(debug_assertions)]
     {
         let dev_properties =
-            unsafe { instance.get_physical_device_properties(*device) };
+            unsafe { instance.get_physical_device_properties(*physical_device) };
         let dev_features =
-            unsafe { instance.get_physical_device_features(*device) };
+            unsafe { instance.get_physical_device_features(*physical_device) };
         let dev_queue_families = unsafe {
-            instance.get_physical_device_queue_family_properties(*device)
+            instance.get_physical_device_queue_family_properties(*physical_device)
         };
         let dev_type = match dev_properties.device_type {
             vk::PhysicalDeviceType::CPU => "CPU",
@@ -357,16 +358,16 @@ fn physical_device_is_suitable(
 
     let indices = vk_common::find_queue_families(
         instance,
-        device,
+        physical_device,
         surface,
         surface_loader,
     )?;
 
-    let exts_supported = check_required_device_extensions(device, instance)?;
+    let exts_supported = check_required_device_extensions(physical_device, instance)?;
 
     let swapchain_adequate = {
         let details = vk_common::query_swapchain_support(
-            device,
+            physical_device,
             surface,
             surface_loader,
         )?;
@@ -377,11 +378,11 @@ fn physical_device_is_suitable(
 }
 
 fn check_required_device_extensions(
-    device: &vk::PhysicalDevice,
+    physical_device: &vk::PhysicalDevice,
     instance: &ash::Instance,
 ) -> anyhow::Result<bool> {
     let available_exts =
-        unsafe { instance.enumerate_device_extension_properties(*device)? }
+        unsafe { instance.enumerate_device_extension_properties(*physical_device)? }
             .iter()
             .map(|ext| vk_utils::c_char_to_string(&ext.extension_name))
             .collect::<Result<Vec<_>, _>>()?;
@@ -392,4 +393,53 @@ fn check_required_device_extensions(
         .collect::<Result<Vec<_>, _>>()?
         .iter()
         .all(|ext| available_exts.contains(&ext.to_string())))
+}
+
+pub struct QueueFamilyIndices {
+    pub graphics_family: Option<u32>,
+    pub present_family: Option<u32>
+}
+
+impl QueueFamilyIndices {
+    pub fn is_complete(&self) -> bool {
+        self.graphics_family.is_some() && self.present_family.is_some()
+    }
+}
+
+fn find_queue_families(
+    instance: &ash::Instance,
+    physical_device: &vk::PhysicalDevice,
+    surface: &vk::SurfaceKHR,
+    surface_loader: &ash::extensions::khr::Surface,
+) -> anyhow::Result<QueueFamilyIndices> {
+    let queue_families = unsafe {
+        instance.get_physical_device_queue_family_properties(*physical_device)
+    };
+
+    let mut indices = QueueFamilyIndices {
+        graphics_family: None,
+        present_family: None,
+    };
+
+    for (i, family) in queue_families.iter().enumerate() {
+        let i = i as u32;
+
+        if family.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
+            indices.graphics_family = Some(i);
+        }
+
+        let present_support = unsafe {
+            surface_loader
+                .get_physical_device_surface_support(*physical_device, i, *surface)?
+        };
+        if present_support {
+            indices.present_family = Some(i);
+        }
+
+        if indices.is_complete() {
+            break;
+        }
+    }
+
+    Ok(indices)
 }

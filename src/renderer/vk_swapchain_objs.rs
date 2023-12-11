@@ -90,13 +90,7 @@ fn create_swapchain(
     };
 
     let (image_sharing_mode, queue_family_index_count, queue_family_indices) = {
-        let indices = vk_common::find_queue_families(
-            &core_objs.instance,
-            &core_objs.physical_device,
-            &core_objs.surface,
-            &core_objs.surface_loader,
-        )?;
-
+        let indices = &core_objs.queue_family_indices;
         if indices.graphics_family != indices.present_family {
             (
                 // CONCURRENT means images can be used across multiple queue families
