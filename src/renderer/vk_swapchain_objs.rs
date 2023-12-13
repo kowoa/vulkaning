@@ -3,12 +3,12 @@ use ash::vk;
 use super::{vk_common, vk_core_objs::VkCoreObjs};
 
 pub struct VkSwapchainObjs {
-    swapchain: vk::SwapchainKHR,
-    swapchain_loader: ash::extensions::khr::Swapchain,
-    swapchain_images: Vec<vk::Image>,
-    swapchain_image_format: vk::Format,
-    swapchain_extent: vk::Extent2D,
-    swapchain_image_views: Vec<vk::ImageView>,
+    pub swapchain: vk::SwapchainKHR,
+    pub swapchain_loader: ash::extensions::khr::Swapchain,
+    pub swapchain_images: Vec<vk::Image>,
+    pub swapchain_image_format: vk::Format,
+    pub swapchain_extent: vk::Extent2D,
+    pub swapchain_image_views: Vec<vk::ImageView>,
 }
 
 impl VkSwapchainObjs {

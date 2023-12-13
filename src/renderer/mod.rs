@@ -5,10 +5,12 @@ mod vk_utils;
 mod vk_core_objs;
 mod vk_swapchain_objs;
 mod vk_command_objs;
+mod vk_renderpass_objs;
 
 use vk_core_objs::VkCoreObjs;
 use vk_swapchain_objs::VkSwapchainObjs;
 use vk_command_objs::VkCommandObjs;
+use vk_renderpass_objs::VkRenderpassObjs;
 
 use winit::{event_loop::EventLoop, window::{Window, WindowBuilder}, keyboard::{NamedKey, Key}, event::{ElementState, KeyEvent, WindowEvent, Event}};
 
@@ -16,6 +18,7 @@ pub struct Renderer {
     core_objs: VkCoreObjs,
     swapchain_objs: VkSwapchainObjs,
     command_objs: VkCommandObjs,
+    renderpass_objs: VkRenderPassObjs,
 }
 
 impl Renderer {
@@ -26,11 +29,13 @@ impl Renderer {
         let core_objs = VkCoreObjs::new(window, event_loop)?;
         let swapchain_objs = VkSwapchainObjs::new(&core_objs, window)?;
         let command_objs = VkCommandObjs::new(&core_objs)?;
+        let renderpass_objs = VkRenderpassObjs::new(&core_objs)?;
 
         Ok(Self {
             core_objs,
             swapchain_objs,
             command_objs,
+            renderpass_objs,
         })
     }
 
