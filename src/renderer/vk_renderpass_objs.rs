@@ -11,9 +11,19 @@ impl VkRenderpassObjs {
     pub fn new(
         core_objs: &VkCoreObjs,
         swapchain_objs: &VkSwapchainObjs,
+        window: &winit::window::Window,
     ) -> anyhow::Result<Self> {
-        let renderpass = create_renderpass(core_objs)?;
-        let framebuffers = create_framebuffers(core_objs, swapchain_objs)?;
+        let renderpass = create_renderpass(
+            core_objs,
+            swapchain_objs,
+        )?;
+        let framebuffers = create_framebuffers(
+            &renderpass,
+            core_objs,
+            swapchain_objs,
+            window,
+        )?;
+
         Ok(Self {
             renderpass,
             framebuffers,
@@ -21,7 +31,10 @@ impl VkRenderpassObjs {
     }
 }
 
-fn create_renderpass(core_objs: &VkCoreObjs) -> anyhow::Result<vk::RenderPass> {
+fn create_renderpass(
+    core_objs: &VkCoreObjs,
+    swapchain_objs: &VkSwapchainObjs,
+) -> anyhow::Result<vk::RenderPass> {
     // Description of the image we will be writing into with rendering commands
     let color_attachment = vk::AttachmentDescription {
         format: swapchain_objs.swapchain_image_format,
@@ -73,17 +86,17 @@ fn create_framebuffers(
     swapchain_objs: &VkSwapchainObjs,
     window: &winit::window::Window,
 ) -> anyhow::Result<Vec<vk::Framebuffer>> {
-    swapchain_objs
+    Ok(swapchain_objs
         .swapchain_image_views
         .iter()
         .map(|view| {
             let fb_info = vk::FramebufferCreateInfo {
-                render_pass: renderpass,
+                render_pass: *renderpass,
                 attachment_count: 1,
                 width: window.inner_size().width,
                 height: window.inner_size().height,
                 layers: 1,
-                p_attachments: view.as_ptr(),
+                p_attachments: view,
                 ..Default::default()
             };
 
@@ -93,5 +106,5 @@ fn create_framebuffers(
                     .create_framebuffer(&fb_info, None)
             }
         })
-        .collect::<Result<Vec<_>, _>>()
+        .collect::<Result<Vec<_>, _>>()?)
 }

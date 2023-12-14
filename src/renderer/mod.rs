@@ -18,7 +18,7 @@ pub struct Renderer {
     core_objs: VkCoreObjs,
     swapchain_objs: VkSwapchainObjs,
     command_objs: VkCommandObjs,
-    renderpass_objs: VkRenderPassObjs,
+    renderpass_objs: VkRenderpassObjs,
 }
 
 impl Renderer {
@@ -29,7 +29,11 @@ impl Renderer {
         let core_objs = VkCoreObjs::new(window, event_loop)?;
         let swapchain_objs = VkSwapchainObjs::new(&core_objs, window)?;
         let command_objs = VkCommandObjs::new(&core_objs)?;
-        let renderpass_objs = VkRenderpassObjs::new(&core_objs)?;
+        let renderpass_objs = VkRenderpassObjs::new(
+            &core_objs,
+            &swapchain_objs,
+            window,
+        )?;
 
         Ok(Self {
             core_objs,
