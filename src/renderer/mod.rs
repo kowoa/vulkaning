@@ -29,6 +29,7 @@ pub struct Renderer {
     renderpass_objs: VkRenderpassObjs,
     sync_objs: VkSyncObjs,
     frame_number: u32,
+    destroyed: bool,
 }
 
 impl Renderer {
@@ -50,6 +51,7 @@ impl Renderer {
             renderpass_objs,
             sync_objs,
             frame_number: 0,
+            destroyed: false,
         })
     }
 
@@ -63,7 +65,10 @@ impl Renderer {
                 if window_id == window.id() =>
             {
                 match event {
-                    WindowEvent::CloseRequested => elwt.exit(),
+                    WindowEvent::CloseRequested => {
+                        self.destroy();
+                        elwt.exit();
+                    },
                     WindowEvent::KeyboardInput {
                         event:
                             KeyEvent {
@@ -73,11 +78,15 @@ impl Renderer {
                             },
                         ..
                     } => match key.as_ref() {
-                        Key::Named(NamedKey::Escape) => elwt.exit(),
+                        Key::Named(NamedKey::Escape) => {
+                            self.destroy();
+                            elwt.exit();
+                        },
                         _ => (),
                     },
                     WindowEvent::RedrawRequested => {
-                        let swapchain_image_index = self.draw_frame(&window).unwrap();
+                        let swapchain_image_index =
+                            self.draw_frame(&window).unwrap();
                         window.pre_present_notify();
                         self.present_frame(swapchain_image_index).unwrap();
                     }
@@ -91,7 +100,10 @@ impl Renderer {
         })?)
     }
 
-    fn draw_frame(&self, window: &winit::window::Window) -> anyhow::Result<u32> {
+    fn draw_frame(
+        &self,
+        window: &winit::window::Window,
+    ) -> anyhow::Result<u32> {
         unsafe {
             let device = &self.core_objs.device;
             let fences = [self.sync_objs.render_fence];
@@ -111,7 +123,10 @@ impl Renderer {
 
             // Reset the command buffer to begin recording
             let cmd = self.command_objs.main_command_buffer;
-            device.reset_command_buffer(cmd, vk::CommandBufferResetFlags::empty())?;
+            device.reset_command_buffer(
+                cmd,
+                vk::CommandBufferResetFlags::empty(),
+            )?;
 
             // Begin command buffer recording
             let cmd_begin_info = vk::CommandBufferBeginInfo {
@@ -121,9 +136,11 @@ impl Renderer {
             device.begin_command_buffer(cmd, &cmd_begin_info)?;
 
             // Make clear color from frame number
-            let flash  = (self.frame_number % 100) as f32 / 100.0;
+            let flash = (self.frame_number % 100) as f32 / 100.0;
             let clear = vk::ClearValue {
-                color: vk::ClearColorValue { float32: [0.0, 0.0, flash, 1.0] },
+                color: vk::ClearColorValue {
+                    float32: [0.0, 0.0, flash, 1.0],
+                },
             };
 
             // Start the main renderpass
@@ -175,7 +192,10 @@ impl Renderer {
         }
     }
 
-    fn present_frame(&mut self, swapchain_image_index: u32) -> anyhow::Result<()> {
+    fn present_frame(
+        &mut self,
+        swapchain_image_index: u32,
+    ) -> anyhow::Result<()> {
         let present_info = vk::PresentInfoKHR {
             p_swapchains: &self.swapchain_objs.swapchain,
             swapchain_count: 1,
@@ -186,22 +206,32 @@ impl Renderer {
         };
 
         unsafe {
-            self.swapchain_objs.swapchain_loader.queue_present(self.core_objs.graphics_queue, &present_info)?;
+            self.swapchain_objs
+                .swapchain_loader
+                .queue_present(self.core_objs.graphics_queue, &present_info)?;
         }
 
         self.frame_number += 1;
 
         Ok(())
     }
-}
 
-impl Drop for Renderer {
-    fn drop(&mut self) {
+    pub fn destroy(&mut self) {
+        if self.destroyed {
+            return;
+        }
         self.sync_objs.destroy(&self.core_objs);
         self.renderpass_objs.destroy(&self.core_objs);
         self.command_objs.destroy(&self.core_objs);
         self.swapchain_objs.destroy(&self.core_objs);
         self.core_objs.destroy();
+        self.destroyed = true;
+    }
+}
+
+impl Drop for Renderer {
+    fn drop(&mut self) {
+        self.destroy();
     }
 }
 

@@ -80,6 +80,7 @@ impl VkCoreObjs {
         log::info!("Cleaning up core objects ...");
         unsafe {
             self.device.destroy_device(None);
+            // Segfault occurs here if window gets destroyed before surface
             self.surface_loader.destroy_surface(self.surface, None);
             if ENABLE_VALIDATION_LAYERS {
                 self.debug_messenger_loader
