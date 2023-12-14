@@ -3,8 +3,8 @@ use ash::vk;
 use super::vk_core_objs::VkCoreObjs;
 
 pub struct VkCommandObjs {
-    command_pool: vk::CommandPool,
-    main_command_buffer: vk::CommandBuffer,
+    pub command_pool: vk::CommandPool,
+    pub main_command_buffer: vk::CommandBuffer,
 }
 
 impl VkCommandObjs {
@@ -40,6 +40,7 @@ impl VkCommandObjs {
     }
 
     pub fn destroy(&mut self, core_objs: &VkCoreObjs) {
+        log::info!("Cleaning up command objects ...");
         unsafe {
             core_objs.device.destroy_command_pool(self.command_pool, None);
         }

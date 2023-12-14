@@ -3,8 +3,8 @@ use ash::vk;
 use super::{vk_core_objs::VkCoreObjs, vk_swapchain_objs::VkSwapchainObjs};
 
 pub struct VkRenderpassObjs {
-    renderpass: vk::RenderPass,
-    framebuffers: Vec<vk::Framebuffer>,
+    pub renderpass: vk::RenderPass,
+    pub framebuffers: Vec<vk::Framebuffer>,
 }
 
 impl VkRenderpassObjs {

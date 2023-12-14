@@ -22,7 +22,7 @@ const REQUIRED_DEVICE_EXTENSIONS: [&'static CStr; 1] =
     [ash::extensions::khr::Swapchain::name()];
 
 pub struct VkCoreObjs {
-    entry: ash::Entry,
+    _entry: ash::Entry,
 
     pub instance: ash::Instance,
 
@@ -62,7 +62,7 @@ impl VkCoreObjs {
             )?;
 
         Ok(Self {
-            entry,
+            _entry: entry,
             instance,
             debug_messenger,
             debug_messenger_loader,
