@@ -13,10 +13,7 @@ impl VkRenderpassObjs {
         swapchain_objs: &VkSwapchainObjs,
         window: &winit::window::Window,
     ) -> anyhow::Result<Self> {
-        let renderpass = create_renderpass(
-            core_objs,
-            swapchain_objs,
-        )?;
+        let renderpass = create_renderpass(core_objs, swapchain_objs)?;
         let framebuffers = create_framebuffers(
             &renderpass,
             core_objs,
@@ -28,6 +25,16 @@ impl VkRenderpassObjs {
             renderpass,
             framebuffers,
         })
+    }
+
+    pub fn destroy(&mut self, core_objs: &VkCoreObjs) {
+        log::info!("Cleaning up renderpass objects ...");
+        unsafe {
+            for framebuffer in &self.framebuffers {
+                core_objs.device.destroy_framebuffer(*framebuffer, None);
+            }
+            core_objs.device.destroy_render_pass(self.renderpass, None);
+        }
     }
 }
 
@@ -100,11 +107,7 @@ fn create_framebuffers(
                 ..Default::default()
             };
 
-            unsafe {
-                core_objs
-                    .device
-                    .create_framebuffer(&fb_info, None)
-            }
+            unsafe { core_objs.device.create_framebuffer(&fb_info, None) }
         })
         .collect::<Result<Vec<_>, _>>()?)
 }
