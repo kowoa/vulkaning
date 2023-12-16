@@ -7,6 +7,7 @@ mod vk_core_objs;
 mod vk_renderpass_objs;
 mod vk_swapchain_objs;
 mod vk_sync_objs;
+mod vk_pipeline_objs;
 
 use ash::vk;
 use vk_command_objs::VkCommandObjs;
@@ -14,6 +15,7 @@ use vk_core_objs::VkCoreObjs;
 use vk_renderpass_objs::VkRenderpassObjs;
 use vk_swapchain_objs::VkSwapchainObjs;
 use vk_sync_objs::VkSyncObjs;
+use vk_pipeline_objs::VkPipelineObjs;
 
 use winit::{
     event::{ElementState, Event, KeyEvent, WindowEvent},
@@ -28,6 +30,8 @@ pub struct Renderer {
     command_objs: VkCommandObjs,
     renderpass_objs: VkRenderpassObjs,
     sync_objs: VkSyncObjs,
+    pipeline_objs: VkPipelineObjs,
+
     frame_number: u32,
     destroyed: bool,
 }
@@ -43,6 +47,7 @@ impl Renderer {
         let renderpass_objs =
             VkRenderpassObjs::new(&core_objs, &swapchain_objs, window)?;
         let sync_objs = VkSyncObjs::new(&core_objs)?;
+        let pipeline_objs = VkPipelineObjs::new(&core_objs)?;
 
         Ok(Self {
             core_objs,
@@ -50,6 +55,7 @@ impl Renderer {
             command_objs,
             renderpass_objs,
             sync_objs,
+            pipeline_objs,
             frame_number: 0,
             destroyed: false,
         })
