@@ -79,6 +79,17 @@ pub fn color_blend_attachment_state() -> vk::PipelineColorBlendAttachmentState {
     }
 }
 
+pub fn pipeline_layout_create_info() -> vk::PipelineLayoutCreateInfo {
+    vk::PipelineLayoutCreateInfo {
+        flags: vk::PipelineLayoutCreateFlags::empty(),
+        set_layout_count: 0,
+        p_set_layouts: vk::DescriptorSetLayout::null(),
+        push_constant_range_count: 0,
+        p_push_constant_ranges: std::ptr::null(),
+        ..Default::default()
+    }
+}
+
 pub fn debug_utils_messenger_create_info(
 ) -> vk::DebugUtilsMessengerCreateInfoEXT {
     let message_severity =

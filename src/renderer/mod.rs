@@ -1,3 +1,5 @@
+mod shader;
+
 mod vk_common;
 mod vk_initializers;
 mod vk_utils;
@@ -47,7 +49,7 @@ impl Renderer {
         let renderpass_objs =
             VkRenderpassObjs::new(&core_objs, &swapchain_objs, window)?;
         let sync_objs = VkSyncObjs::new(&core_objs)?;
-        let pipeline_objs = VkPipelineObjs::new(&core_objs)?;
+        let pipeline_objs = VkPipelineObjs::new(&core_objs, &renderpass_objs)?;
 
         Ok(Self {
             core_objs,
