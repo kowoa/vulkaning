@@ -99,7 +99,10 @@ fn create_instance(
         check_required_validation_layers(entry)?;
     }
 
-    let app_info = vk::ApplicationInfo::default();
+    let app_info = vk::ApplicationInfo {
+        api_version: vk::API_VERSION_1_3,
+        ..Default::default()
+    };
 
     let req_ext_names = get_required_extension_names(event_loop)?;
     let req_layer_names_cstring = REQUIRED_VALIDATION_LAYERS

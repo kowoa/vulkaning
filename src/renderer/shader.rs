@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use ash::vk;
 use std::fs::File;
 use std::io::Read;
@@ -40,19 +40,19 @@ impl Shader {
         &self,
         device: &ash::Device,
     ) -> anyhow::Result<vk::ShaderModule> {
-        Self::create_shader_module(device, self.vert_spv)
+        Self::create_shader_module(device, &self.vert_spv)
     }
 
     pub fn create_shader_module_frag(
         &self,
         device: &ash::Device,
     ) -> anyhow::Result<vk::ShaderModule> {
-        Self::create_shader_module(device, self.frag_spv)
+        Self::create_shader_module(device, &self.frag_spv)
     }
 
     fn create_shader_module(
         device: &ash::Device,
-        code: Vec<u8>,
+        code: &Vec<u8>,
     ) -> anyhow::Result<vk::ShaderModule> {
         let create_info = vk::ShaderModuleCreateInfo {
             code_size: code.len(),

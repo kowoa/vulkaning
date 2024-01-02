@@ -1,4 +1,4 @@
-use std::ffi::{c_void, CStr};
+use std::ffi::{c_void, CStr, CString};
 
 use ash::vk;
 
@@ -7,10 +7,11 @@ pub fn pipeline_shader_stage_create_info(
     stage: vk::ShaderStageFlags,
     shader_module: vk::ShaderModule,
 ) -> vk::PipelineShaderStageCreateInfo {
+    let name = CString::new("main").unwrap();
     vk::PipelineShaderStageCreateInfo {
         stage,
         module: shader_module,
-        p_name: "main",
+        p_name: name.as_ptr() as *const i8,
         ..Default::default()
     }
 }
@@ -83,7 +84,7 @@ pub fn pipeline_layout_create_info() -> vk::PipelineLayoutCreateInfo {
     vk::PipelineLayoutCreateInfo {
         flags: vk::PipelineLayoutCreateFlags::empty(),
         set_layout_count: 0,
-        p_set_layouts: vk::DescriptorSetLayout::null(),
+        p_set_layouts: std::ptr::null(),
         push_constant_range_count: 0,
         p_push_constant_ranges: std::ptr::null(),
         ..Default::default()

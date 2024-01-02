@@ -6,18 +6,18 @@ mod vk_utils;
 
 mod vk_command_objs;
 mod vk_core_objs;
+mod vk_pipeline_objs;
 mod vk_renderpass_objs;
 mod vk_swapchain_objs;
 mod vk_sync_objs;
-mod vk_pipeline_objs;
 
 use ash::vk;
 use vk_command_objs::VkCommandObjs;
 use vk_core_objs::VkCoreObjs;
+use vk_pipeline_objs::VkPipelineObjs;
 use vk_renderpass_objs::VkRenderpassObjs;
 use vk_swapchain_objs::VkSwapchainObjs;
 use vk_sync_objs::VkSyncObjs;
-use vk_pipeline_objs::VkPipelineObjs;
 
 use winit::{
     event::{ElementState, Event, KeyEvent, WindowEvent},
@@ -49,7 +49,10 @@ impl Renderer {
         let renderpass_objs =
             VkRenderpassObjs::new(&core_objs, &swapchain_objs, window)?;
         let sync_objs = VkSyncObjs::new(&core_objs)?;
-        let pipeline_objs = VkPipelineObjs::new(&core_objs, &renderpass_objs)?;
+        println!("before pipeline");
+        let pipeline_objs =
+            VkPipelineObjs::new(&core_objs, &swapchain_objs, &renderpass_objs)?;
+        println!("after pipeline");
 
         Ok(Self {
             core_objs,
@@ -76,7 +79,7 @@ impl Renderer {
                     WindowEvent::CloseRequested => {
                         self.destroy();
                         elwt.exit();
-                    },
+                    }
                     WindowEvent::KeyboardInput {
                         event:
                             KeyEvent {
@@ -89,7 +92,7 @@ impl Renderer {
                         Key::Named(NamedKey::Escape) => {
                             self.destroy();
                             elwt.exit();
-                        },
+                        }
                         _ => (),
                     },
                     WindowEvent::RedrawRequested => {
@@ -172,6 +175,15 @@ impl Renderer {
                 &rp_begin_info,
                 vk::SubpassContents::INLINE,
             );
+
+
+            // RENDERING COMMANDS START
+
+            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline_objs.pipeline);
+            device.cmd_draw(cmd, 3, 1, 0, 0);
+            
+            // RENDERING COMMANDS END
+            
 
             // Finalize the main renderpass
             device.cmd_end_render_pass(cmd);
