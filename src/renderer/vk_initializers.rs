@@ -6,12 +6,13 @@ use ash::vk;
 pub fn pipeline_shader_stage_create_info(
     stage: vk::ShaderStageFlags,
     shader_module: vk::ShaderModule,
+    main_fn_name: &CString,
 ) -> vk::PipelineShaderStageCreateInfo {
-    let name = CString::new("main").unwrap();
     vk::PipelineShaderStageCreateInfo {
+        flags: vk::PipelineShaderStageCreateFlags::empty(),
         stage,
         module: shader_module,
-        p_name: name.as_ptr() as *const i8,
+        p_name: main_fn_name.as_ptr(),
         ..Default::default()
     }
 }

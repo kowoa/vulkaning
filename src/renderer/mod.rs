@@ -49,10 +49,8 @@ impl Renderer {
         let renderpass_objs =
             VkRenderpassObjs::new(&core_objs, &swapchain_objs, window)?;
         let sync_objs = VkSyncObjs::new(&core_objs)?;
-        println!("before pipeline");
         let pipeline_objs =
             VkPipelineObjs::new(&core_objs, &swapchain_objs, &renderpass_objs)?;
-        println!("after pipeline");
 
         Ok(Self {
             core_objs,

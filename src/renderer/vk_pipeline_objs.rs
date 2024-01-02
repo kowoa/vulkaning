@@ -1,9 +1,11 @@
-use ash::vk;
+use std::ffi::CString;
+
 use anyhow::anyhow;
+use ash::vk;
 
 use super::{
-    vk_core_objs::VkCoreObjs, vk_initializers,
-    vk_renderpass_objs::VkRenderpassObjs, shader::Shader, vk_swapchain_objs::VkSwapchainObjs,
+    shader::Shader, vk_core_objs::VkCoreObjs, vk_initializers,
+    vk_renderpass_objs::VkRenderpassObjs, vk_swapchain_objs::VkSwapchainObjs,
 };
 
 pub struct VkPipelineObjs {
@@ -19,8 +21,10 @@ impl VkPipelineObjs {
         renderpass_objs: &VkRenderpassObjs,
     ) -> anyhow::Result<Self> {
         let shader = Shader::new("triangle")?;
-        let shader_mod_vert = shader.create_shader_module_vert(&core_objs.device)?;
-        let shader_mod_frag = shader.create_shader_module_frag(&core_objs.device)?;
+        let shader_mod_vert =
+            shader.create_shader_module_vert(&core_objs.device)?;
+        let shader_mod_frag =
+            shader.create_shader_module_frag(&core_objs.device)?;
 
         let pipeline_info = PipelineInfo::new(
             &shader_mod_vert,
@@ -41,6 +45,7 @@ impl VkPipelineObjs {
 
 #[derive(Debug)]
 struct PipelineInfo {
+    shader_main_fn_name: CString,
     shader_stages: Vec<vk::PipelineShaderStageCreateInfo>,
     vertex_input: vk::PipelineVertexInputStateCreateInfo,
     input_assembly: vk::PipelineInputAssemblyStateCreateInfo,
@@ -63,12 +68,23 @@ impl PipelineInfo {
 
         let pipeline_layout = create_pipeline_layout(core_objs)?;
 
+        let shader_main_fn_name = CString::new("main").unwrap();
         let mut shader_stages = vec![
-            vkinit::pipeline_shader_stage_create_info(vk::ShaderStageFlags::VERTEX, *shader_mod_vert),
-            vkinit::pipeline_shader_stage_create_info(vk::ShaderStageFlags::FRAGMENT, *shader_mod_frag)
+            vkinit::pipeline_shader_stage_create_info(
+                vk::ShaderStageFlags::VERTEX,
+                *shader_mod_vert,
+                &shader_main_fn_name,
+            ),
+            vkinit::pipeline_shader_stage_create_info(
+                vk::ShaderStageFlags::FRAGMENT,
+                *shader_mod_frag,
+                &shader_main_fn_name,
+            ),
         ];
         let vertex_input = vkinit::vertex_input_state_create_info();
-        let input_assembly = vkinit::input_assembly_create_info(vk::PrimitiveTopology::TRIANGLE_LIST);
+        let input_assembly = vkinit::input_assembly_create_info(
+            vk::PrimitiveTopology::TRIANGLE_LIST,
+        );
         let viewport = vk::Viewport {
             x: 0.0,
             y: 0.0,
@@ -81,11 +97,13 @@ impl PipelineInfo {
             offset: vk::Offset2D { x: 0, y: 0 },
             extent: swapchain_objs.swapchain_extent,
         };
-        let rasterizer = vkinit::rasterization_state_create_info(vk::PolygonMode::FILL);
+        let rasterizer =
+            vkinit::rasterization_state_create_info(vk::PolygonMode::FILL);
         let color_blend_attachment = vkinit::color_blend_attachment_state();
         let multisampling = vkinit::multisampling_state_create_info();
 
         Ok(Self {
+            shader_main_fn_name,
             shader_stages,
             vertex_input,
             input_assembly,
@@ -126,7 +144,6 @@ fn create_pipeline(
         p_stages: info.shader_stages.as_ptr(),
         p_vertex_input_state: &info.vertex_input,
         p_input_assembly_state: &info.input_assembly,
-        p_tessellation_state: std::ptr::null(),
         p_viewport_state: &viewport_state_info,
         p_rasterization_state: &info.rasterizer,
         p_multisample_state: &info.multisampling,
@@ -135,13 +152,11 @@ fn create_pipeline(
         render_pass: renderpass_objs.renderpass,
         subpass: 0,
         base_pipeline_handle: vk::Pipeline::null(),
-        base_pipeline_index: -1,
+        p_tessellation_state: std::ptr::null(),
         ..Default::default()
     }];
 
-    println!("before graphics piplines");
     let graphics_pipelines = unsafe {
-        /*
         match core_objs.device.create_graphics_pipelines(
             vk::PipelineCache::null(),
             &pipeline_create_infos,
@@ -150,14 +165,7 @@ fn create_pipeline(
             Ok(pipelines) => Ok(pipelines),
             Err((pipelines, res)) => Err(anyhow!("Failed to create graphics piplines")),
         }
-        */
-        core_objs.device.create_graphics_pipelines(
-            vk::PipelineCache::null(),
-            &pipeline_create_infos,
-            None,
-        )
-    }.unwrap();
-    println!("after graphics pipelines");
+    }?;
     Ok(graphics_pipelines[0])
 }
 
@@ -166,5 +174,9 @@ fn create_pipeline_layout(
 ) -> anyhow::Result<vk::PipelineLayout> {
     // Build the pipeline layout that controls the inputs/outputs of the shader
     let layout_info = vk_initializers::pipeline_layout_create_info();
-    Ok(unsafe { core_objs.device.create_pipeline_layout(&layout_info, None)? })
+    Ok(unsafe {
+        core_objs
+            .device
+            .create_pipeline_layout(&layout_info, None)?
+    })
 }
