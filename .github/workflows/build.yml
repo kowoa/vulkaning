@@ -64,7 +64,7 @@ jobs:
       uses: Swatinem/rust-cache@v2
 
   macosbuild:
-    runs-on: windows-latest
+    runs-on: macos-latest
 
     steps:
     - uses: actions/checkout@v3
