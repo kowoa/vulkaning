@@ -238,6 +238,7 @@ impl Renderer {
         if self.destroyed {
             return;
         }
+        self.pipeline_objs.destroy(&self.core_objs);
         self.sync_objs.destroy(&self.core_objs);
         self.renderpass_objs.destroy(&self.core_objs);
         self.command_objs.destroy(&self.core_objs);

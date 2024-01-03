@@ -9,9 +9,8 @@ use super::{
 };
 
 pub struct VkPipelineObjs {
-    pub shader_mod_vert: vk::ShaderModule,
-    pub shader_mod_frag: vk::ShaderModule,
     pub pipeline: vk::Pipeline,
+    pub pipeline_layout: vk::PipelineLayout,
 }
 
 impl VkPipelineObjs {
@@ -31,15 +30,28 @@ impl VkPipelineObjs {
             &shader_mod_frag,
             core_objs,
             swapchain_objs,
-        )?;
+        );
+        let pipeline_layout = create_pipeline_layout(core_objs)?;
         let pipeline =
-            create_pipeline(core_objs, renderpass_objs, &pipeline_info)?;
+            create_pipeline(core_objs, renderpass_objs, &pipeline_layout, &pipeline_info)?;
+
+        unsafe {
+            core_objs.device.destroy_shader_module(shader_mod_vert, None);
+            core_objs.device.destroy_shader_module(shader_mod_frag, None);
+        }
 
         Ok(Self {
-            shader_mod_vert,
-            shader_mod_frag,
             pipeline,
+            pipeline_layout,
         })
+    }
+
+    pub fn destroy(&mut self, core_objs: &VkCoreObjs) {
+        log::info!("Cleaning up pipeline objects ...");
+        unsafe {
+            core_objs.device.destroy_pipeline(self.pipeline, None);
+            core_objs.device.destroy_pipeline_layout(self.pipeline_layout, None);
+        }
     }
 }
 
@@ -54,7 +66,6 @@ struct PipelineInfo {
     rasterizer: vk::PipelineRasterizationStateCreateInfo,
     color_blend_attachment: vk::PipelineColorBlendAttachmentState,
     multisampling: vk::PipelineMultisampleStateCreateInfo,
-    pipeline_layout: vk::PipelineLayout,
 }
 
 impl PipelineInfo {
@@ -63,13 +74,11 @@ impl PipelineInfo {
         shader_mod_frag: &vk::ShaderModule,
         core_objs: &VkCoreObjs,
         swapchain_objs: &VkSwapchainObjs,
-    ) -> anyhow::Result<Self> {
+    ) -> Self {
         use vk_initializers as vkinit;
 
-        let pipeline_layout = create_pipeline_layout(core_objs)?;
-
         let shader_main_fn_name = CString::new("main").unwrap();
-        let mut shader_stages = vec![
+        let shader_stages = vec![
             vkinit::pipeline_shader_stage_create_info(
                 vk::ShaderStageFlags::VERTEX,
                 *shader_mod_vert,
@@ -102,7 +111,7 @@ impl PipelineInfo {
         let color_blend_attachment = vkinit::color_blend_attachment_state();
         let multisampling = vkinit::multisampling_state_create_info();
 
-        Ok(Self {
+        Self {
             shader_main_fn_name,
             shader_stages,
             vertex_input,
@@ -112,14 +121,14 @@ impl PipelineInfo {
             rasterizer,
             color_blend_attachment,
             multisampling,
-            pipeline_layout,
-        })
+        }
     }
 }
 
 fn create_pipeline(
     core_objs: &VkCoreObjs,
     renderpass_objs: &VkRenderpassObjs,
+    pipeline_layout: &vk::PipelineLayout,
     info: &PipelineInfo,
 ) -> anyhow::Result<vk::Pipeline> {
     let viewport_state_info = vk::PipelineViewportStateCreateInfo {
@@ -148,7 +157,7 @@ fn create_pipeline(
         p_rasterization_state: &info.rasterizer,
         p_multisample_state: &info.multisampling,
         p_color_blend_state: &color_blend_info,
-        layout: info.pipeline_layout,
+        layout: *pipeline_layout,
         render_pass: renderpass_objs.renderpass,
         subpass: 0,
         base_pipeline_handle: vk::Pipeline::null(),
@@ -163,7 +172,7 @@ fn create_pipeline(
             None,
         ) {
             Ok(pipelines) => Ok(pipelines),
-            Err((pipelines, res)) => Err(anyhow!("Failed to create graphics piplines")),
+            Err(_) => Err(anyhow!("Failed to create graphics piplines")),
         }
     }?;
     Ok(graphics_pipelines[0])
