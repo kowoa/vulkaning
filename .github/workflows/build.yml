@@ -44,6 +44,9 @@ jobs:
     - name: Install rust toolchain
       run: rustup toolchain install nightly --profile minimal
 
+    - name: Install ninja
+      run: choco install ninja
+
     - name: Prepare Vulkan SDK
       uses: humbletim/setup-vulkan-sdk@v1.2.0
       with:
@@ -68,6 +71,9 @@ jobs:
 
     - name: Install rust toolchain
       run: rustup toolchain install nightly --profile minimal
+
+    - name: Install ninja
+      run: brew install ninja
     
     - name: Prepare Vulkan SDK
       uses: humbletim/setup-vulkan-sdk@v1.2.0
