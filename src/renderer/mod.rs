@@ -36,6 +36,7 @@ pub struct Renderer {
 
     frame_number: u32,
     destroyed: bool,
+    selected_shader: i32,
 }
 
 impl Renderer {
@@ -61,6 +62,7 @@ impl Renderer {
             pipeline_objs,
             frame_number: 0,
             destroyed: false,
+            selected_shader: 0,
         })
     }
 
@@ -90,6 +92,9 @@ impl Renderer {
                         Key::Named(NamedKey::Escape) => {
                             self.destroy();
                             elwt.exit();
+                        }
+                        Key::Named(NamedKey::Space) => {
+                            self.selected_shader = (self.selected_shader + 1) % 2;
                         }
                         _ => (),
                     },
@@ -177,7 +182,11 @@ impl Renderer {
 
             // RENDERING COMMANDS START
 
-            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline_objs.pipeline);
+            if self.selected_shader == 0 {
+                device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline_objs.pipeline);
+            } else {
+                device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline_objs.pipeline_colored);
+            }
             device.cmd_draw(cmd, 3, 1, 0, 0);
             
             // RENDERING COMMANDS END

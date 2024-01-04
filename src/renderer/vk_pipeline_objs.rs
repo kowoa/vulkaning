@@ -11,6 +11,8 @@ use super::{
 pub struct VkPipelineObjs {
     pub pipeline: vk::Pipeline,
     pub pipeline_layout: vk::PipelineLayout,
+    pub pipeline_colored: vk::Pipeline,
+    pub pipeline_layout_colored: vk::PipelineLayout,
 }
 
 impl VkPipelineObjs {
@@ -19,30 +21,72 @@ impl VkPipelineObjs {
         swapchain_objs: &VkSwapchainObjs,
         renderpass_objs: &VkRenderpassObjs,
     ) -> anyhow::Result<Self> {
+        let shader_colored = Shader::new("colored-triangle")?;
+        let shader_mod_vert_colored =
+            shader_colored.create_shader_module_vert(&core_objs.device)?;
+        let shader_mod_frag_colored =
+            shader_colored.create_shader_module_frag(&core_objs.device)?;
+        
         let shader = Shader::new("triangle")?;
         let shader_mod_vert =
             shader.create_shader_module_vert(&core_objs.device)?;
         let shader_mod_frag =
             shader.create_shader_module_frag(&core_objs.device)?;
 
-        let pipeline_info = PipelineInfo::new(
-            &shader_mod_vert,
-            &shader_mod_frag,
-            core_objs,
-            swapchain_objs,
-        );
-        let pipeline_layout = create_pipeline_layout(core_objs)?;
-        let pipeline =
-            create_pipeline(core_objs, renderpass_objs, &pipeline_layout, &pipeline_info)?;
+        let (pipeline, pipeline_layout) = {
+            let pipeline_info = PipelineInfo::new(
+                &shader_mod_vert,
+                &shader_mod_frag,
+                core_objs,
+                swapchain_objs,
+            );
+            let pipeline_layout = create_pipeline_layout(core_objs)?;
+            let pipeline = create_pipeline(
+                core_objs,
+                renderpass_objs,
+                &pipeline_layout,
+                &pipeline_info,
+            )?;
+            (pipeline, pipeline_layout)
+        };
+
+        let (pipeline_colored, pipeline_layout_colored) = {
+            let pipeline_info = PipelineInfo::new(
+                &shader_mod_vert_colored,
+                &shader_mod_frag_colored,
+                core_objs,
+                swapchain_objs,
+            );
+            let pipeline_layout = create_pipeline_layout(core_objs)?;
+            let pipeline = create_pipeline(
+                core_objs,
+                renderpass_objs,
+                &pipeline_layout,
+                &pipeline_info,
+            )?;
+            (pipeline, pipeline_layout)
+        };
 
         unsafe {
-            core_objs.device.destroy_shader_module(shader_mod_vert, None);
-            core_objs.device.destroy_shader_module(shader_mod_frag, None);
+            core_objs
+                .device
+                .destroy_shader_module(shader_mod_vert_colored, None);
+            core_objs
+                .device
+                .destroy_shader_module(shader_mod_frag_colored, None);
+            core_objs
+                .device
+                .destroy_shader_module(shader_mod_vert, None);
+            core_objs
+                .device
+                .destroy_shader_module(shader_mod_frag, None);
         }
 
         Ok(Self {
             pipeline,
             pipeline_layout,
+            pipeline_colored,
+            pipeline_layout_colored
         })
     }
 
@@ -50,7 +94,11 @@ impl VkPipelineObjs {
         log::info!("Cleaning up pipeline objects ...");
         unsafe {
             core_objs.device.destroy_pipeline(self.pipeline, None);
-            core_objs.device.destroy_pipeline_layout(self.pipeline_layout, None);
+            core_objs
+                .device
+                .destroy_pipeline_layout(self.pipeline_layout, None);
+            core_objs.device.destroy_pipeline(self.pipeline_colored, None);
+            core_objs.device.destroy_pipeline_layout(self.pipeline_layout_colored, None);
         }
     }
 }
