@@ -1,4 +1,5 @@
 mod shader;
+mod deletion_queue;
 
 mod vk_common;
 mod vk_initializers;
@@ -37,6 +38,8 @@ pub struct Renderer {
     frame_number: u32,
     destroyed: bool,
     selected_shader: i32,
+
+    deletion_queue: deletion_queue::DeletionQueue,
 }
 
 impl Renderer {
@@ -63,6 +66,7 @@ impl Renderer {
             frame_number: 0,
             destroyed: false,
             selected_shader: 0,
+            deletion_queue: deletion_queue::DeletionQueue::new(),
         })
     }
 
@@ -247,6 +251,17 @@ impl Renderer {
         if self.destroyed {
             return;
         }
+
+        unsafe {
+            self.core_objs.device.wait_for_fences(
+                &[self.sync_objs.render_fence],
+                true,
+                1000000000,
+            ).unwrap();
+        }
+
+        self.deletion_queue.flush();
+
         self.pipeline_objs.destroy(&self.core_objs);
         self.sync_objs.destroy(&self.core_objs);
         self.renderpass_objs.destroy(&self.core_objs);
