@@ -8,6 +8,7 @@ use std::{
 
 use anyhow::anyhow;
 use ash::vk;
+use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use winit::event_loop::EventLoop;
 
@@ -38,6 +39,8 @@ pub struct VkCoreObjs {
     pub graphics_queue: vk::Queue,
     pub present_queue: vk::Queue,
     pub queue_family_indices: QueueFamilyIndices,
+
+    pub allocator: Allocator,
 }
 
 impl VkCoreObjs {
@@ -60,6 +63,18 @@ impl VkCoreObjs {
                 &surface,
                 &surface_loader,
             )?;
+        
+        let allocator = {
+            let info = AllocatorCreateDesc {
+                instance: instance.clone(),
+                device: device.clone(),
+                physical_device,
+                debug_settings: Default::default(),
+                buffer_device_address: true,
+                allocation_sizes: Default::default(),
+            };
+            Allocator::new(&info)?
+        };
 
         Ok(Self {
             _entry: entry,
@@ -73,6 +88,7 @@ impl VkCoreObjs {
             graphics_queue,
             present_queue,
             queue_family_indices,
+            allocator
         })
     }
 
