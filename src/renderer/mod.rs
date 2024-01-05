@@ -1,5 +1,5 @@
 mod shader;
-mod deletion_queue;
+mod destruction_queue;
 
 mod vk_common;
 mod vk_initializers;
@@ -11,6 +11,8 @@ mod vk_pipeline_objs;
 mod vk_renderpass_objs;
 mod vk_swapchain_objs;
 mod vk_sync_objs;
+
+use std::rc::Rc;
 
 use ash::vk;
 use vk_command_objs::VkCommandObjs;
@@ -29,17 +31,17 @@ use winit::{
 
 pub struct Renderer {
     core_objs: VkCoreObjs,
-    swapchain_objs: VkSwapchainObjs,
-    command_objs: VkCommandObjs,
-    renderpass_objs: VkRenderpassObjs,
-    sync_objs: VkSyncObjs,
-    pipeline_objs: VkPipelineObjs,
+    swapchain_objs: Rc<VkSwapchainObjs>,
+    command_objs: Rc<VkCommandObjs>,
+    renderpass_objs: Rc<VkRenderpassObjs>,
+    sync_objs: Rc<VkSyncObjs>,
+    pipeline_objs: Rc<VkPipelineObjs>,
 
     frame_number: u32,
-    destroyed: bool,
     selected_shader: i32,
+    destroyed: bool,
 
-    deletion_queue: deletion_queue::DeletionQueue,
+    destruction_queue: destruction_queue::DestructionQueue,
 }
 
 impl Renderer {
@@ -47,6 +49,7 @@ impl Renderer {
         window: &winit::window::Window,
         event_loop: &winit::event_loop::EventLoop<()>,
     ) -> anyhow::Result<Self> {
+
         let core_objs = VkCoreObjs::new(window, event_loop)?;
         let swapchain_objs = VkSwapchainObjs::new(&core_objs, window)?;
         let command_objs = VkCommandObjs::new(&core_objs)?;
@@ -56,6 +59,19 @@ impl Renderer {
         let pipeline_objs =
             VkPipelineObjs::new(&core_objs, &swapchain_objs, &renderpass_objs)?;
 
+        let swapchain_objs = Rc::new(swapchain_objs);
+        let command_objs = Rc::new(command_objs);
+        let renderpass_objs = Rc::new(renderpass_objs);
+        let sync_objs = Rc::new(sync_objs);
+        let pipeline_objs = Rc::new(pipeline_objs);
+
+        let mut destruction_queue = destruction_queue::DestructionQueue::new();
+        destruction_queue.push(swapchain_objs.clone());
+        destruction_queue.push(command_objs.clone());
+        destruction_queue.push(renderpass_objs.clone());
+        destruction_queue.push(sync_objs.clone());
+        destruction_queue.push(pipeline_objs.clone());
+
         Ok(Self {
             core_objs,
             swapchain_objs,
@@ -64,9 +80,9 @@ impl Renderer {
             sync_objs,
             pipeline_objs,
             frame_number: 0,
-            destroyed: false,
             selected_shader: 0,
-            deletion_queue: deletion_queue::DeletionQueue::new(),
+            destroyed: false,
+            destruction_queue,
         })
     }
 
@@ -247,7 +263,7 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn destroy(&mut self) {
+    fn destroy(&mut self) {
         if self.destroyed {
             return;
         }
@@ -260,13 +276,7 @@ impl Renderer {
             ).unwrap();
         }
 
-        self.deletion_queue.flush();
-
-        self.pipeline_objs.destroy(&self.core_objs);
-        self.sync_objs.destroy(&self.core_objs);
-        self.renderpass_objs.destroy(&self.core_objs);
-        self.command_objs.destroy(&self.core_objs);
-        self.swapchain_objs.destroy(&self.core_objs);
+        self.destruction_queue.flush(&self.core_objs.device);
         self.core_objs.destroy();
         self.destroyed = true;
     }

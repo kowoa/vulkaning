@@ -1,6 +1,9 @@
+use std::rc::Rc;
+
 use ash::vk;
 
-use super::{vk_core_objs::VkCoreObjs, vk_swapchain_objs::VkSwapchainObjs};
+
+use super::{vk_core_objs::VkCoreObjs, vk_swapchain_objs::VkSwapchainObjs, destruction_queue::{Destroy, DestructionQueue}};
 
 pub struct VkRenderpassObjs {
     pub renderpass: vk::RenderPass,
@@ -21,19 +24,23 @@ impl VkRenderpassObjs {
             window,
         )?;
 
-        Ok(Self {
+        let objs = Self {
             renderpass,
             framebuffers,
-        })
-    }
+        };
 
-    pub fn destroy(&mut self, core_objs: &VkCoreObjs) {
+        Ok(objs)
+    }
+}
+
+impl Destroy for VkRenderpassObjs {
+    fn destroy(&self, device: &ash::Device) {
         log::info!("Cleaning up renderpass objects ...");
         unsafe {
             for framebuffer in &self.framebuffers {
-                core_objs.device.destroy_framebuffer(*framebuffer, None);
+                device.destroy_framebuffer(*framebuffer, None);
             }
-            core_objs.device.destroy_render_pass(self.renderpass, None);
+            device.destroy_render_pass(self.renderpass, None);
         }
     }
 }

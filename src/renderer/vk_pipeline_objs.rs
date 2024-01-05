@@ -1,11 +1,12 @@
-use std::ffi::CString;
+use std::{ffi::CString, rc::Rc};
 
 use anyhow::anyhow;
 use ash::vk;
 
+
 use super::{
     shader::Shader, vk_core_objs::VkCoreObjs, vk_initializers,
-    vk_renderpass_objs::VkRenderpassObjs, vk_swapchain_objs::VkSwapchainObjs,
+    vk_renderpass_objs::VkRenderpassObjs, vk_swapchain_objs::VkSwapchainObjs, destruction_queue::{Destroy, DestructionQueue},
 };
 
 pub struct VkPipelineObjs {
@@ -26,7 +27,7 @@ impl VkPipelineObjs {
             shader_colored.create_shader_module_vert(&core_objs.device)?;
         let shader_mod_frag_colored =
             shader_colored.create_shader_module_frag(&core_objs.device)?;
-        
+
         let shader = Shader::new("triangle")?;
         let shader_mod_vert =
             shader.create_shader_module_vert(&core_objs.device)?;
@@ -82,23 +83,25 @@ impl VkPipelineObjs {
                 .destroy_shader_module(shader_mod_frag, None);
         }
 
-        Ok(Self {
+        let objs = Self {
             pipeline,
             pipeline_layout,
             pipeline_colored,
-            pipeline_layout_colored
-        })
-    }
+            pipeline_layout_colored,
+        };
 
-    pub fn destroy(&mut self, core_objs: &VkCoreObjs) {
+        Ok(objs)
+    }
+}
+
+impl Destroy for VkPipelineObjs {
+    fn destroy(&self, device: &ash::Device) {
         log::info!("Cleaning up pipeline objects ...");
         unsafe {
-            core_objs.device.destroy_pipeline(self.pipeline, None);
-            core_objs
-                .device
-                .destroy_pipeline_layout(self.pipeline_layout, None);
-            core_objs.device.destroy_pipeline(self.pipeline_colored, None);
-            core_objs.device.destroy_pipeline_layout(self.pipeline_layout_colored, None);
+            device.destroy_pipeline(self.pipeline, None);
+            device.destroy_pipeline_layout(self.pipeline_layout, None);
+            device.destroy_pipeline(self.pipeline_colored, None);
+            device.destroy_pipeline_layout(self.pipeline_layout_colored, None);
         }
     }
 }

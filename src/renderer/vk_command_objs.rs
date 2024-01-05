@@ -1,6 +1,8 @@
+use std::rc::Rc;
+
 use ash::vk;
 
-use super::vk_core_objs::VkCoreObjs;
+use super::{vk_core_objs::VkCoreObjs, destruction_queue::{Destroy, DestructionQueue}};
 
 pub struct VkCommandObjs {
     pub command_pool: vk::CommandPool,
@@ -33,16 +35,20 @@ impl VkCommandObjs {
                 .allocate_command_buffers(&buffer_info)?
         };
 
-        Ok(Self {
+        let objs = Self {
             command_pool,
             main_command_buffer: command_buffers[0],
-        })
-    }
+        };
 
-    pub fn destroy(&mut self, core_objs: &VkCoreObjs) {
+        Ok(objs)
+    }
+}
+
+impl Destroy for VkCommandObjs {
+    fn destroy(&self, device: &ash::Device) {
         log::info!("Cleaning up command objects ...");
         unsafe {
-            core_objs.device.destroy_command_pool(self.command_pool, None);
+            device.destroy_command_pool(self.command_pool, None);
         }
     }
 }

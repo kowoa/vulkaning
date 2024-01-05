@@ -1,6 +1,8 @@
+use std::rc::Rc;
+
 use ash::vk;
 
-use super::{vk_common, vk_core_objs::VkCoreObjs};
+use super::{vk_common, vk_core_objs::VkCoreObjs, destruction_queue::{Destroy, DestructionQueue}};
 
 pub struct VkSwapchainObjs {
     pub swapchain: vk::SwapchainKHR,
@@ -29,21 +31,25 @@ impl VkSwapchainObjs {
             &swapchain_images,
         )?;
 
-        Ok(Self {
+        let objs = Self {
             swapchain,
             swapchain_loader,
             swapchain_images,
             swapchain_image_format,
             swapchain_extent,
             swapchain_image_views,
-        })
+        };
+        
+        Ok(objs)
     }
+}
 
-    pub fn destroy(&mut self, core_objs: &VkCoreObjs) {
+impl Destroy for VkSwapchainObjs {
+    fn destroy(&self, device: &ash::Device) {
         log::info!("Cleaning up swapchain objects ...");
         unsafe {
             for view in &self.swapchain_image_views {
-                core_objs.device.destroy_image_view(*view, None);
+                device.destroy_image_view(*view, None);
             }
             self.swapchain_loader
                 .destroy_swapchain(self.swapchain, None);

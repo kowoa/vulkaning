@@ -1,6 +1,9 @@
+use std::rc::Rc;
+
 use ash::vk;
 
-use super::vk_core_objs::VkCoreObjs;
+
+use super::{vk_core_objs::VkCoreObjs, destruction_queue::{Destroy, self, DestructionQueue}};
 
 pub struct VkSyncObjs {
     pub present_semaphore: vk::Semaphore,
@@ -27,18 +30,23 @@ impl VkSyncObjs {
             core_objs.device.create_semaphore(&sem_info, None)?
         };
 
-        Ok(Self {
+        let objs = Self {
             present_semaphore,
             render_semaphore,
             render_fence,
-        })
-    }
+        };
 
-    pub fn destroy(&mut self, core_objs: &VkCoreObjs) {
+        Ok(objs)
+    }
+}
+
+impl Destroy for VkSyncObjs {
+    fn destroy(&self, device: &ash::Device) {
+        log::info!("Cleaning up sync objects ...");
         unsafe {
-            core_objs.device.destroy_semaphore(self.render_semaphore, None);
-            core_objs.device.destroy_semaphore(self.present_semaphore, None);
-            core_objs.device.destroy_fence(self.render_fence, None);
+            device.destroy_semaphore(self.render_semaphore, None);
+            device.destroy_semaphore(self.present_semaphore, None);
+            device.destroy_fence(self.render_fence, None);
         }
     }
 }
