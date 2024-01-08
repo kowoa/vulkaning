@@ -1,5 +1,4 @@
 // Engine initialization
-// VkInstance, VkPhysicalDevice, VkDevice, VkQueue, VkSwapchainKHR, VkCommandPool
 
 use std::{
     collections::HashSet,
@@ -12,9 +11,9 @@ use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use winit::event_loop::EventLoop;
 
-use crate::renderer::vk_common;
 use crate::renderer::vk_initializers;
-use crate::renderer::vk_utils;
+
+use super::{destruction_queue::Destroy, swapchain::query_swapchain_support, utils};
 
 const ENABLE_VALIDATION_LAYERS: bool = cfg!(debug_assertions);
 const REQUIRED_VALIDATION_LAYERS: [&'static str; 1] =
@@ -22,7 +21,7 @@ const REQUIRED_VALIDATION_LAYERS: [&'static str; 1] =
 const REQUIRED_DEVICE_EXTENSIONS: [&'static CStr; 1] =
     [ash::extensions::khr::Swapchain::name()];
 
-pub struct VkCoreObjs {
+pub struct Core {
     _entry: ash::Entry,
 
     pub instance: ash::Instance,
@@ -43,7 +42,7 @@ pub struct VkCoreObjs {
     pub allocator: Allocator,
 }
 
-impl VkCoreObjs {
+impl Core {
     pub fn new(
         window: &winit::window::Window,
         event_loop: &EventLoop<()>,
@@ -91,9 +90,11 @@ impl VkCoreObjs {
             allocator
         })
     }
+}
 
-    pub fn destroy(&mut self) {
-        log::info!("Cleaning up core objects ...");
+impl Destroy for Core {
+    fn destroy(&self, device: &ash::Device) {
+        log::info!("Cleaning up core ...");
         unsafe {
             self.device.destroy_device(None);
             // Segfault occurs here if window gets destroyed before surface
@@ -292,7 +293,7 @@ fn check_required_validation_layers(entry: &ash::Entry) -> anyhow::Result<()> {
     let available_layers = entry
         .enumerate_instance_layer_properties()?
         .iter()
-        .map(|props| vk_utils::c_char_to_string(&props.layer_name))
+        .map(|props| utils::c_char_to_string(&props.layer_name))
         .collect::<Result<HashSet<_>, _>>()?;
 
     let all_layers_found = REQUIRED_VALIDATION_LAYERS
@@ -345,7 +346,7 @@ fn physical_device_is_suitable(
             vk::PhysicalDeviceType::OTHER => "Unknown",
             _ => panic!("Unknown device type"),
         };
-        let dev_name = vk_utils::c_char_to_string(&dev_properties.device_name)?;
+        let dev_name = utils::c_char_to_string(&dev_properties.device_name)?;
         println!(
             "\tDevice name: {}, ID: {}, Type: {}",
             dev_name, dev_properties.device_id, dev_type
@@ -391,7 +392,7 @@ fn physical_device_is_suitable(
         check_required_device_extensions(physical_device, instance)?;
 
     let swapchain_adequate = {
-        let details = vk_common::query_swapchain_support(
+        let details = query_swapchain_support(
             physical_device,
             surface,
             surface_loader,
@@ -410,7 +411,7 @@ fn check_required_device_extensions(
         instance.enumerate_device_extension_properties(*physical_device)?
     }
     .iter()
-    .map(|ext| vk_utils::c_char_to_string(&ext.extension_name))
+    .map(|ext| utils::c_char_to_string(&ext.extension_name))
     .collect::<Result<Vec<_>, _>>()?;
 
     Ok(REQUIRED_DEVICE_EXTENSIONS

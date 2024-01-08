@@ -1,33 +1,30 @@
-use std::rc::Rc;
-
 use ash::vk;
 
+use super::{core::Core, destruction_queue::Destroy};
 
-use super::{vk_core_objs::VkCoreObjs, destruction_queue::{Destroy, self, DestructionQueue}};
-
-pub struct VkSyncObjs {
+pub struct SyncObjs {
     pub present_semaphore: vk::Semaphore,
     pub render_semaphore: vk::Semaphore,
     pub render_fence: vk::Fence,
 }
 
-impl VkSyncObjs {
-    pub fn new(core_objs: &VkCoreObjs) -> anyhow::Result<Self> {
+impl SyncObjs {
+    pub fn new(core: &Core) -> anyhow::Result<Self> {
         let fence_info = vk::FenceCreateInfo {
             // Fence starts out signaled so we can wait on it for the first frame
             flags: vk::FenceCreateFlags::SIGNALED,
             ..Default::default()
         };
         let render_fence = unsafe {
-            core_objs.device.create_fence(&fence_info, None)?
+            core.device.create_fence(&fence_info, None)?
         };
 
         let sem_info = vk::SemaphoreCreateInfo::default();
         let present_semaphore = unsafe {
-            core_objs.device.create_semaphore(&sem_info, None)?
+            core.device.create_semaphore(&sem_info, None)?
         };
         let render_semaphore = unsafe {
-            core_objs.device.create_semaphore(&sem_info, None)?
+            core.device.create_semaphore(&sem_info, None)?
         };
 
         let objs = Self {
@@ -40,7 +37,7 @@ impl VkSyncObjs {
     }
 }
 
-impl Destroy for VkSyncObjs {
+impl Destroy for SyncObjs {
     fn destroy(&self, device: &ash::Device) {
         log::info!("Cleaning up sync objects ...");
         unsafe {

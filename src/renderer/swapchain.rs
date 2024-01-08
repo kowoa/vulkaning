@@ -1,8 +1,6 @@
-use std::rc::Rc;
-
 use ash::vk;
 
-use super::{vk_common, vk_core_objs::VkCoreObjs, destruction_queue::{Destroy, DestructionQueue}};
+use super::{destruction_queue::Destroy, core::Core};
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
@@ -15,7 +13,7 @@ pub struct Swapchain {
 
 impl Swapchain {
     pub fn new(
-        core_objs: &VkCoreObjs,
+        core: &Core,
         window: &winit::window::Window,
     ) -> anyhow::Result<Self> {
         let (
@@ -24,9 +22,9 @@ impl Swapchain {
             images,
             image_format,
             extent,
-        ) = create_swapchain(core_objs, window)?;
+        ) = create_swapchain(core, window)?;
         let image_views = create_image_views(
-            core_objs,
+            core,
             &image_format,
             &images,
         )?;
@@ -58,7 +56,7 @@ impl Destroy for Swapchain {
 }
 
 fn create_swapchain(
-    core_objs: &VkCoreObjs,
+    core: &Core,
     window: &winit::window::Window,
 ) -> anyhow::Result<(
     vk::SwapchainKHR,
@@ -67,10 +65,10 @@ fn create_swapchain(
     vk::Format,
     vk::Extent2D,
 )> {
-    let swapchain_support = vk_common::query_swapchain_support(
-        &core_objs.physical_device,
-        &core_objs.surface,
-        &core_objs.surface_loader,
+    let swapchain_support = query_swapchain_support(
+        &core.physical_device,
+        &core.surface,
+        &core.surface_loader,
     )?;
 
     let surface_format =
@@ -96,7 +94,7 @@ fn create_swapchain(
     };
 
     let (image_sharing_mode, queue_family_index_count, queue_family_indices) = {
-        let indices = &core_objs.queue_family_indices;
+        let indices = &core.queue_family_indices;
         if indices.graphics_family != indices.present_family {
             (
                 // CONCURRENT means images can be used across multiple queue families
@@ -116,7 +114,7 @@ fn create_swapchain(
     };
 
     let info = vk::SwapchainCreateInfoKHR {
-        surface: core_objs.surface,
+        surface: core.surface,
         min_image_count,
         image_format: surface_format.format,
         image_color_space: surface_format.color_space,
@@ -135,8 +133,8 @@ fn create_swapchain(
     };
 
     let swapchain_loader = ash::extensions::khr::Swapchain::new(
-        &core_objs.instance,
-        &core_objs.device,
+        &core.instance,
+        &core.device,
     );
     let swapchain = unsafe { swapchain_loader.create_swapchain(&info, None)? };
     let swapchain_images =
@@ -154,7 +152,7 @@ fn create_swapchain(
 }
 
 fn create_image_views(
-    core_objs: &VkCoreObjs,
+    core_objs: &Core,
     swapchain_image_format: &vk::Format,
     images: &Vec<vk::Image>,
 ) -> anyhow::Result<Vec<vk::ImageView>> {
@@ -233,4 +231,36 @@ fn choose_swapchain_extent(
             ),
         }
     }
+}
+
+pub struct SwapchainSupportDetails {
+    pub capabilities: vk::SurfaceCapabilitiesKHR,
+    pub formats: Vec<vk::SurfaceFormatKHR>,
+    pub present_modes: Vec<vk::PresentModeKHR>,
+}
+
+pub fn query_swapchain_support(
+    device: &vk::PhysicalDevice,
+    surface: &vk::SurfaceKHR,
+    surface_loader: &ash::extensions::khr::Surface,
+) -> anyhow::Result<SwapchainSupportDetails> {
+    let capabilities = unsafe {
+        surface_loader
+            .get_physical_device_surface_capabilities(*device, *surface)?
+    };
+
+    let formats = unsafe {
+        surface_loader.get_physical_device_surface_formats(*device, *surface)?
+    };
+
+    let present_modes = unsafe {
+        surface_loader
+            .get_physical_device_surface_present_modes(*device, *surface)?
+    };
+
+    Ok(SwapchainSupportDetails {
+        capabilities,
+        formats,
+        present_modes,
+    })
 }

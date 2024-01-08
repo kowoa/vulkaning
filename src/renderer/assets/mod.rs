@@ -47,6 +47,13 @@ impl Assets {
         )?
         .build(device, renderpass.renderpass)?;
 
+        unsafe {
+            device.destroy_shader_module(shader_colored.vert_shader_mod, None);
+            device.destroy_shader_module(shader_colored.frag_shader_mod, None);
+            device.destroy_shader_module(shader.vert_shader_mod, None);
+            device.destroy_shader_module(shader.frag_shader_mod, None);
+        }
+
         Ok(Self {
             renderpasses: vec![renderpass],
             pipelines: vec![pipeline_colored, pipeline],

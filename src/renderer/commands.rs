@@ -1,18 +1,16 @@
-use std::rc::Rc;
-
 use ash::vk;
 
-use super::{vk_core_objs::VkCoreObjs, destruction_queue::{Destroy, DestructionQueue}};
+use super::{core::Core, destruction_queue::Destroy};
 
-pub struct VkCommandObjs {
+pub struct Commands {
     pub command_pool: vk::CommandPool,
     pub main_command_buffer: vk::CommandBuffer,
 }
 
-impl VkCommandObjs {
-    pub fn new(core_objs: &VkCoreObjs) -> anyhow::Result<Self> {
+impl Commands {
+    pub fn new(core: &Core) -> anyhow::Result<Self> {
         let pool_info = vk::CommandPoolCreateInfo {
-            queue_family_index: core_objs
+            queue_family_index: core
                 .queue_family_indices
                 .graphics_family
                 .unwrap(),
@@ -21,7 +19,7 @@ impl VkCommandObjs {
             ..Default::default()
         };
         let command_pool = unsafe {
-            core_objs.device.create_command_pool(&pool_info, None)?
+            core.device.create_command_pool(&pool_info, None)?
         };
 
         let buffer_info = vk::CommandBufferAllocateInfo {
@@ -31,7 +29,7 @@ impl VkCommandObjs {
             ..Default::default()
         };
         let command_buffers = unsafe {
-            core_objs.device
+            core.device
                 .allocate_command_buffers(&buffer_info)?
         };
 
@@ -44,7 +42,7 @@ impl VkCommandObjs {
     }
 }
 
-impl Destroy for VkCommandObjs {
+impl Destroy for Commands {
     fn destroy(&self, device: &ash::Device) {
         log::info!("Cleaning up command objects ...");
         unsafe {

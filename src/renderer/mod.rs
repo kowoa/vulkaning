@@ -1,22 +1,18 @@
 mod assets;
 mod destruction_queue;
 
-mod vk_common;
 mod vk_initializers;
 mod vk_types;
-mod vk_utils;
+mod utils;
 
 mod swapchain;
-mod vk_command_objs;
-mod vk_core_objs;
-mod vk_sync_objs;
+mod commands;
+mod core;
+mod sync_objs;
 
 use std::rc::Rc;
 
 use ash::vk;
-use vk_command_objs::VkCommandObjs;
-use vk_core_objs::VkCoreObjs;
-use vk_sync_objs::VkSyncObjs;
 
 use winit::{
     event::{ElementState, Event, KeyEvent, WindowEvent},
@@ -25,13 +21,13 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use self::{assets::Assets, swapchain::Swapchain};
+use self::{assets::Assets, swapchain::Swapchain, core::Core, commands::Commands, sync_objs::SyncObjs};
 
 pub struct Renderer {
-    core_objs: VkCoreObjs,
-    swapchain_objs: Rc<Swapchain>,
-    command_objs: Rc<VkCommandObjs>,
-    sync_objs: Rc<VkSyncObjs>,
+    core: Rc<Core>,
+    swapchain: Rc<Swapchain>,
+    commands: Rc<Commands>,
+    sync_objs: Rc<SyncObjs>,
 
     assets: Rc<Assets>,
 
@@ -47,28 +43,29 @@ impl Renderer {
         window: &winit::window::Window,
         event_loop: &winit::event_loop::EventLoop<()>,
     ) -> anyhow::Result<Self> {
-        let core_objs = VkCoreObjs::new(window, event_loop)?;
-        let swapchain_objs = Swapchain::new(&core_objs, window)?;
-        let command_objs = VkCommandObjs::new(&core_objs)?;
-        let sync_objs = VkSyncObjs::new(&core_objs)?;
+        let core = Core::new(window, event_loop)?;
+        let swapchain = Swapchain::new(&core, window)?;
+        let commands = Commands::new(&core)?;
+        let sync_objs = SyncObjs::new(&core)?;
+        let assets = Assets::new(&core.device, &swapchain, window)?;
 
-        let swapchain_objs = Rc::new(swapchain_objs);
-        let command_objs = Rc::new(command_objs);
+        let core = Rc::new(core);
+        let swapchain = Rc::new(swapchain);
+        let commands = Rc::new(commands);
         let sync_objs = Rc::new(sync_objs);
-
-        let assets =
-            Rc::new(Assets::new(&core_objs.device, &swapchain_objs, window)?);
+        let assets = Rc::new(assets);
 
         let mut destruction_queue = destruction_queue::DestructionQueue::new();
-        destruction_queue.push(swapchain_objs.clone());
-        destruction_queue.push(command_objs.clone());
-        destruction_queue.push(sync_objs.clone());
         destruction_queue.push(assets.clone());
+        destruction_queue.push(sync_objs.clone());
+        destruction_queue.push(commands.clone());
+        destruction_queue.push(swapchain.clone());
+        destruction_queue.push(core.clone());
 
         Ok(Self {
-            core_objs,
-            swapchain_objs,
-            command_objs,
+            core,
+            swapchain,
+            commands,
             sync_objs,
             assets,
             frame_number: 0,
@@ -132,7 +129,7 @@ impl Renderer {
         window: &winit::window::Window,
     ) -> anyhow::Result<u32> {
         unsafe {
-            let device = &self.core_objs.device;
+            let device = &self.core.device;
             let fences = [self.sync_objs.render_fence];
 
             // Wait until GPU has finished rendering last frame (1 sec timeout)
@@ -141,15 +138,15 @@ impl Renderer {
 
             // Request image from swapchain (1 sec timeout)
             let (swapchain_image_index, _) =
-                self.swapchain_objs.swapchain_loader.acquire_next_image(
-                    self.swapchain_objs.swapchain,
+                self.swapchain.swapchain_loader.acquire_next_image(
+                    self.swapchain.swapchain,
                     1000000000,
                     self.sync_objs.present_semaphore,
                     vk::Fence::null(),
                 )?;
 
             // Reset the command buffer to begin recording
-            let cmd = self.command_objs.main_command_buffer;
+            let cmd = self.commands.main_command_buffer;
             device.reset_command_buffer(
                 cmd,
                 vk::CommandBufferResetFlags::empty(),
@@ -230,7 +227,7 @@ impl Renderer {
                 ..Default::default()
             };
             device.queue_submit(
-                self.core_objs.graphics_queue,
+                self.core.graphics_queue,
                 &[submit_info],
                 self.sync_objs.render_fence,
             )?;
@@ -244,7 +241,7 @@ impl Renderer {
         swapchain_image_index: u32,
     ) -> anyhow::Result<()> {
         let present_info = vk::PresentInfoKHR {
-            p_swapchains: &self.swapchain_objs.swapchain,
+            p_swapchains: &self.swapchain.swapchain,
             swapchain_count: 1,
             p_wait_semaphores: &self.sync_objs.render_semaphore,
             wait_semaphore_count: 1,
@@ -253,9 +250,9 @@ impl Renderer {
         };
 
         unsafe {
-            self.swapchain_objs
+            self.swapchain
                 .swapchain_loader
-                .queue_present(self.core_objs.graphics_queue, &present_info)?;
+                .queue_present(self.core.graphics_queue, &present_info)?;
         }
 
         self.frame_number += 1;
@@ -269,7 +266,7 @@ impl Renderer {
         }
 
         unsafe {
-            self.core_objs
+            self.core
                 .device
                 .wait_for_fences(
                     &[self.sync_objs.render_fence],
@@ -279,8 +276,7 @@ impl Renderer {
                 .unwrap();
         }
 
-        self.destruction_queue.flush(&self.core_objs.device);
-        self.core_objs.destroy();
+        self.destruction_queue.flush(&self.core.device);
         self.destroyed = true;
     }
 }
