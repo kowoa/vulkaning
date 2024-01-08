@@ -3,15 +3,20 @@ use ash::vk;
 use std::fs::File;
 use std::io::Read;
 
+use crate::renderer::destruction_queue::Destroy;
+
 const SHADERBUILD_DIR: &'static str = "./shaderbuild";
 
 pub struct Shader {
-    vert_spv: Vec<u8>,
-    frag_spv: Vec<u8>,
+    pub vert_shader_mod: vk::ShaderModule,
+    pub frag_shader_mod: vk::ShaderModule,
 }
 
 impl Shader {
-    pub fn new(shadername: &str) -> anyhow::Result<Self> {
+    pub fn new(
+        shadername: &str,
+        device: &ash::Device,
+    ) -> anyhow::Result<Self> {
         let vert_filepath =
             format!("{}/{}-vert.spv", SHADERBUILD_DIR, shadername);
         let frag_filepath =
@@ -33,21 +38,10 @@ impl Shader {
             format!("Failed to read file: {}", frag_filepath)
         })?;
 
-        Ok(Self { vert_spv, frag_spv })
-    }
+        let vert_shader_mod = Self::create_shader_module(device, &vert_spv)?;
+        let frag_shader_mod = Self::create_shader_module(device, &frag_spv)?;
 
-    pub fn create_shader_module_vert(
-        &self,
-        device: &ash::Device,
-    ) -> anyhow::Result<vk::ShaderModule> {
-        Self::create_shader_module(device, &self.vert_spv)
-    }
-
-    pub fn create_shader_module_frag(
-        &self,
-        device: &ash::Device,
-    ) -> anyhow::Result<vk::ShaderModule> {
-        Self::create_shader_module(device, &self.frag_spv)
+        Ok(Self { vert_shader_mod, frag_shader_mod })
     }
 
     fn create_shader_module(
@@ -65,5 +59,14 @@ impl Shader {
         };
 
         Ok(shader_module)
+    }
+}
+
+impl Destroy for Shader {
+    fn destroy(&self, device: &ash::Device) {
+        unsafe {
+            device.destroy_shader_module(self.vert_shader_mod, None);
+            device.destroy_shader_module(self.frag_shader_mod, None);
+        }
     }
 }

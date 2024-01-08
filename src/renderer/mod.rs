@@ -1,15 +1,14 @@
-mod shader;
+mod assets;
 mod destruction_queue;
 
 mod vk_common;
 mod vk_initializers;
+mod vk_types;
 mod vk_utils;
 
+mod swapchain;
 mod vk_command_objs;
 mod vk_core_objs;
-mod vk_pipeline_objs;
-mod vk_renderpass_objs;
-mod vk_swapchain_objs;
 mod vk_sync_objs;
 
 use std::rc::Rc;
@@ -17,9 +16,6 @@ use std::rc::Rc;
 use ash::vk;
 use vk_command_objs::VkCommandObjs;
 use vk_core_objs::VkCoreObjs;
-use vk_pipeline_objs::VkPipelineObjs;
-use vk_renderpass_objs::VkRenderpassObjs;
-use vk_swapchain_objs::VkSwapchainObjs;
 use vk_sync_objs::VkSyncObjs;
 
 use winit::{
@@ -29,13 +25,15 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
+use self::{assets::Assets, swapchain::Swapchain};
+
 pub struct Renderer {
     core_objs: VkCoreObjs,
-    swapchain_objs: Rc<VkSwapchainObjs>,
+    swapchain_objs: Rc<Swapchain>,
     command_objs: Rc<VkCommandObjs>,
-    renderpass_objs: Rc<VkRenderpassObjs>,
     sync_objs: Rc<VkSyncObjs>,
-    pipeline_objs: Rc<VkPipelineObjs>,
+
+    assets: Rc<Assets>,
 
     frame_number: u32,
     selected_shader: i32,
@@ -49,36 +47,30 @@ impl Renderer {
         window: &winit::window::Window,
         event_loop: &winit::event_loop::EventLoop<()>,
     ) -> anyhow::Result<Self> {
-
         let core_objs = VkCoreObjs::new(window, event_loop)?;
-        let swapchain_objs = VkSwapchainObjs::new(&core_objs, window)?;
+        let swapchain_objs = Swapchain::new(&core_objs, window)?;
         let command_objs = VkCommandObjs::new(&core_objs)?;
-        let renderpass_objs =
-            VkRenderpassObjs::new(&core_objs, &swapchain_objs, window)?;
         let sync_objs = VkSyncObjs::new(&core_objs)?;
-        let pipeline_objs =
-            VkPipelineObjs::new(&core_objs, &swapchain_objs, &renderpass_objs)?;
 
         let swapchain_objs = Rc::new(swapchain_objs);
         let command_objs = Rc::new(command_objs);
-        let renderpass_objs = Rc::new(renderpass_objs);
         let sync_objs = Rc::new(sync_objs);
-        let pipeline_objs = Rc::new(pipeline_objs);
+
+        let assets =
+            Rc::new(Assets::new(&core_objs.device, &swapchain_objs, window)?);
 
         let mut destruction_queue = destruction_queue::DestructionQueue::new();
         destruction_queue.push(swapchain_objs.clone());
         destruction_queue.push(command_objs.clone());
-        destruction_queue.push(renderpass_objs.clone());
         destruction_queue.push(sync_objs.clone());
-        destruction_queue.push(pipeline_objs.clone());
+        destruction_queue.push(assets.clone());
 
         Ok(Self {
             core_objs,
             swapchain_objs,
             command_objs,
-            renderpass_objs,
             sync_objs,
-            pipeline_objs,
+            assets,
             frame_number: 0,
             selected_shader: 0,
             destroyed: false,
@@ -114,7 +106,8 @@ impl Renderer {
                             elwt.exit();
                         }
                         Key::Named(NamedKey::Space) => {
-                            self.selected_shader = (self.selected_shader + 1) % 2;
+                            self.selected_shader =
+                                (self.selected_shader + 1) % 2;
                         }
                         _ => (),
                     },
@@ -178,8 +171,9 @@ impl Renderer {
             };
 
             // Start the main renderpass
+            let rp = &self.assets.renderpasses[0];
             let rp_begin_info = vk::RenderPassBeginInfo {
-                render_pass: self.renderpass_objs.renderpass,
+                render_pass: rp.renderpass,
                 render_area: vk::Rect2D {
                     offset: vk::Offset2D { x: 0, y: 0 },
                     extent: vk::Extent2D {
@@ -187,7 +181,7 @@ impl Renderer {
                         height: window.inner_size().height,
                     },
                 },
-                framebuffer: self.renderpass_objs.framebuffers
+                framebuffer: rp.framebuffers
                     [swapchain_image_index as usize],
                 clear_value_count: 1,
                 p_clear_values: &clear,
@@ -199,18 +193,24 @@ impl Renderer {
                 vk::SubpassContents::INLINE,
             );
 
-
             // RENDERING COMMANDS START
 
             if self.selected_shader == 0 {
-                device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline_objs.pipeline);
+                device.cmd_bind_pipeline(
+                    cmd,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    self.assets.pipelines[0].pipeline,
+                );
             } else {
-                device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline_objs.pipeline_colored);
+                device.cmd_bind_pipeline(
+                    cmd,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    self.assets.pipelines[1].pipeline,
+                );
             }
             device.cmd_draw(cmd, 3, 1, 0, 0);
-            
+
             // RENDERING COMMANDS END
-            
 
             // Finalize the main renderpass
             device.cmd_end_render_pass(cmd);
@@ -269,11 +269,14 @@ impl Renderer {
         }
 
         unsafe {
-            self.core_objs.device.wait_for_fences(
-                &[self.sync_objs.render_fence],
-                true,
-                1000000000,
-            ).unwrap();
+            self.core_objs
+                .device
+                .wait_for_fences(
+                    &[self.sync_objs.render_fence],
+                    true,
+                    1000000000,
+                )
+                .unwrap();
         }
 
         self.destruction_queue.flush(&self.core_objs.device);

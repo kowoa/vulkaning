@@ -1,41 +1,36 @@
-use std::rc::Rc;
-
 use ash::vk;
 
+use crate::renderer::{destruction_queue::Destroy, swapchain::Swapchain};
 
-use super::{vk_core_objs::VkCoreObjs, vk_swapchain_objs::VkSwapchainObjs, destruction_queue::{Destroy, DestructionQueue}};
-
-pub struct VkRenderpassObjs {
+pub struct Renderpass {
     pub renderpass: vk::RenderPass,
     pub framebuffers: Vec<vk::Framebuffer>,
 }
 
-impl VkRenderpassObjs {
+impl Renderpass {
     pub fn new(
-        core_objs: &VkCoreObjs,
-        swapchain_objs: &VkSwapchainObjs,
+        device: &ash::Device,
+        swapchain: &Swapchain,
         window: &winit::window::Window,
     ) -> anyhow::Result<Self> {
-        let renderpass = create_renderpass(core_objs, swapchain_objs)?;
+        let renderpass = create_renderpass(device, &swapchain.image_format)?;
         let framebuffers = create_framebuffers(
             &renderpass,
-            core_objs,
-            swapchain_objs,
+            device,
+            &swapchain.image_views,
             window,
         )?;
 
-        let objs = Self {
+        Ok(Self {
             renderpass,
             framebuffers,
-        };
-
-        Ok(objs)
+        })
     }
 }
 
-impl Destroy for VkRenderpassObjs {
+impl Destroy for Renderpass {
     fn destroy(&self, device: &ash::Device) {
-        log::info!("Cleaning up renderpass objects ...");
+        log::info!("Cleaning up renderpass ...");
         unsafe {
             for framebuffer in &self.framebuffers {
                 device.destroy_framebuffer(*framebuffer, None);
@@ -46,12 +41,12 @@ impl Destroy for VkRenderpassObjs {
 }
 
 fn create_renderpass(
-    core_objs: &VkCoreObjs,
-    swapchain_objs: &VkSwapchainObjs,
+    device: &ash::Device,
+    swapchain_image_format: &vk::Format,
 ) -> anyhow::Result<vk::RenderPass> {
     // Description of the image we will be writing into with rendering commands
     let color_attachment = vk::AttachmentDescription {
-        format: swapchain_objs.swapchain_image_format,
+        format: *swapchain_image_format,
         samples: vk::SampleCountFlags::TYPE_1,
         // Clear when this attachment is loaded
         load_op: vk::AttachmentLoadOp::CLEAR,
@@ -87,21 +82,16 @@ fn create_renderpass(
         ..Default::default()
     };
 
-    Ok(unsafe {
-        core_objs
-            .device
-            .create_render_pass(&renderpass_info, None)?
-    })
+    Ok(unsafe { device.create_render_pass(&renderpass_info, None)? })
 }
 
 fn create_framebuffers(
     renderpass: &vk::RenderPass,
-    core_objs: &VkCoreObjs,
-    swapchain_objs: &VkSwapchainObjs,
+    device: &ash::Device,
+    swapchain_image_views: &Vec<vk::ImageView>,
     window: &winit::window::Window,
 ) -> anyhow::Result<Vec<vk::Framebuffer>> {
-    Ok(swapchain_objs
-        .swapchain_image_views
+    Ok(swapchain_image_views
         .iter()
         .map(|view| {
             let fb_info = vk::FramebufferCreateInfo {
@@ -114,7 +104,7 @@ fn create_framebuffers(
                 ..Default::default()
             };
 
-            unsafe { core_objs.device.create_framebuffer(&fb_info, None) }
+            unsafe { device.create_framebuffer(&fb_info, None) }
         })
         .collect::<Result<Vec<_>, _>>()?)
 }

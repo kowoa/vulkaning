@@ -4,16 +4,16 @@ use ash::vk;
 
 use super::{vk_common, vk_core_objs::VkCoreObjs, destruction_queue::{Destroy, DestructionQueue}};
 
-pub struct VkSwapchainObjs {
+pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
     pub swapchain_loader: ash::extensions::khr::Swapchain,
-    pub swapchain_images: Vec<vk::Image>,
-    pub swapchain_image_format: vk::Format,
-    pub swapchain_extent: vk::Extent2D,
-    pub swapchain_image_views: Vec<vk::ImageView>,
+    pub images: Vec<vk::Image>,
+    pub image_format: vk::Format,
+    pub extent: vk::Extent2D,
+    pub image_views: Vec<vk::ImageView>,
 }
 
-impl VkSwapchainObjs {
+impl Swapchain {
     pub fn new(
         core_objs: &VkCoreObjs,
         window: &winit::window::Window,
@@ -21,34 +21,34 @@ impl VkSwapchainObjs {
         let (
             swapchain,
             swapchain_loader,
-            swapchain_images,
-            swapchain_image_format,
-            swapchain_extent,
+            images,
+            image_format,
+            extent,
         ) = create_swapchain(core_objs, window)?;
-        let swapchain_image_views = create_image_views(
+        let image_views = create_image_views(
             core_objs,
-            &swapchain_image_format,
-            &swapchain_images,
+            &image_format,
+            &images,
         )?;
 
         let objs = Self {
             swapchain,
             swapchain_loader,
-            swapchain_images,
-            swapchain_image_format,
-            swapchain_extent,
-            swapchain_image_views,
+            images,
+            image_format,
+            extent,
+            image_views,
         };
         
         Ok(objs)
     }
 }
 
-impl Destroy for VkSwapchainObjs {
+impl Destroy for Swapchain {
     fn destroy(&self, device: &ash::Device) {
         log::info!("Cleaning up swapchain objects ...");
         unsafe {
-            for view in &self.swapchain_image_views {
+            for view in &self.image_views {
                 device.destroy_image_view(*view, None);
             }
             self.swapchain_loader
