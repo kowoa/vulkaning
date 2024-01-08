@@ -1,0 +1,6 @@
+[env]
+RUST_LOG = "debug"
+
+[tasks.run]
+command = "cargo"
+args = ["run"]
