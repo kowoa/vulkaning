@@ -1,6 +1,11 @@
 [env]
 RUST_LOG = "debug"
+RUST_BACKTRACE = "1"
 
 [tasks.run]
 command = "cargo"
 args = ["run"]
+
+[tasks.build]
+command = "cargo"
+args = ["build"]
