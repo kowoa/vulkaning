@@ -3,8 +3,6 @@ use ash::vk;
 use std::fs::File;
 use std::io::Read;
 
-use crate::renderer::destruction_queue::Destroy;
-
 const SHADERBUILD_DIR: &'static str = "./shaderbuild";
 
 pub struct Shader {
@@ -60,10 +58,9 @@ impl Shader {
 
         Ok(shader_module)
     }
-}
 
-impl Destroy for Shader {
-    fn destroy(&self, device: &ash::Device) {
+    pub fn destroy(self, device: &ash::Device) {
+        log::info!("Cleaning up shader ...");
         unsafe {
             device.destroy_shader_module(self.vert_shader_mod, None);
             device.destroy_shader_module(self.frag_shader_mod, None);

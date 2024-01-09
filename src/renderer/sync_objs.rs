@@ -1,6 +1,6 @@
 use ash::vk;
 
-use super::{core::Core, destruction_queue::Destroy};
+use super::core::Core;
 
 pub struct SyncObjs {
     pub present_semaphore: vk::Semaphore,
@@ -35,10 +35,8 @@ impl SyncObjs {
 
         Ok(objs)
     }
-}
 
-impl Destroy for SyncObjs {
-    fn destroy(&self, device: &ash::Device) {
+    pub fn destroy(&self, device: &ash::Device) {
         log::info!("Cleaning up sync objects ...");
         unsafe {
             device.destroy_semaphore(self.render_semaphore, None);

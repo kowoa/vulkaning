@@ -1,6 +1,6 @@
 use ash::vk;
 
-use super::{core::Core, destruction_queue::Destroy};
+use super::core::Core;
 
 pub struct Commands {
     pub command_pool: vk::CommandPool,
@@ -40,11 +40,9 @@ impl Commands {
 
         Ok(objs)
     }
-}
 
-impl Destroy for Commands {
-    fn destroy(&self, device: &ash::Device) {
-        log::info!("Cleaning up command objects ...");
+    pub fn destroy(&self, device: &ash::Device) {
+        log::info!("Cleaning up commands ...");
         unsafe {
             device.destroy_command_pool(self.command_pool, None);
         }

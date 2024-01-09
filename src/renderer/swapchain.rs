@@ -1,6 +1,6 @@
 use ash::vk;
 
-use super::{destruction_queue::Destroy, core::Core};
+use super::core::Core;
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
@@ -40,11 +40,9 @@ impl Swapchain {
         
         Ok(objs)
     }
-}
 
-impl Destroy for Swapchain {
-    fn destroy(&self, device: &ash::Device) {
-        log::info!("Cleaning up swapchain objects ...");
+    pub fn destroy(&self, device: &ash::Device) {
+        log::info!("Cleaning up swapchain ...");
         unsafe {
             for view in &self.image_views {
                 device.destroy_image_view(*view, None);

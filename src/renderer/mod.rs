@@ -1,6 +1,3 @@
-mod assets;
-mod destruction_queue;
-
 mod vk_initializers;
 mod vk_types;
 mod utils;
@@ -9,8 +6,7 @@ mod swapchain;
 mod commands;
 mod core;
 mod sync_objs;
-
-use std::rc::Rc;
+mod assets;
 
 use ash::vk;
 
@@ -24,18 +20,15 @@ use winit::{
 use self::{assets::Assets, swapchain::Swapchain, core::Core, commands::Commands, sync_objs::SyncObjs};
 
 pub struct Renderer {
-    core: Rc<Core>,
-    swapchain: Rc<Swapchain>,
-    commands: Rc<Commands>,
-    sync_objs: Rc<SyncObjs>,
-
-    assets: Rc<Assets>,
+    core: Core,
+    swapchain: Swapchain,
+    commands: Commands,
+    sync_objs: SyncObjs,
+    assets: Assets,
 
     frame_number: u32,
     selected_shader: i32,
     destroyed: bool,
-
-    destruction_queue: destruction_queue::DestructionQueue,
 }
 
 impl Renderer {
@@ -47,20 +40,7 @@ impl Renderer {
         let swapchain = Swapchain::new(&core, window)?;
         let commands = Commands::new(&core)?;
         let sync_objs = SyncObjs::new(&core)?;
-        let assets = Assets::new(&core.device, &swapchain, window)?;
-
-        let core = Rc::new(core);
-        let swapchain = Rc::new(swapchain);
-        let commands = Rc::new(commands);
-        let sync_objs = Rc::new(sync_objs);
-        let assets = Rc::new(assets);
-
-        let mut destruction_queue = destruction_queue::DestructionQueue::new();
-        destruction_queue.push(assets.clone());
-        destruction_queue.push(sync_objs.clone());
-        destruction_queue.push(commands.clone());
-        destruction_queue.push(swapchain.clone());
-        destruction_queue.push(core.clone());
+        let assets = Assets::new(&core, &swapchain, window)?;
 
         Ok(Self {
             core,
@@ -71,7 +51,6 @@ impl Renderer {
             frame_number: 0,
             selected_shader: 0,
             destroyed: false,
-            destruction_queue,
         })
     }
 
@@ -276,7 +255,13 @@ impl Renderer {
                 .unwrap();
         }
 
-        self.destruction_queue.flush(&self.core.device);
+        let device = &self.core.device;
+        self.assets.destroy(device);
+        self.sync_objs.destroy(device);
+        self.commands.destroy(device);
+        self.swapchain.destroy(device);
+        self.core.destroy();
+
         self.destroyed = true;
     }
 }

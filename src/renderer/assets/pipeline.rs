@@ -3,14 +3,14 @@ use std::ffi::CString;
 use anyhow::anyhow;
 use ash::vk;
 
-use crate::renderer::{destruction_queue::Destroy, vk_initializers, swapchain::Swapchain};
+use crate::renderer::{swapchain::Swapchain, vk_initializers};
 
 pub struct Pipeline {
     pub pipeline: vk::Pipeline,
 }
 
-impl Destroy for Pipeline {
-    fn destroy(&self, device: &ash::Device) {
+impl Pipeline {
+    pub fn destroy(&self, device: &ash::Device) {
         log::info!("Cleaning up pipeline ...");
         unsafe {
             device.destroy_pipeline(self.pipeline, None);
@@ -19,7 +19,7 @@ impl Destroy for Pipeline {
 }
 
 pub struct PipelineBuilder {
-    shader_main_fn_name: CString,
+    _shader_main_fn_name: CString,
     shader_stages: Vec<vk::PipelineShaderStageCreateInfo>,
     vertex_input: vk::PipelineVertexInputStateCreateInfo,
     input_assembly: vk::PipelineInputAssemblyStateCreateInfo,
@@ -76,7 +76,7 @@ impl PipelineBuilder {
         let pipeline_layout = create_pipeline_layout(device)?;
 
         Ok(Self {
-            shader_main_fn_name,
+            _shader_main_fn_name: shader_main_fn_name,
             shader_stages,
             vertex_input,
             input_assembly,

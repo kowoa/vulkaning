@@ -13,7 +13,7 @@ use winit::event_loop::EventLoop;
 
 use crate::renderer::vk_initializers;
 
-use super::{destruction_queue::Destroy, swapchain::query_swapchain_support, utils};
+use super::{swapchain::query_swapchain_support, utils};
 
 const ENABLE_VALIDATION_LAYERS: bool = cfg!(debug_assertions);
 const REQUIRED_VALIDATION_LAYERS: [&'static str; 1] =
@@ -90,10 +90,8 @@ impl Core {
             allocator
         })
     }
-}
 
-impl Destroy for Core {
-    fn destroy(&self, device: &ash::Device) {
+    pub fn destroy(&self) {
         log::info!("Cleaning up core ...");
         unsafe {
             self.device.destroy_device(None);
@@ -363,7 +361,7 @@ fn physical_device_is_suitable(
         println!(
             "\t\tQueue Count | Graphics, Compute, Transfer, Sparse Binding"
         );
-        let b2s = |b: bool| if b { "YES" } else { "NO" };
+        let b2s = |b: bool| if b { "YES" } else { " NO" };
         for queue_family in dev_queue_families {
             let flags = queue_family.queue_flags;
             let graphics = b2s(flags.contains(vk::QueueFlags::GRAPHICS));

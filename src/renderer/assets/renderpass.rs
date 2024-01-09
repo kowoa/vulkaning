@@ -1,6 +1,6 @@
 use ash::vk;
 
-use crate::renderer::{destruction_queue::Destroy, swapchain::Swapchain};
+use crate::renderer::swapchain::Swapchain;
 
 pub struct Renderpass {
     pub renderpass: vk::RenderPass,
@@ -26,10 +26,8 @@ impl Renderpass {
             framebuffers,
         })
     }
-}
 
-impl Destroy for Renderpass {
-    fn destroy(&self, device: &ash::Device) {
+    pub fn destroy(&self, device: &ash::Device) {
         log::info!("Cleaning up renderpass ...");
         unsafe {
             for framebuffer in &self.framebuffers {
