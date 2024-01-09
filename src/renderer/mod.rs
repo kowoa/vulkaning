@@ -78,7 +78,6 @@ impl Renderer {
                         ..
                     } => match key.as_ref() {
                         Key::Named(NamedKey::Escape) => {
-                            self.destroy();
                             elwt.exit();
                         }
                         Key::Named(NamedKey::Space) => {
