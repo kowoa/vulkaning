@@ -15,7 +15,6 @@ use winit::{
     event_loop::EventLoop,
     keyboard::{Key, NamedKey},
     window::{Window, WindowBuilder},
-    platform::x11::EventLoopWindowTargetExtX11,
 };
 
 use self::{assets::Assets, swapchain::Swapchain, core::Core, commands::Commands, sync_objs::SyncObjs};
@@ -60,15 +59,14 @@ impl Renderer {
         window: winit::window::Window,
         event_loop: EventLoop<()>,
     ) -> anyhow::Result<()> {
+        let mut close_requested = false;
+
         Ok(event_loop.run(move |event, elwt| match event {
             Event::WindowEvent { event, window_id }
                 if window_id == window.id() =>
             {
                 match event {
-                    WindowEvent::CloseRequested => {
-                        self.destroy();
-                        elwt.exit();
-                    }
+                    WindowEvent::CloseRequested => close_requested = true,
                     WindowEvent::KeyboardInput {
                         event:
                             KeyEvent {
@@ -78,13 +76,7 @@ impl Renderer {
                             },
                         ..
                     } => match key.as_ref() {
-                        Key::Named(NamedKey::Escape) => {
-                            // Destroy renderer if running on native Wayland
-                            if !elwt.is_x11() {
-                                self.destroy();
-                            }
-                            elwt.exit();
-                        }
+                        Key::Named(NamedKey::Escape) => close_requested = true,
                         Key::Named(NamedKey::Space) => {
                             self.selected_shader =
                                 (self.selected_shader + 1) % 2;
@@ -101,7 +93,12 @@ impl Renderer {
                 }
             }
             Event::AboutToWait => {
-                window.request_redraw();
+                if close_requested {
+                    self.destroy();
+                    elwt.exit();
+                } else {
+                    window.request_redraw();
+                }
             }
             _ => (),
         })?)
