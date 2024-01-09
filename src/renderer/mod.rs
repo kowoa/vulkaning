@@ -15,6 +15,7 @@ use winit::{
     event_loop::EventLoop,
     keyboard::{Key, NamedKey},
     window::{Window, WindowBuilder},
+    platform::x11::EventLoopWindowTargetExtX11,
 };
 
 use self::{assets::Assets, swapchain::Swapchain, core::Core, commands::Commands, sync_objs::SyncObjs};
@@ -78,6 +79,10 @@ impl Renderer {
                         ..
                     } => match key.as_ref() {
                         Key::Named(NamedKey::Escape) => {
+                            // Destroy renderer if running on native Wayland
+                            if !elwt.is_x11() {
+                                self.destroy();
+                            }
                             elwt.exit();
                         }
                         Key::Named(NamedKey::Space) => {
