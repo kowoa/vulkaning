@@ -1,15 +1,21 @@
 use ash::vk;
 use glam::Vec3A;
 
-use crate::renderer::vk_types::AllocatedBuffer;
+use super::buffer::AllocatedBuffer;
 
 pub struct Vertex {
-    position: Vec3A,
-    normal: Vec3A,
-    color: Vec3A,
+    pub position: Vec3A,
+    pub normal: Vec3A,
+    pub color: Vec3A,
 }
 
 pub struct Mesh {
-    vertices: Vec<Vertex>,
-    vertex_buffer: AllocatedBuffer,
+    pub vertices: Vec<Vertex>,
+    pub vertex_buffer: AllocatedBuffer,
+}
+
+impl Mesh {
+    pub fn destroy(&self, device: &ash::Device, allocator: &mut gpu_allocator::vulkan::Allocator) {
+        self.vertex_buffer.destroy(device, allocator);
+    }
 }

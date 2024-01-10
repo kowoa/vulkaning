@@ -4,13 +4,15 @@ mod pipeline;
 mod renderpass;
 mod shader;
 mod mesh;
+mod buffer;
 
+use gpu_allocator::vulkan::Allocator;
 use pipeline::PipelineBuilder;
 use renderpass::Renderpass;
 use shader::Shader;
 use mesh::Mesh;
 
-use self::pipeline::Pipeline;
+use self::{pipeline::Pipeline, mesh::Vertex, buffer::AllocatedBuffer};
 
 use super::{swapchain::Swapchain, core::Core};
 
@@ -22,7 +24,7 @@ pub struct Assets {
 
 impl Assets {
     pub fn new(
-        core: &Core,
+        core: &mut Core,
         swapchain: &Swapchain,
         window: &winit::window::Window,
     ) -> anyhow::Result<Self> {
@@ -52,10 +54,12 @@ impl Assets {
         shader_colored.destroy(device);
         shader.destroy(device);
 
+        let meshes = create_meshes(device, &mut core.allocator)?;
+
         Ok(Self {
             renderpasses: vec![renderpass],
             pipelines: vec![pipeline_colored, pipeline],
-            meshes: vec![],
+            meshes,
         })
     }
 
@@ -63,8 +67,12 @@ impl Assets {
         self.pipelines.push(pipeline);
     }
 
-    pub fn destroy(&self, device: &ash::Device) {
+    pub fn destroy(&self, device: &ash::Device, allocator: &mut Allocator) {
         log::info!("Cleaning up assets ...");
+
+        for mesh in &self.meshes {
+            mesh.destroy(device, allocator);
+        }
         
         for pipeline in &self.pipelines {
             pipeline.destroy(device);
@@ -74,4 +82,33 @@ impl Assets {
             renderpass.destroy(device);
         }
     }
+}
+
+fn create_meshes(device: &ash::Device, allocator: &mut Allocator) -> anyhow::Result<Vec<Mesh>> {
+    let vertices = vec![
+        Vertex {
+            position: [-0.5, -0.5, 0.0].into(),
+            normal: [0.0, 0.0, 1.0].into(),
+            color: [1.0, 0.0, 0.0].into(),
+        },
+        Vertex {
+            position: [0.5, -0.5, 0.0].into(),
+            normal: [0.0, 0.0, 1.0].into(),
+            color: [0.0, 1.0, 0.0].into(),
+        },
+        Vertex {
+            position: [0.0, 0.5, 0.0].into(),
+            normal: [0.0, 0.0, 1.0].into(),
+            color: [0.0, 0.0, 1.0].into(),
+        },
+    ];
+    
+    let buffer = AllocatedBuffer::new(&vertices, allocator, device)?;
+
+    let mesh = Mesh {
+        vertices,
+        vertex_buffer: buffer,
+    };
+
+    Ok(vec![mesh])
 }

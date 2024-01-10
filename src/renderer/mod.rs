@@ -1,5 +1,4 @@
 mod vk_initializers;
-mod vk_types;
 mod utils;
 
 mod swapchain;
@@ -36,11 +35,11 @@ impl Renderer {
         window: &winit::window::Window,
         event_loop: &winit::event_loop::EventLoop<()>,
     ) -> anyhow::Result<Self> {
-        let core = Core::new(window, event_loop)?;
+        let mut core = Core::new(window, event_loop)?;
         let swapchain = Swapchain::new(&core, window)?;
         let commands = Commands::new(&core)?;
         let sync_objs = SyncObjs::new(&core)?;
-        let assets = Assets::new(&core, &swapchain, window)?;
+        let assets = Assets::new(&mut core, &swapchain, window)?;
 
         Ok(Self {
             core,
@@ -257,19 +256,13 @@ impl Renderer {
         }
 
         let device = &self.core.device;
-        self.assets.destroy(device);
+        self.assets.destroy(device, &mut self.core.allocator);
         self.sync_objs.destroy(device);
         self.commands.destroy(device);
         self.swapchain.destroy(device);
         self.core.destroy();
 
         self.destroyed = true;
-    }
-}
-
-impl Drop for Renderer {
-    fn drop(&mut self) {
-        self.destroy();
     }
 }
 
