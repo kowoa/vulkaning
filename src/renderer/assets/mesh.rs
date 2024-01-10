@@ -15,7 +15,7 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    pub fn destroy(&self, device: &ash::Device, allocator: &mut gpu_allocator::vulkan::Allocator) {
+    pub fn destroy(self, device: &ash::Device, allocator: &mut gpu_allocator::vulkan::Allocator) {
         self.vertex_buffer.destroy(device, allocator);
     }
 }

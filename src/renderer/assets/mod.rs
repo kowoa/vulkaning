@@ -67,10 +67,10 @@ impl Assets {
         self.pipelines.push(pipeline);
     }
 
-    pub fn destroy(&self, device: &ash::Device, allocator: &mut Allocator) {
+    pub fn destroy(self, device: &ash::Device, allocator: &mut Allocator) {
         log::info!("Cleaning up assets ...");
 
-        for mesh in &self.meshes {
+        for mesh in self.meshes {
             mesh.destroy(device, allocator);
         }
         

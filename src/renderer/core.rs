@@ -94,6 +94,7 @@ impl Core {
     pub fn destroy(&self) {
         log::info!("Cleaning up core ...");
         unsafe {
+            self.allocator.report_memory_leaks(log::Level::Info);
             self.device.destroy_device(None);
             // Segfault occurs here if window gets destroyed before surface
             self.surface_loader.destroy_surface(self.surface, None);

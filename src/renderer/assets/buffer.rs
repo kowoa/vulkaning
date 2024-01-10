@@ -45,30 +45,20 @@ impl AllocatedBuffer {
                 allocation.offset(),
             )?;
 
-            /*
-            let mapped_mem = device.map_memory(
-                allocation.memory(),
-                allocation.offset(),
-                allocation.size(),
-                vk::MemoryMapFlags::empty(),
-            )?;
-
             std::ptr::copy_nonoverlapping(
                 vertices.as_ptr() as *const c_void,
-                mapped_mem,
+                allocation.mapped_ptr().unwrap().as_ptr() as *mut c_void,
                 vertices.len() * std::mem::size_of::<Vertex>(),
             );
-
-            device.unmap_memory(allocation.memory());
-            */
         }
 
         Ok(Self { buffer, allocation })
     }
 
-    pub fn destroy(&self, device: &ash::Device, allocator: &mut Allocator) {
+    pub fn destroy(self, device: &ash::Device, allocator: &mut Allocator) {
         unsafe {
-            //allocator.free(self.allocation).unwrap();
+            device.free_memory(self.allocation.memory(), None);
+            allocator.free(self.allocation).unwrap();
             device.destroy_buffer(self.buffer, None);
         }
     }
