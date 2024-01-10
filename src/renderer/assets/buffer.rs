@@ -57,6 +57,7 @@ impl AllocatedBuffer {
 
     pub fn destroy(self, device: &ash::Device, allocator: &mut Allocator) {
         unsafe {
+            device.unmap_memory(self.allocation.memory());
             device.free_memory(self.allocation.memory(), None);
             allocator.free(self.allocation).unwrap();
             device.destroy_buffer(self.buffer, None);
