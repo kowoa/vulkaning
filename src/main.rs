@@ -7,7 +7,7 @@ fn main() -> Result<(), anyhow::Error> {
     let (window, event_loop) = create_window()?;
 
     log::info!("Initializing renderer ...");
-    let renderer = Renderer::new(&window, &event_loop)?;
+    let mut renderer = Renderer::new(&window, &event_loop)?;
 
     log::info!("Starting render loop ...");
     renderer.render_loop(window, event_loop)?;

@@ -1,11 +1,11 @@
-mod vk_initializers;
 mod utils;
+mod vk_initializers;
 
-mod swapchain;
+mod assets;
 mod commands;
 mod core;
+mod swapchain;
 mod sync_objs;
-mod assets;
 
 use ash::vk;
 
@@ -16,7 +16,10 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use self::{assets::Assets, swapchain::Swapchain, core::Core, commands::Commands, sync_objs::SyncObjs};
+use self::{
+    assets::Assets, commands::Commands, core::Core, swapchain::Swapchain,
+    sync_objs::SyncObjs,
+};
 
 pub struct Renderer {
     core: Core,
@@ -54,12 +57,11 @@ impl Renderer {
     }
 
     pub fn render_loop(
-        self,
+        &mut self,
         window: winit::window::Window,
         event_loop: EventLoop<()>,
     ) -> anyhow::Result<()> {
         let mut close_requested = false;
-        let mut renderer = Some(self);
 
         Ok(event_loop.run(move |event, elwt| match event {
             Event::WindowEvent { event, window_id }
@@ -78,27 +80,23 @@ impl Renderer {
                     } => match key.as_ref() {
                         Key::Named(NamedKey::Escape) => close_requested = true,
                         Key::Named(NamedKey::Space) => {
-                            if let Some(renderer) = &mut renderer {
-                                renderer.selected_shader =
-                                    (renderer.selected_shader + 1) % 2;
-                            }
+                            self.selected_shader =
+                                (self.selected_shader + 1) % 2;
                         }
                         _ => (),
                     },
                     WindowEvent::RedrawRequested => {
-                        if let Some(renderer) = &mut renderer {
-                            let swapchain_image_index =
-                                renderer.draw_frame(&window).unwrap();
-                            window.pre_present_notify();
-                            renderer.present_frame(swapchain_image_index).unwrap();
-                        }
+                        let swapchain_image_index =
+                            self.draw_frame(&window).unwrap();
+                        window.pre_present_notify();
+                        self.present_frame(swapchain_image_index).unwrap();
                     }
                     _ => (),
                 }
             }
             Event::AboutToWait => {
                 if close_requested {
-                    renderer.take().unwrap().destroy();
+                    self.destroy();
                     elwt.exit();
                 } else {
                     window.request_redraw();
@@ -162,8 +160,7 @@ impl Renderer {
                         height: window.inner_size().height,
                     },
                 },
-                framebuffer: rp.framebuffers
-                    [swapchain_image_index as usize],
+                framebuffer: rp.framebuffers[swapchain_image_index as usize],
                 clear_value_count: 1,
                 p_clear_values: &clear,
                 ..Default::default()
@@ -244,7 +241,7 @@ impl Renderer {
         Ok(())
     }
 
-    fn destroy(mut self) {
+    fn destroy(&mut self) {
         if self.destroyed {
             return;
         }

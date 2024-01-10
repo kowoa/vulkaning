@@ -54,12 +54,12 @@ impl Assets {
         shader_colored.destroy(device);
         shader.destroy(device);
 
-        let meshes = create_meshes(device, &mut core.allocator)?;
+        //let meshes = create_meshes(device, &mut core.allocator)?;
 
         Ok(Self {
             renderpasses: vec![renderpass],
             pipelines: vec![pipeline_colored, pipeline],
-            meshes,
+            meshes: vec![],
         })
     }
 
@@ -67,12 +67,14 @@ impl Assets {
         self.pipelines.push(pipeline);
     }
 
-    pub fn destroy(self, device: &ash::Device, allocator: &mut Allocator) {
+    pub fn destroy(&self, device: &ash::Device, allocator: &mut Allocator) {
         log::info!("Cleaning up assets ...");
 
+        /*
         for mesh in self.meshes {
             mesh.destroy(device, allocator);
         }
+        */
         
         for pipeline in &self.pipelines {
             pipeline.destroy(device);
