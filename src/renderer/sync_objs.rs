@@ -36,7 +36,7 @@ impl SyncObjs {
         Ok(objs)
     }
 
-    pub fn destroy(&self, device: &ash::Device) {
+    pub fn cleanup(self, device: &ash::Device) {
         log::info!("Cleaning up sync objects ...");
         unsafe {
             device.destroy_semaphore(self.render_semaphore, None);

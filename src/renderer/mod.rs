@@ -30,7 +30,6 @@ pub struct Renderer {
 
     frame_number: u32,
     selected_shader: i32,
-    destroyed: bool,
 }
 
 impl Renderer {
@@ -52,7 +51,6 @@ impl Renderer {
             assets,
             frame_number: 0,
             selected_shader: 0,
-            destroyed: false,
         })
     }
 
@@ -100,7 +98,7 @@ impl Renderer {
             }
             Event::AboutToWait => {
                 if close_requested {
-                    renderer.take().unwrap().destroy();
+                    renderer.take().unwrap().cleanup();
                     elwt.exit();
                 } else {
                     window.request_redraw();
@@ -245,11 +243,7 @@ impl Renderer {
         Ok(())
     }
 
-    fn destroy(mut self) {
-        if self.destroyed {
-            return;
-        }
-
+    fn cleanup(mut self) {
         unsafe {
             self.core
                 .device
@@ -262,13 +256,11 @@ impl Renderer {
         }
 
         let device = &self.core.device;
-        self.assets.destroy(device, &mut self.core.allocator);
-        self.sync_objs.destroy(device);
-        self.commands.destroy(device);
-        self.swapchain.destroy(device);
-        self.core.destroy();
-
-        self.destroyed = true;
+        self.assets.cleanup(device, &mut self.core.allocator);
+        self.sync_objs.cleanup(device);
+        self.commands.cleanup(device);
+        self.swapchain.cleanup(device);
+        self.core.cleanup();
     }
 }
 

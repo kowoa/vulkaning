@@ -41,7 +41,7 @@ impl Swapchain {
         Ok(objs)
     }
 
-    pub fn destroy(&self, device: &ash::Device) {
+    pub fn cleanup(self, device: &ash::Device) {
         log::info!("Cleaning up swapchain ...");
         unsafe {
             for view in &self.image_views {

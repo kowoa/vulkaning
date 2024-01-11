@@ -10,7 +10,7 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    pub fn destroy(&self, device: &ash::Device) {
+    pub fn cleanup(self, device: &ash::Device) {
         log::info!("Cleaning up pipeline ...");
         unsafe {
             device.destroy_pipeline(self.pipeline, None);

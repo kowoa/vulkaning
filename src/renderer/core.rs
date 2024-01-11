@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::anyhow;
 use ash::vk::{self, DeviceMemory};
-use gpu_alloc::{GpuAllocator, Config, UsageFlags, Request};
+use gpu_alloc::{GpuAllocator, Config};
 use gpu_alloc_ash::{device_properties, AshMemoryDevice};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use winit::event_loop::EventLoop;
@@ -92,7 +92,7 @@ impl Core {
         })
     }
 
-    pub fn destroy(&mut self) {
+    pub fn cleanup(mut self) {
         log::info!("Cleaning up core ...");
         unsafe {
             self.allocator.cleanup(AshMemoryDevice::wrap(&self.device));

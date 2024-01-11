@@ -68,19 +68,19 @@ impl Assets {
         self.pipelines.push(pipeline);
     }
 
-    pub fn destroy(self, device: &ash::Device, allocator: &mut GpuAllocator<DeviceMemory>) {
+    pub fn cleanup(mut self, device: &ash::Device, allocator: &mut GpuAllocator<DeviceMemory>) {
         log::info!("Cleaning up assets ...");
 
         for mesh in self.meshes {
-            mesh.destroy(device, allocator);
+            mesh.cleanup(device, allocator);
         }
         
-        for pipeline in &self.pipelines {
-            pipeline.destroy(device);
+        for pipeline in self.pipelines {
+            pipeline.cleanup(device);
         }
 
-        for renderpass in &self.renderpasses {
-            renderpass.destroy(device);
+        for renderpass in self.renderpasses {
+            renderpass.cleanup(device);
         }
     }
 }
@@ -103,40 +103,8 @@ fn create_meshes(core: &mut Core) -> anyhow::Result<Vec<Mesh>> {
             color: [0.0, 0.0, 1.0].into(),
         },
     ];
-
-    let mut mem_block = unsafe {
-        core.allocator.alloc(
-            AshMemoryDevice::wrap(&core.device),
-            Request {
-                size: vertices.len() as u64 * std::mem::size_of::<Vertex>() as u64,
-                align_mask: 0,
-                usage: UsageFlags::UPLOAD,
-                memory_types: !0,
-            }
-        )?
-    };
-
-    unsafe {
-        mem_block.write_bytes(
-            AshMemoryDevice::wrap(&core.device),
-            0,
-            bytemuck::cast_slice(&vertices),
-        )?;
-    }
     
-    /*
-    unsafe {
-        core.allocator.dealloc(
-            AshMemoryDevice::wrap(&core.device),
-            mem_block,
-        );
-    }
-    */
-    
-    let mesh = Mesh {
-        vertices,
-        mem_block,
-    };
+    let mesh = Mesh::new(vertices, core)?;
 
     Ok(vec![mesh])
 }

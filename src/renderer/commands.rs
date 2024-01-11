@@ -41,7 +41,7 @@ impl Commands {
         Ok(objs)
     }
 
-    pub fn destroy(&self, device: &ash::Device) {
+    pub fn cleanup(self, device: &ash::Device) {
         log::info!("Cleaning up commands ...");
         unsafe {
             device.destroy_command_pool(self.command_pool, None);

@@ -27,7 +27,7 @@ impl Renderpass {
         })
     }
 
-    pub fn destroy(&self, device: &ash::Device) {
+    pub fn cleanup(self, device: &ash::Device) {
         log::info!("Cleaning up renderpass ...");
         unsafe {
             for framebuffer in &self.framebuffers {
