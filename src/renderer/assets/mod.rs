@@ -5,6 +5,8 @@ mod renderpass;
 mod shader;
 mod mesh;
 
+use gpu_alloc::{UsageFlags, MemoryBlock, Request};
+use gpu_alloc_ash::AshMemoryDevice;
 use pipeline::PipelineBuilder;
 use renderpass::Renderpass;
 use shader::Shader;
@@ -52,12 +54,12 @@ impl Assets {
         shader_colored.destroy(device);
         shader.destroy(device);
 
-        //let meshes = create_meshes(device, &mut core.allocator)?;
+        let meshes = create_meshes(core)?;
 
         Ok(Self {
             renderpasses: vec![renderpass],
             pipelines: vec![pipeline_colored, pipeline],
-            meshes: vec![],
+            meshes,
         })
     }
 
@@ -78,7 +80,7 @@ impl Assets {
     }
 }
 
-fn create_meshes(device: &ash::Device) -> Vec<Mesh> {
+fn create_meshes(core: &mut Core) -> anyhow::Result<Vec<Mesh>> {
     let vertices = vec![
         Vertex {
             position: [-0.5, -0.5, 0.0].into(),
@@ -96,10 +98,40 @@ fn create_meshes(device: &ash::Device) -> Vec<Mesh> {
             color: [0.0, 0.0, 1.0].into(),
         },
     ];
+
+    let mut mem_block = unsafe {
+        core.allocator.alloc(
+            AshMemoryDevice::wrap(&core.device),
+            Request {
+                size: vertices.len() as u64 * std::mem::size_of::<Vertex>() as u64,
+                align_mask: 0,
+                usage: UsageFlags::UPLOAD,
+                memory_types: !0,
+            }
+        )?
+    };
+
+    unsafe {
+        mem_block.write_bytes(
+            AshMemoryDevice::wrap(&core.device),
+            0,
+            bytemuck::cast_slice(&vertices),
+        )?;
+    }
+    
+    /*
+    unsafe {
+        core.allocator.dealloc(
+            AshMemoryDevice::wrap(&core.device),
+            mem_block,
+        );
+    }
+    */
     
     let mesh = Mesh {
         vertices,
+        mem_block,
     };
 
-    [mesh].into()
+    Ok(vec![mesh])
 }
