@@ -24,6 +24,7 @@ pub struct PipelineBuilder {
     _shader_main_fn_name: CString,
     shader_stages: Vec<vk::PipelineShaderStageCreateInfo>,
     vertex_input: vk::PipelineVertexInputStateCreateInfo,
+    _vertex_input_desc: Option<VertexInputDescription>,
     input_assembly: vk::PipelineInputAssemblyStateCreateInfo,
     viewport: vk::Viewport,
     scissor: vk::Rect2D,
@@ -81,6 +82,7 @@ impl PipelineBuilder {
             _shader_main_fn_name: shader_main_fn_name,
             shader_stages,
             vertex_input,
+            _vertex_input_desc: None,
             input_assembly,
             viewport,
             scissor,
@@ -97,8 +99,6 @@ impl PipelineBuilder {
     }
 
     pub fn vertex_input(mut self, desc: VertexInputDescription) -> Self {
-        println!("attributes: {:#?}", desc.attributes);
-        println!("bindings: {:#?}", desc.bindings);
         self.vertex_input = vk::PipelineVertexInputStateCreateInfo {
             p_vertex_attribute_descriptions: desc.attributes.as_ptr(),
             vertex_attribute_description_count: desc.attributes.len() as u32,
@@ -107,6 +107,8 @@ impl PipelineBuilder {
             flags: desc.flags,
             ..Default::default()
         };
+        // Need to store description else the pointers will be invalid
+        self._vertex_input_desc = Some(desc);
         self
     }
 
@@ -148,9 +150,6 @@ impl PipelineBuilder {
             ..Default::default()
         }];
 
-        println!("{:#?}", self.vertex_input);
-
-        println!("before graphics_pipelines");
         let graphics_pipelines = unsafe {
             match device.create_graphics_pipelines(
                 vk::PipelineCache::null(),
@@ -161,7 +160,6 @@ impl PipelineBuilder {
                 Err(_) => Err(anyhow!("Failed to create graphics piplines")),
             }
         }?;
-        println!("after graphics_pipelines");
 
         unsafe {
             device.destroy_pipeline_layout(self.pipeline_layout, None);

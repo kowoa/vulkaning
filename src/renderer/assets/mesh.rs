@@ -6,6 +6,7 @@ use gpu_alloc_ash::AshMemoryDevice;
 
 use crate::renderer::core::Core;
 
+#[derive(Debug)]
 pub struct VertexInputDescription {
     pub bindings: Vec<vk::VertexInputBindingDescription>,
     pub attributes: Vec<vk::VertexInputAttributeDescription>,
