@@ -97,6 +97,8 @@ impl PipelineBuilder {
     }
 
     pub fn vertex_input(mut self, desc: VertexInputDescription) -> Self {
+        println!("attributes: {:#?}", desc.attributes);
+        println!("bindings: {:#?}", desc.bindings);
         self.vertex_input = vk::PipelineVertexInputStateCreateInfo {
             p_vertex_attribute_descriptions: desc.attributes.as_ptr(),
             vertex_attribute_description_count: desc.attributes.len() as u32,
@@ -146,6 +148,9 @@ impl PipelineBuilder {
             ..Default::default()
         }];
 
+        println!("{:#?}", self.vertex_input);
+
+        println!("before graphics_pipelines");
         let graphics_pipelines = unsafe {
             match device.create_graphics_pipelines(
                 vk::PipelineCache::null(),
@@ -156,6 +161,7 @@ impl PipelineBuilder {
                 Err(_) => Err(anyhow!("Failed to create graphics piplines")),
             }
         }?;
+        println!("after graphics_pipelines");
 
         unsafe {
             device.destroy_pipeline_layout(self.pipeline_layout, None);

@@ -34,11 +34,10 @@ impl Assets {
         
         let renderpass = Renderpass::new(device, swapchain, window)?;
 
-        //let shader_colored = Shader::new("colored-triangle", device)?;
+        let shader_colored = Shader::new("colored-triangle", device)?;
         //let shader_red = Shader::new("red-triangle", device)?;
-        let shader_tri_mesh = Shader::new("tri-mesh", device)?;
+        //let shader_tri_mesh = Shader::new("tri-mesh", device)?;
 
-        /*
         let pipeline_colored = PipelineBuilder::new(
             &shader_colored.vert_shader_mod,
             &shader_colored.frag_shader_mod,
@@ -47,6 +46,7 @@ impl Assets {
         )?
         .build(device, renderpass.renderpass)?;
 
+        /*
         let pipeline_red = PipelineBuilder::new(
             &shader_red.vert_shader_mod,
             &shader_red.frag_shader_mod,
@@ -56,6 +56,7 @@ impl Assets {
         .build(device, renderpass.renderpass)?;
         */
 
+        /*
         let pipeline_tri_mesh = PipelineBuilder::new(
             &shader_tri_mesh.vert_shader_mod,
             &shader_tri_mesh.frag_shader_mod,
@@ -64,16 +65,17 @@ impl Assets {
         )?
         .vertex_input(Vertex::get_vertex_desc())
         .build(device, renderpass.renderpass)?;
+        */
 
 
-        //shader_colored.destroy(device);
+        shader_colored.destroy(device);
         //shader_red.destroy(device);
-        shader_tri_mesh.destroy(device);
+        //shader_tri_mesh.destroy(device);
 
         Ok(Self {
             renderpasses: vec![renderpass],
             //pipelines: vec![pipeline_tri_mesh, pipeline_colored, pipeline_red],
-            pipelines: vec![pipeline_tri_mesh],
+            pipelines: vec![pipeline_colored],
             meshes: vec![mesh],
         })
     }

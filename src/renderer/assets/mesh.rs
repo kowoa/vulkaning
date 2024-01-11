@@ -29,18 +29,21 @@ impl Vertex {
         }];
 
         let attributes = vec![
+            // Position
             vk::VertexInputAttributeDescription {
                 binding: 0,
                 location: 0,
                 format: vk::Format::R32G32B32_SFLOAT,
                 offset: offset_of!(Vertex, position) as u32,
             },
+            // Normal
             vk::VertexInputAttributeDescription {
                 binding: 0,
                 location: 1,
                 format: vk::Format::R32G32B32_SFLOAT,
                 offset: offset_of!(Vertex, normal) as u32,
             },
+            // Color
             vk::VertexInputAttributeDescription {
                 binding: 0,
                 location: 2,
@@ -67,31 +70,10 @@ pub struct Mesh {
 impl Mesh {
     pub fn new(vertices: Vec<Vertex>, core: &mut Core) -> anyhow::Result<Self> {
         let device = AshMemoryDevice::wrap(&core.device);
-        let size = vertices.len() * std::mem::size_of::<Vertex>();
-
-        let mut mem_block = unsafe {
-            core.allocator.alloc(
-                device,
-                Request {
-                    size: size as u64,
-                    align_mask: 0,
-                    usage: UsageFlags::UPLOAD,
-                    memory_types: !0,
-                },
-            )?
-        };
-
-        unsafe {
-            mem_block.write_bytes(
-                device,
-                0,
-                bytemuck::cast_slice(&vertices),
-            )?;
-        }
 
         let vertex_buffer = {
             let buffer_info = vk::BufferCreateInfo {
-                size: size as u64,
+                size: (vertices.len() * std::mem::size_of::<Vertex>()) as u64,
                 usage: vk::BufferUsageFlags::VERTEX_BUFFER,
                 sharing_mode: vk::SharingMode::EXCLUSIVE,
                 ..Default::default()
@@ -100,16 +82,40 @@ impl Mesh {
             let buffer =
                 unsafe { core.device.create_buffer(&buffer_info, None)? };
 
-            unsafe {
-                core.device.bind_buffer_memory(
-                    buffer,
-                    *mem_block.memory(),
-                    mem_block.offset(),
-                )?;
-            }
-
             buffer
         };
+
+        let reqs = unsafe {
+            core.device.get_buffer_memory_requirements(vertex_buffer)
+        };
+
+        let mut mem_block = unsafe {
+            core.allocator.alloc(
+                device,
+                Request {
+                    size: reqs.size,
+                    align_mask: reqs.alignment - 1,
+                    usage: UsageFlags::UPLOAD,
+                    memory_types: reqs.memory_type_bits,
+                },
+            )?
+        };
+
+        unsafe {
+            core.device.bind_buffer_memory(
+                vertex_buffer,
+                *mem_block.memory(),
+                mem_block.offset(),
+            )?;
+        }
+
+        unsafe {
+            mem_block.write_bytes(
+                device,
+                0,
+                bytemuck::cast_slice(&vertices),
+            )?;
+        }
 
         Ok(Self {
             vertices,
@@ -125,12 +131,8 @@ impl Mesh {
     ) {
         log::info!("Cleaning up mesh ...");
         unsafe {
-            device.bind_buffer_memory(
-                self.vertex_buffer,
-                *self.mem_block.memory(),
-                self.mem_block.offset(),
-            ).unwrap();
             allocator.dealloc(AshMemoryDevice::wrap(device), self.mem_block);
+            device.destroy_buffer(self.vertex_buffer, None);
         }
     }
 }
