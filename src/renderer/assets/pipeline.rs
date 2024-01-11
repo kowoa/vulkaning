@@ -5,6 +5,8 @@ use ash::vk;
 
 use crate::renderer::{swapchain::Swapchain, vk_initializers};
 
+use super::mesh::VertexInputDescription;
+
 pub struct Pipeline {
     pub pipeline: vk::Pipeline,
 }
@@ -87,6 +89,23 @@ impl PipelineBuilder {
             multisampling,
             pipeline_layout,
         })
+    }
+
+    pub fn shader_stages(mut self, stages: Vec<vk::PipelineShaderStageCreateInfo>) -> Self {
+        self.shader_stages = stages;
+        self
+    }
+
+    pub fn vertex_input(mut self, desc: VertexInputDescription) -> Self {
+        self.vertex_input = vk::PipelineVertexInputStateCreateInfo {
+            p_vertex_attribute_descriptions: desc.attributes.as_ptr(),
+            vertex_attribute_description_count: desc.attributes.len() as u32,
+            p_vertex_binding_descriptions: desc.bindings.as_ptr(),
+            vertex_binding_description_count: desc.bindings.len() as u32,
+            flags: desc.flags,
+            ..Default::default()
+        };
+        self
     }
 
     pub fn build(self,

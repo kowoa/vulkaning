@@ -1,12 +1,18 @@
-use ash::vk::DeviceMemory;
-use bytemuck::{Pod, Zeroable};
+use ash::vk::{self, DeviceMemory};
+use bytemuck::{offset_of, Pod, Zeroable};
 use glam::Vec3;
 use gpu_alloc::{GpuAllocator, MemoryBlock, Request, UsageFlags};
 use gpu_alloc_ash::AshMemoryDevice;
 
 use crate::renderer::core::Core;
 
-#[derive(Copy, Clone, Pod, Zeroable)]
+pub struct VertexInputDescription {
+    pub bindings: Vec<vk::VertexInputBindingDescription>,
+    pub attributes: Vec<vk::VertexInputAttributeDescription>,
+    pub flags: vk::PipelineVertexInputStateCreateFlags,
+}
+
+#[derive(Copy, Clone, Pod, Zeroable, Default)]
 #[repr(C)]
 pub struct Vertex {
     pub position: Vec3,
@@ -14,19 +20,60 @@ pub struct Vertex {
     pub color: Vec3,
 }
 
+impl Vertex {
+    pub fn get_vertex_desc() -> VertexInputDescription {
+        let bindings = vec![vk::VertexInputBindingDescription {
+            binding: 0,
+            stride: std::mem::size_of::<Vertex>() as u32,
+            input_rate: vk::VertexInputRate::VERTEX,
+        }];
+
+        let attributes = vec![
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 0,
+                format: vk::Format::R32G32B32_SFLOAT,
+                offset: offset_of!(Vertex, position) as u32,
+            },
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 1,
+                format: vk::Format::R32G32B32_SFLOAT,
+                offset: offset_of!(Vertex, normal) as u32,
+            },
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 2,
+                format: vk::Format::R32G32B32_SFLOAT,
+                offset: offset_of!(Vertex, color) as u32,
+            },
+        ];
+
+        VertexInputDescription {
+            bindings,
+            attributes,
+            flags: vk::PipelineVertexInputStateCreateFlags::empty(),
+            //flags: Default::default(),
+        }
+    }
+}
+
 pub struct Mesh {
-    vertices: Vec<Vertex>,
-    mem_block: MemoryBlock<DeviceMemory>,
+    pub vertices: Vec<Vertex>,
+    pub vertex_buffer: vk::Buffer,
+    pub mem_block: MemoryBlock<DeviceMemory>,
 }
 
 impl Mesh {
     pub fn new(vertices: Vec<Vertex>, core: &mut Core) -> anyhow::Result<Self> {
+        let device = AshMemoryDevice::wrap(&core.device);
+        let size = vertices.len() * std::mem::size_of::<Vertex>();
+
         let mut mem_block = unsafe {
             core.allocator.alloc(
-                AshMemoryDevice::wrap(&core.device),
+                device,
                 Request {
-                    size: vertices.len() as u64
-                        * std::mem::size_of::<Vertex>() as u64,
+                    size: size as u64,
                     align_mask: 0,
                     usage: UsageFlags::UPLOAD,
                     memory_types: !0,
@@ -36,25 +83,53 @@ impl Mesh {
 
         unsafe {
             mem_block.write_bytes(
-                AshMemoryDevice::wrap(&core.device),
+                device,
                 0,
                 bytemuck::cast_slice(&vertices),
             )?;
         }
 
+        let vertex_buffer = {
+            let buffer_info = vk::BufferCreateInfo {
+                size: size as u64,
+                usage: vk::BufferUsageFlags::VERTEX_BUFFER,
+                sharing_mode: vk::SharingMode::EXCLUSIVE,
+                ..Default::default()
+            };
+
+            let buffer =
+                unsafe { core.device.create_buffer(&buffer_info, None)? };
+
+            unsafe {
+                core.device.bind_buffer_memory(
+                    buffer,
+                    *mem_block.memory(),
+                    mem_block.offset(),
+                )?;
+            }
+
+            buffer
+        };
+
         Ok(Self {
             vertices,
+            vertex_buffer,
             mem_block,
         })
     }
 
     pub fn cleanup(
-        mut self,
+        self,
         device: &ash::Device,
         allocator: &mut GpuAllocator<DeviceMemory>,
     ) {
         log::info!("Cleaning up mesh ...");
         unsafe {
+            device.bind_buffer_memory(
+                self.vertex_buffer,
+                *self.mem_block.memory(),
+                self.mem_block.offset(),
+            ).unwrap();
             allocator.dealloc(AshMemoryDevice::wrap(device), self.mem_block);
         }
     }

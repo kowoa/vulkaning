@@ -175,20 +175,47 @@ impl Renderer {
 
             // RENDERING COMMANDS START
 
+            /*
             if self.selected_shader == 0 {
                 device.cmd_bind_pipeline(
                     cmd,
                     vk::PipelineBindPoint::GRAPHICS,
                     self.assets.pipelines[0].pipeline,
                 );
+                device.cmd_bind_vertex_buffers(
+                    cmd,
+                    0,
+                    &[self.assets.meshes[0].vertex_buffer],
+                    &[0],
+                );
+                device.cmd_draw(cmd, self.assets.meshes[0].vertices.len() as u32, 1, 0, 0);
             } else {
                 device.cmd_bind_pipeline(
                     cmd,
                     vk::PipelineBindPoint::GRAPHICS,
                     self.assets.pipelines[1].pipeline,
                 );
+                device.cmd_draw(cmd, 3, 1, 0, 0);
             }
-            device.cmd_draw(cmd, 3, 1, 0, 0);
+            */
+            device.cmd_bind_pipeline(
+                cmd,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.assets.pipelines[0].pipeline,
+            );
+            device.cmd_bind_vertex_buffers(
+                cmd,
+                0,
+                &[self.assets.meshes[0].vertex_buffer],
+                &[0],
+            );
+            device.cmd_draw(
+                cmd,
+                self.assets.meshes[0].vertices.len() as u32,
+                1,
+                0,
+                0,
+            );
 
             // RENDERING COMMANDS END
 
