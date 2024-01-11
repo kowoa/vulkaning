@@ -258,7 +258,7 @@ impl Renderer {
         }
 
         let device = &self.core.device;
-        self.assets.destroy(device, &mut self.core.allocator);
+        self.assets.destroy(device);
         self.sync_objs.destroy(device);
         self.commands.destroy(device);
         self.swapchain.destroy(device);

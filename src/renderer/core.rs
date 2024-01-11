@@ -6,8 +6,9 @@ use std::{
 };
 
 use anyhow::anyhow;
-use ash::vk;
-use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
+use ash::vk::{self, DeviceMemory};
+use gpu_alloc::{GpuAllocator, Config, UsageFlags, Request};
+use gpu_alloc_ash::{device_properties, AshMemoryDevice};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use winit::event_loop::EventLoop;
 
@@ -39,7 +40,7 @@ pub struct Core {
     pub present_queue: vk::Queue,
     pub queue_family_indices: QueueFamilyIndices,
 
-    pub allocator: Allocator,
+    pub allocator: GpuAllocator<DeviceMemory>,
 }
 
 impl Core {
@@ -64,15 +65,15 @@ impl Core {
             )?;
 
         let allocator = {
-            let info = AllocatorCreateDesc {
-                instance: instance.clone(),
-                device: device.clone(),
-                physical_device,
-                debug_settings: Default::default(),
-                buffer_device_address: true,
-                allocation_sizes: Default::default(),
+            let version = entry
+                .try_enumerate_instance_version()?
+                .unwrap_or(vk::make_api_version(0, 1, 0, 0));
+            let props = unsafe {
+                device_properties(&instance, version, physical_device)?
             };
-            Allocator::new(&info)?
+            let config = Config::i_am_potato();
+            let allocator = GpuAllocator::new(config, props);
+            allocator
         };
 
         Ok(Self {
@@ -91,10 +92,10 @@ impl Core {
         })
     }
 
-    pub fn destroy(&self) {
+    pub fn destroy(&mut self) {
         log::info!("Cleaning up core ...");
         unsafe {
-            self.allocator.report_memory_leaks(log::Level::Info);
+            self.allocator.cleanup(AshMemoryDevice::wrap(&self.device));
             self.device.destroy_device(None);
             // Segfault occurs here if window gets destroyed before surface
             self.surface_loader.destroy_surface(self.surface, None);

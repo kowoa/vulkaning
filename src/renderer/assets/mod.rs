@@ -4,15 +4,13 @@ mod pipeline;
 mod renderpass;
 mod shader;
 mod mesh;
-mod buffer;
 
-use gpu_allocator::vulkan::Allocator;
 use pipeline::PipelineBuilder;
 use renderpass::Renderpass;
 use shader::Shader;
 use mesh::Mesh;
 
-use self::{pipeline::Pipeline, mesh::Vertex, buffer::AllocatedBuffer};
+use self::{pipeline::Pipeline, mesh::Vertex};
 
 use super::{swapchain::Swapchain, core::Core};
 
@@ -67,14 +65,8 @@ impl Assets {
         self.pipelines.push(pipeline);
     }
 
-    pub fn destroy(&self, device: &ash::Device, allocator: &mut Allocator) {
+    pub fn destroy(&self, device: &ash::Device) {
         log::info!("Cleaning up assets ...");
-
-        /*
-        for mesh in self.meshes {
-            mesh.destroy(device, allocator);
-        }
-        */
         
         for pipeline in &self.pipelines {
             pipeline.destroy(device);
@@ -86,7 +78,7 @@ impl Assets {
     }
 }
 
-fn create_meshes(device: &ash::Device, allocator: &mut Allocator) -> anyhow::Result<Vec<Mesh>> {
+fn create_meshes(device: &ash::Device) -> Vec<Mesh> {
     let vertices = vec![
         Vertex {
             position: [-0.5, -0.5, 0.0].into(),
@@ -105,12 +97,9 @@ fn create_meshes(device: &ash::Device, allocator: &mut Allocator) -> anyhow::Res
         },
     ];
     
-    let buffer = AllocatedBuffer::new(&vertices, allocator, device)?;
-
     let mesh = Mesh {
         vertices,
-        vertex_buffer: buffer,
     };
 
-    Ok(vec![mesh])
+    [mesh].into()
 }
