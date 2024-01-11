@@ -5,7 +5,8 @@ mod renderpass;
 mod shader;
 mod mesh;
 
-use gpu_alloc::{UsageFlags, MemoryBlock, Request};
+use ash::vk::DeviceMemory;
+use gpu_alloc::{UsageFlags, MemoryBlock, Request, GpuAllocator};
 use gpu_alloc_ash::AshMemoryDevice;
 use pipeline::PipelineBuilder;
 use renderpass::Renderpass;
@@ -67,8 +68,12 @@ impl Assets {
         self.pipelines.push(pipeline);
     }
 
-    pub fn destroy(&self, device: &ash::Device) {
+    pub fn destroy(self, device: &ash::Device, allocator: &mut GpuAllocator<DeviceMemory>) {
         log::info!("Cleaning up assets ...");
+
+        for mesh in self.meshes {
+            mesh.destroy(device, allocator);
+        }
         
         for pipeline in &self.pipelines {
             pipeline.destroy(device);

@@ -57,11 +57,12 @@ impl Renderer {
     }
 
     pub fn render_loop(
-        &mut self,
+        self,
         window: winit::window::Window,
         event_loop: EventLoop<()>,
     ) -> anyhow::Result<()> {
         let mut close_requested = false;
+        let mut renderer = Some(self);
 
         Ok(event_loop.run(move |event, elwt| match event {
             Event::WindowEvent { event, window_id }
@@ -80,23 +81,26 @@ impl Renderer {
                     } => match key.as_ref() {
                         Key::Named(NamedKey::Escape) => close_requested = true,
                         Key::Named(NamedKey::Space) => {
-                            self.selected_shader =
-                                (self.selected_shader + 1) % 2;
+                            if let Some(r) = &mut renderer {
+                                r.selected_shader = (r.selected_shader + 1) % 2;
+                            }
                         }
                         _ => (),
                     },
                     WindowEvent::RedrawRequested => {
-                        let swapchain_image_index =
-                            self.draw_frame(&window).unwrap();
-                        window.pre_present_notify();
-                        self.present_frame(swapchain_image_index).unwrap();
+                        if let Some(r) = &mut renderer {
+                            let swapchain_image_index =
+                                r.draw_frame(&window).unwrap();
+                            window.pre_present_notify();
+                            r.present_frame(swapchain_image_index).unwrap();
+                        }
                     }
                     _ => (),
                 }
             }
             Event::AboutToWait => {
                 if close_requested {
-                    self.destroy();
+                    renderer.take().unwrap().destroy();
                     elwt.exit();
                 } else {
                     window.request_redraw();
@@ -241,7 +245,7 @@ impl Renderer {
         Ok(())
     }
 
-    fn destroy(&mut self) {
+    fn destroy(mut self) {
         if self.destroyed {
             return;
         }
@@ -258,7 +262,7 @@ impl Renderer {
         }
 
         let device = &self.core.device;
-        self.assets.destroy(device);
+        self.assets.destroy(device, &mut self.core.allocator);
         self.sync_objs.destroy(device);
         self.commands.destroy(device);
         self.swapchain.destroy(device);
