@@ -9,12 +9,14 @@ use super::mesh::VertexInputDescription;
 
 pub struct Pipeline {
     pub pipeline: vk::Pipeline,
+    pub pipeline_layout: vk::PipelineLayout,
 }
 
 impl Pipeline {
     pub fn cleanup(self, device: &ash::Device) {
         log::info!("Cleaning up pipeline ...");
         unsafe {
+            device.destroy_pipeline_layout(self.pipeline_layout, None);
             device.destroy_pipeline(self.pipeline, None);
         }
     }
@@ -76,7 +78,7 @@ impl PipelineBuilder {
             vkinit::rasterization_state_create_info(vk::PolygonMode::FILL);
         let color_blend_attachment = vkinit::color_blend_attachment_state();
         let multisampling = vkinit::multisampling_state_create_info();
-        let pipeline_layout = create_pipeline_layout(device)?;
+        let pipeline_layout = default_pipeline_layout(device)?;
 
         Ok(Self {
             _shader_main_fn_name: shader_main_fn_name,
@@ -91,6 +93,14 @@ impl PipelineBuilder {
             multisampling,
             pipeline_layout,
         })
+    }
+
+    pub fn pipeline_layout(mut self, layout: vk::PipelineLayout, device: &ash::Device) -> Self {
+        unsafe {
+            device.destroy_pipeline_layout(self.pipeline_layout, None);
+        }
+        self.pipeline_layout = layout;
+        self
     }
 
     pub fn shader_stages(mut self, stages: Vec<vk::PipelineShaderStageCreateInfo>) -> Self {
@@ -161,15 +171,14 @@ impl PipelineBuilder {
             }
         }?;
 
-        unsafe {
-            device.destroy_pipeline_layout(self.pipeline_layout, None);
-        }
-
-        Ok(Pipeline { pipeline: graphics_pipelines[0] })
+        Ok(Pipeline {
+            pipeline: graphics_pipelines[0],
+            pipeline_layout: self.pipeline_layout,
+        })
     }
 }
 
-fn create_pipeline_layout(
+fn default_pipeline_layout(
     device: &ash::Device,
 ) -> anyhow::Result<vk::PipelineLayout> {
     // Build the pipeline layout that controls the inputs/outputs of the shader

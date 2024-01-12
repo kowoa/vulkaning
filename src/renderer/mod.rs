@@ -9,6 +9,7 @@ mod sync_objs;
 
 use ash::vk;
 
+use glam::{Mat4, Vec3, Vec4};
 use winit::{
     event::{ElementState, Event, KeyEvent, WindowEvent},
     event_loop::EventLoop,
@@ -17,7 +18,7 @@ use winit::{
 };
 
 use self::{
-    assets::Assets, commands::Commands, core::Core, swapchain::Swapchain,
+    assets::{Assets, mesh::MeshPushConstants}, commands::Commands, core::Core, swapchain::Swapchain,
     sync_objs::SyncObjs,
 };
 
@@ -198,6 +199,36 @@ impl Renderer {
                 device.cmd_draw(cmd, 3, 1, 0, 0);
             }
             */
+
+            {
+                let cam_pos = Vec3::new(0.0, 0.0, -2.0);
+                let view = Mat4::from_translation(cam_pos);
+                let proj = Mat4::perspective_rh(
+                    70.0,
+                    window.inner_size().width as f32
+                        / window.inner_size().height as f32,
+                    0.1,
+                    200.0,
+                );
+                let model = Mat4::from_rotation_y(
+                    (self.frame_number as f32 * 0.4).to_radians(),
+                );
+
+                let mesh_matrix = proj * view * model;
+                let constants = MeshPushConstants {
+                    data: Vec4::default(),
+                    render_matrix: mesh_matrix,
+                };
+
+                device.cmd_push_constants(
+                    cmd,
+                    self.assets.pipelines[0].pipeline_layout,
+                    vk::ShaderStageFlags::VERTEX,
+                    0,
+                    bytemuck::bytes_of(&constants)
+                );
+            }
+            
             device.cmd_bind_pipeline(
                 cmd,
                 vk::PipelineBindPoint::GRAPHICS,
