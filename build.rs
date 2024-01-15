@@ -6,22 +6,23 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::anyhow;
+use color_eyre::eyre::{eyre, OptionExt, Result};
 use shaderc::CompilationArtifact;
 
 const SHADER_EXT: &'static str = "glsl";
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<()> {
     println!("cargo:rerun-if-changed=shaders/*");
 
-    //let out_dir = std::env::var("OUT_DIR")?;
-    let shaderbuild_dirpath = "./shaderbuild";
-    fs::create_dir_all(shaderbuild_dirpath)?;
+    color_eyre::install()?;
+
+    let shaderbuild_dirpath = std::env::var("SHADER_BUILD_DIR").unwrap_or_else(|_| "./shaderbuild".to_string());
+    fs::create_dir_all(shaderbuild_dirpath.clone())?;
 
     let compiler = shaderc::Compiler::new()
-        .ok_or(anyhow!("Failed to create shaderc compiler"))?;
+        .ok_or_eyre("Failed to create shaderc compiler")?;
     let options = shaderc::CompileOptions::new()
-        .ok_or(anyhow!("Failed to create shaderc options"))?;
+        .ok_or_eyre("Failed to create shaderc options")?;
 
     let shaders_dirpath = Path::new("./shaders");
     for entry in fs::read_dir(shaders_dirpath)? {
@@ -52,7 +53,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn parse_shaderfile(filepath: &PathBuf) -> anyhow::Result<(String, String)> {
+fn parse_shaderfile(filepath: &PathBuf) -> Result<(String, String)> {
     let file = File::open(filepath)?;
     let reader = BufReader::new(file);
     let lines = reader.lines();
@@ -74,14 +75,14 @@ fn parse_shaderfile(filepath: &PathBuf) -> anyhow::Result<(String, String)> {
                 continue;
             }
 
-            return Err(anyhow!("Invalid #shader type specifier: {}", line));
+            return Err(eyre!("Invalid #shader type specifier: {}", line));
         }
 
         if let Some(stype) = &shadertype {
             let str_buf = match stype {
                 shaderc::ShaderKind::Vertex => Ok(&mut vert_glsl),
                 shaderc::ShaderKind::Fragment => Ok(&mut frag_glsl),
-                _ => Err(anyhow!("Invalid shadertype")),
+                _ => Err(eyre!("Invalid shadertype")),
             }?;
             str_buf.push_str(&line);
             str_buf.push('\n');
@@ -89,9 +90,9 @@ fn parse_shaderfile(filepath: &PathBuf) -> anyhow::Result<(String, String)> {
     }
 
     if vert_glsl.is_empty() {
-        Err(anyhow!("No vertex #shader type specifier found"))
+        Err(eyre!("No vertex #shader type specifier found"))
     } else if frag_glsl.is_empty() {
-        Err(anyhow!("No fragment #shader type specifier found"))
+        Err(eyre!("No fragment #shader type specifier found"))
     } else {
         Ok((vert_glsl, frag_glsl))
     }
@@ -103,7 +104,7 @@ fn compile_shaders(
     compiler: &shaderc::Compiler,
     options: &shaderc::CompileOptions,
     filename: &str,
-) -> anyhow::Result<(CompilationArtifact, CompilationArtifact)> {
+) -> Result<(CompilationArtifact, CompilationArtifact)> {
     let vert_spirv = compiler.compile_into_spirv(
         &vert_glsl,
         shaderc::ShaderKind::Vertex,
