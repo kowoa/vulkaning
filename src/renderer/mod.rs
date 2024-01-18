@@ -237,12 +237,12 @@ impl Renderer {
             device.cmd_bind_vertex_buffers(
                 cmd,
                 0,
-                &[self.assets.meshes[0].vertex_buffer],
+                &[self.assets.models[0].meshes[0].vertex_buffer],
                 &[0],
             );
             device.cmd_draw(
                 cmd,
-                self.assets.meshes[0].vertices.len() as u32,
+                self.assets.models[0].meshes[0].vertices.len() as u32,
                 1,
                 0,
                 0,

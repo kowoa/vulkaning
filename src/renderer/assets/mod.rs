@@ -4,23 +4,23 @@ pub mod pipeline;
 pub mod renderpass;
 pub mod shader;
 pub mod mesh;
+pub mod model;
 
 use ash::vk::{DeviceMemory, self};
-use gpu_alloc::{UsageFlags, MemoryBlock, Request, GpuAllocator};
-use gpu_alloc_ash::AshMemoryDevice;
+use gpu_alloc::GpuAllocator;
 use pipeline::PipelineBuilder;
 use renderpass::Renderpass;
 use shader::Shader;
 use mesh::Mesh;
 
-use self::{pipeline::Pipeline, mesh::{Vertex, MeshPushConstants}};
+use self::{pipeline::Pipeline, mesh::{Vertex, MeshPushConstants}, model::Model};
 
 use super::{swapchain::Swapchain, core::Core, vk_initializers};
 
 pub struct Assets {
     pub renderpasses: Vec<Renderpass>,
     pub pipelines: Vec<Pipeline>,
-    pub meshes: Vec<Mesh>,
+    pub models: Vec<Model>
 }
 
 impl Assets {
@@ -31,20 +31,20 @@ impl Assets {
     ) -> anyhow::Result<Self> {
         let renderpass = Renderpass::new(&core.device, swapchain, window)?;
         let pipeline = create_pipeline(core, swapchain, &renderpass)?;
-        let mesh = create_mesh(core)?;
+        let model = Model::load_from_obj("assets/monkey_smooth.obj", core)?;
 
         Ok(Self {
             renderpasses: vec![renderpass],
             pipelines: vec![pipeline],
-            meshes: vec![mesh],
+            models: vec![model],
         })
     }
 
     pub fn cleanup(self, device: &ash::Device, allocator: &mut GpuAllocator<DeviceMemory>) {
         log::info!("Cleaning up assets ...");
 
-        for mesh in self.meshes {
-            mesh.cleanup(device, allocator);
+        for model in self.models {
+            model.cleanup(device, allocator);
         }
         
         for pipeline in self.pipelines {

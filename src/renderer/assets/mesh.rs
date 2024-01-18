@@ -1,6 +1,6 @@
 use ash::vk::{self, DeviceMemory};
 use bytemuck::{offset_of, Pod, Zeroable};
-use glam::{Vec3, Mat4, Vec4};
+use glam::{Mat4, Vec3, Vec4};
 use gpu_alloc::{GpuAllocator, MemoryBlock, Request, UsageFlags};
 use gpu_alloc_ash::AshMemoryDevice;
 
@@ -10,7 +10,7 @@ use crate::renderer::core::Core;
 #[repr(C)]
 pub struct MeshPushConstants {
     pub data: Vec4,
-    pub render_matrix: Mat4
+    pub render_matrix: Mat4,
 }
 
 #[derive(Debug)]
