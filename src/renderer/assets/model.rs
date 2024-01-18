@@ -12,15 +12,12 @@ pub struct Model {
 
 impl Model {
     pub fn load_from_obj(filename: &str, core: &mut Core) -> anyhow::Result<Self> {
-        println!("HAHAHA");
         let (models, materials) =
             tobj::load_obj(filename, &tobj::LoadOptions {
                 single_index: true,
                 ..Default::default()
             })?;
-        println!("BEFORE");
         let materials = materials?;
-        println!("AFTER");
 
         log::info!("Number of models: {}", models.len());
         log::info!("Number of materials: {}", materials.len());
@@ -29,6 +26,12 @@ impl Model {
         for model in models {
             let mesh = &model.mesh;
             let mut vertices = Vec::new();
+
+            const COLORS: [Vec3; 3] = [
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+                Vec3::new(0.0, 0.0, 1.0),
+            ];
 
             for i in &mesh.indices {
                 let pos = &mesh.positions;
@@ -51,7 +54,7 @@ impl Model {
                 vertices.push(Vertex {
                     position: p,
                     normal: n,
-                    color: Vec3::new(1.0, 0.0, 0.0),
+                    color: COLORS[i%3],
                 });
             }
 
