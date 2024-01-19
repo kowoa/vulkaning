@@ -4,6 +4,8 @@ use ash::vk::DeviceMemory;
 use gpu_alloc::{GpuAllocator, MemoryBlock, Request, UsageFlags};
 use gpu_alloc_ash::AshMemoryDevice;
 
+use super::vk_initializers;
+
 pub struct AllocatedBuffer {
     pub buffer: vk::Buffer,
     pub allocation: MemoryBlock<DeviceMemory>,

@@ -1,6 +1,8 @@
 use ash::vk;
+use gpu_alloc::Request;
+use gpu_alloc_ash::AshMemoryDevice;
 
-use super::core::Core;
+use super::{core::Core, vk_initializers, memory::AllocatedImage};
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
@@ -9,6 +11,10 @@ pub struct Swapchain {
     pub image_format: vk::Format,
     pub extent: vk::Extent2D,
     pub image_views: Vec<vk::ImageView>,
+
+    //pub depth_image_view: vk::ImageView,
+    //pub depth_image: AllocatedImage,
+    //pub depth_format: vk::Format,
 }
 
 impl Swapchain {

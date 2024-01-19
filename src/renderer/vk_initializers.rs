@@ -18,7 +18,8 @@ pub fn pipeline_shader_stage_create_info(
 }
 
 // Info for vertex buffers and vertex formats (equivalent to VAO)
-pub fn vertex_input_state_create_info() -> vk::PipelineVertexInputStateCreateInfo {
+pub fn vertex_input_state_create_info() -> vk::PipelineVertexInputStateCreateInfo
+{
     vk::PipelineVertexInputStateCreateInfo {
         vertex_binding_description_count: 0,
         vertex_attribute_description_count: 0,
@@ -28,7 +29,7 @@ pub fn vertex_input_state_create_info() -> vk::PipelineVertexInputStateCreateInf
 
 // Info for what topology to draw like triangles, lines, points
 pub fn input_assembly_create_info(
-    topology: vk::PrimitiveTopology
+    topology: vk::PrimitiveTopology,
 ) -> vk::PipelineInputAssemblyStateCreateInfo {
     vk::PipelineInputAssemblyStateCreateInfo {
         topology,
@@ -39,7 +40,7 @@ pub fn input_assembly_create_info(
 
 // Config for fixed-function rasterization
 pub fn rasterization_state_create_info(
-    polygon_mode: vk::PolygonMode
+    polygon_mode: vk::PolygonMode,
 ) -> vk::PipelineRasterizationStateCreateInfo {
     vk::PipelineRasterizationStateCreateInfo {
         depth_clamp_enable: vk::FALSE,
@@ -60,7 +61,8 @@ pub fn rasterization_state_create_info(
 }
 
 // Config for MSAA for the pipeline
-pub fn multisampling_state_create_info() -> vk::PipelineMultisampleStateCreateInfo {
+pub fn multisampling_state_create_info(
+) -> vk::PipelineMultisampleStateCreateInfo {
     vk::PipelineMultisampleStateCreateInfo {
         sample_shading_enable: vk::FALSE,
         // Default to no multisampling (1 sample per pixel)
@@ -92,14 +94,51 @@ pub fn pipeline_layout_create_info() -> vk::PipelineLayoutCreateInfo {
     }
 }
 
+pub fn image_create_info(
+    format: vk::Format,
+    usage_flags: vk::ImageUsageFlags,
+    extent: vk::Extent3D,
+) -> vk::ImageCreateInfo {
+    let info = vk::ImageCreateInfo {
+        image_type: vk::ImageType::TYPE_2D,
+        format,
+        extent,
+        mip_levels: 1,
+        array_layers: 1,
+        samples: vk::SampleCountFlags::TYPE_1,
+        tiling: vk::ImageTiling::OPTIMAL,
+        usage: usage_flags,
+        ..Default::default()
+    };
+    info
+}
+
+pub fn imageview_create_info(
+    format: vk::Format,
+    image: vk::Image,
+    aspect_flags: vk::ImageAspectFlags,
+) -> vk::ImageViewCreateInfo {
+    vk::ImageViewCreateInfo {
+        view_type: vk::ImageViewType::TYPE_2D,
+        image,
+        format,
+        subresource_range: vk::ImageSubresourceRange {
+            base_mip_level: 0,
+            level_count: 1,
+            base_array_layer: 0,
+            layer_count: 1,
+            aspect_mask: aspect_flags,
+        },
+        ..Default::default()
+    }
+}
+
 pub fn debug_utils_messenger_create_info(
 ) -> vk::DebugUtilsMessengerCreateInfoEXT {
-    let message_severity =
-        vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
+    let message_severity = vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
         | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
         | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR;
-    let message_type =
-        vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+    let message_type = vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
         | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
         | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE;
     vk::DebugUtilsMessengerCreateInfoEXT::builder()
