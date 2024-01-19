@@ -1,26 +1,29 @@
 // Asset initialization
 // VkPipeline, VkBuffer, VkImage, VkRenderPass
+pub mod mesh;
+pub mod model;
 pub mod pipeline;
 pub mod renderpass;
 pub mod shader;
-pub mod mesh;
-pub mod model;
+pub mod vertex;
 
-use ash::vk::{DeviceMemory, self};
+use ash::vk::{self, DeviceMemory};
 use gpu_alloc::GpuAllocator;
+use mesh::Mesh;
 use pipeline::PipelineBuilder;
 use renderpass::Renderpass;
 use shader::Shader;
-use mesh::Mesh;
 
-use self::{pipeline::Pipeline, mesh::{Vertex, MeshPushConstants}, model::Model};
+use self::{
+    mesh::MeshPushConstants, model::Model, pipeline::Pipeline, vertex::Vertex,
+};
 
-use super::{swapchain::Swapchain, core::Core, vk_initializers};
+use super::{core::Core, swapchain::Swapchain, vk_initializers};
 
 pub struct Assets {
     pub renderpasses: Vec<Renderpass>,
     pub pipelines: Vec<Pipeline>,
-    pub models: Vec<Model>
+    pub models: Vec<Model>,
 }
 
 impl Assets {
@@ -40,13 +43,17 @@ impl Assets {
         })
     }
 
-    pub fn cleanup(self, device: &ash::Device, allocator: &mut GpuAllocator<DeviceMemory>) {
+    pub fn cleanup(
+        self,
+        device: &ash::Device,
+        allocator: &mut GpuAllocator<DeviceMemory>,
+    ) {
         log::info!("Cleaning up assets ...");
 
         for model in self.models {
             model.cleanup(device, allocator);
         }
-        
+
         for pipeline in self.pipelines {
             pipeline.cleanup(device);
         }
@@ -73,9 +80,8 @@ fn create_pipeline(
     layout_info.p_push_constant_ranges = &push_constant;
     layout_info.push_constant_range_count = 1;
 
-    let layout = unsafe {
-        core.device.create_pipeline_layout(&layout_info, None)?
-    };
+    let layout =
+        unsafe { core.device.create_pipeline_layout(&layout_info, None)? };
 
     let shader = Shader::new("tri-mesh", &core.device)?;
 
@@ -112,8 +118,8 @@ fn create_mesh(core: &mut Core) -> anyhow::Result<Mesh> {
             color: [0.0, 0.0, 1.0].into(),
         },
     ];
-    
-    let mesh = Mesh::new(vertices, core)?;
+
+    let mesh = Mesh::new(vertices, &core.device, &mut core.allocator)?;
 
     Ok(mesh)
 }

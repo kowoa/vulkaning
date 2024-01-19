@@ -6,6 +6,7 @@ mod commands;
 mod core;
 mod swapchain;
 mod sync_objs;
+mod memory;
 
 use ash::vk;
 
@@ -237,7 +238,7 @@ impl Renderer {
             device.cmd_bind_vertex_buffers(
                 cmd,
                 0,
-                &[self.assets.models[0].meshes[0].vertex_buffer],
+                &[self.assets.models[0].meshes[0].vertex_buffer.buffer],
                 &[0],
             );
             device.cmd_draw(

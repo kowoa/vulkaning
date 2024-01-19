@@ -5,7 +5,7 @@ use ash::vk;
 
 use crate::renderer::{swapchain::Swapchain, vk_initializers};
 
-use super::mesh::VertexInputDescription;
+use super::vertex::VertexInputDescription;
 
 pub struct Pipeline {
     pub pipeline: vk::Pipeline,

@@ -2,7 +2,7 @@ use ash::vk::DeviceMemory;
 use glam::{Vec3, Vec2};
 use gpu_alloc::GpuAllocator;
 
-use crate::renderer::{core::Core, assets::mesh::Vertex};
+use crate::renderer::{core::Core, assets::vertex::Vertex};
 
 use super::mesh::Mesh;
 
@@ -58,7 +58,7 @@ impl Model {
                 });
             }
 
-            let mesh = Mesh::new(vertices, core)?;
+            let mesh = Mesh::new(vertices, &core.device, &mut core.allocator)?;
             meshes.push(mesh);
         }
 
