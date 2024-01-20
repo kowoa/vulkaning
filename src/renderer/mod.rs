@@ -8,6 +8,8 @@ mod swapchain;
 mod sync_objs;
 mod memory;
 
+use std::mem::ManuallyDrop;
+
 use ash::vk;
 
 use glam::{Mat4, Vec3, Vec4};
@@ -319,6 +321,12 @@ impl Renderer {
         self.sync_objs.cleanup(device);
         self.commands.cleanup(device);
         self.swapchain.cleanup(device);
+
+        // We need to do this because the allocator doesn't destroy all
+        // memory blocks (VkDeviceMemory) until it is dropped.
+        unsafe {
+            ManuallyDrop::drop(&mut self.core.allocator);
+        }
         self.core.cleanup();
     }
 }

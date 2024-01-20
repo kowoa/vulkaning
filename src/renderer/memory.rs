@@ -1,21 +1,17 @@
 use crate::renderer::assets::vertex::Vertex;
 use ash::vk;
-use ash::vk::DeviceMemory;
-use gpu_alloc::{GpuAllocator, MemoryBlock, Request, UsageFlags};
-use gpu_alloc_ash::AshMemoryDevice;
-
-use super::vk_initializers;
+use gpu_allocator::{vulkan::{Allocation, Allocator, AllocationCreateDesc, AllocationScheme}, MemoryLocation};
 
 pub struct AllocatedBuffer {
     pub buffer: vk::Buffer,
-    pub allocation: MemoryBlock<DeviceMemory>,
+    pub allocation: Allocation,
 }
 
 impl AllocatedBuffer {
     pub fn new(
         vertices: &Vec<Vertex>,
         device: &ash::Device,
-        allocator: &mut GpuAllocator<DeviceMemory>,
+        allocator: &mut Allocator,
     ) -> anyhow::Result<Self> {
         let vertex_buffer = {
             let buffer_info = vk::BufferCreateInfo {
@@ -33,47 +29,42 @@ impl AllocatedBuffer {
         let reqs =
             unsafe { device.get_buffer_memory_requirements(vertex_buffer) };
 
-        let mut mem_block = unsafe {
-            allocator.alloc(
-                AshMemoryDevice::wrap(device),
-                Request {
-                    size: reqs.size,
-                    align_mask: reqs.alignment - 1,
-                    usage: UsageFlags::UPLOAD,
-                    memory_types: reqs.memory_type_bits,
-                },
-            )?
-        };
+        let mut allocation = allocator
+            .allocate(&AllocationCreateDesc {
+                name: "Vertex Buffer Allocation",
+                requirements: reqs,
+                location: MemoryLocation::CpuToGpu,
+                linear: true,
+                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+            })?;
 
         unsafe {
             device.bind_buffer_memory(
                 vertex_buffer,
-                *mem_block.memory(),
-                mem_block.offset(),
+                allocation.memory(),
+                allocation.offset(),
             )?;
         }
 
-        unsafe {
-            mem_block.write_bytes(
-                AshMemoryDevice::wrap(device),
-                0,
-                bytemuck::cast_slice(&vertices),
-            )?;
-        }
+        let _copy_record = presser::copy_from_slice_to_offset(
+            &vertices[..],
+            &mut allocation,
+            0,
+        )?;
 
         Ok(Self {
             buffer: vertex_buffer,
-            allocation: mem_block,
+            allocation,
         })
     }
 
     pub fn cleanup(
         self,
         device: &ash::Device,
-        allocator: &mut GpuAllocator<DeviceMemory>,
+        allocator: &mut Allocator,
     ) {
         unsafe {
-            allocator.dealloc(AshMemoryDevice::wrap(device), self.allocation);
+            allocator.free(self.allocation).unwrap();
             device.destroy_buffer(self.buffer, None);
         }
     }
@@ -81,5 +72,5 @@ impl AllocatedBuffer {
 
 pub struct AllocatedImage {
     pub image: vk::Image,
-    pub allocation: MemoryBlock<DeviceMemory>,
+    pub allocation: Allocation,
 }

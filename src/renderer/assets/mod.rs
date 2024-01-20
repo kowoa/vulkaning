@@ -7,8 +7,8 @@ pub mod renderpass;
 pub mod shader;
 pub mod vertex;
 
-use ash::vk::{self, DeviceMemory};
-use gpu_alloc::GpuAllocator;
+use ash::vk;
+use gpu_allocator::vulkan::Allocator;
 use mesh::Mesh;
 use pipeline::PipelineBuilder;
 use renderpass::Renderpass;
@@ -46,7 +46,7 @@ impl Assets {
     pub fn cleanup(
         self,
         device: &ash::Device,
-        allocator: &mut GpuAllocator<DeviceMemory>,
+        allocator: &mut Allocator
     ) {
         log::info!("Cleaning up assets ...");
 

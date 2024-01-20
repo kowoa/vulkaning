@@ -1,6 +1,5 @@
-use ash::vk::DeviceMemory;
 use glam::{Vec3, Vec2};
-use gpu_alloc::GpuAllocator;
+use gpu_allocator::vulkan::Allocator;
 
 use crate::renderer::{core::Core, assets::vertex::Vertex};
 
@@ -65,7 +64,7 @@ impl Model {
         Ok(Self { meshes })
     }
 
-    pub fn cleanup(self, device: &ash::Device, allocator: &mut GpuAllocator<DeviceMemory>) {
+    pub fn cleanup(self, device: &ash::Device, allocator: &mut Allocator) {
         for mesh in self.meshes {
             mesh.cleanup(device, allocator);
         }

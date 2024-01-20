@@ -3,8 +3,6 @@ name = "vulkaning"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 anyhow = "1.0.79"
 ash = { version = "0.37.3", features = ["linked"] }
@@ -13,11 +11,11 @@ bytemuck = { version = "1.14.0", features = ["derive"] }
 color-eyre = "0.6.2"
 env_logger = "0.10.1"
 glam = { version = "0.25", features = ["bytemuck"] }
-gpu-alloc = "0.6.0"
-gpu-alloc-ash = "0.6.0"
+gpu-allocator = { version = "0.25.0", features = ["egui", "egui_extras"] }
 image = "0.24"
 log = "0.4"
 num = "0.4"
+presser = "0.3.1"
 raw-window-handle = "0.5"
 tobj = { version = "4.0.0", features = ["async", "reordering"] }
 

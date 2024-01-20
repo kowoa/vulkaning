@@ -1,8 +1,7 @@
 use crate::renderer::assets::vertex::Vertex;
-use ash::vk::DeviceMemory;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec4};
-use gpu_alloc::GpuAllocator;
+use gpu_allocator::vulkan::Allocator;
 
 use crate::renderer::memory::AllocatedBuffer;
 
@@ -22,7 +21,7 @@ impl Mesh {
     pub fn new(
         vertices: Vec<Vertex>,
         device: &ash::Device,
-        allocator: &mut GpuAllocator<DeviceMemory>,
+        allocator: &mut Allocator,
     ) -> anyhow::Result<Self> {
         let vertex_buffer =
             AllocatedBuffer::new(&vertices, device, allocator)?;
@@ -35,7 +34,7 @@ impl Mesh {
     pub fn cleanup(
         self,
         device: &ash::Device,
-        allocator: &mut GpuAllocator<DeviceMemory>,
+        allocator: &mut Allocator,
     ) {
         log::info!("Cleaning up mesh ...");
         self.vertex_buffer.cleanup(device, allocator);

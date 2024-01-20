@@ -2,13 +2,12 @@
 
 use std::{
     collections::HashSet,
-    ffi::{c_void, CStr, CString},
+    ffi::{c_void, CStr, CString}, mem::ManuallyDrop,
 };
 
 use anyhow::anyhow;
-use ash::vk::{self, DeviceMemory};
-use gpu_alloc::{GpuAllocator, Config};
-use gpu_alloc_ash::{device_properties, AshMemoryDevice};
+use ash::vk;
+use gpu_allocator::{vulkan::{Allocator, AllocatorCreateDesc}, AllocatorDebugSettings};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use winit::event_loop::EventLoop;
 
@@ -40,7 +39,7 @@ pub struct Core {
     pub present_queue: vk::Queue,
     pub queue_family_indices: QueueFamilyIndices,
 
-    pub allocator: GpuAllocator<DeviceMemory>,
+    pub allocator: ManuallyDrop<Allocator>,
 }
 
 impl Core {
@@ -64,17 +63,21 @@ impl Core {
                 &surface_loader,
             )?;
 
-        let allocator = {
-            let version = entry
-                .try_enumerate_instance_version()?
-                .unwrap_or(vk::make_api_version(0, 1, 0, 0));
-            let props = unsafe {
-                device_properties(&instance, version, physical_device)?
-            };
-            let config = Config::i_am_potato();
-            let allocator = GpuAllocator::new(config, props);
-            allocator
-        };
+        let allocator = Allocator::new(&AllocatorCreateDesc {
+            instance: instance.clone(),
+            device: device.clone(),
+            physical_device,
+            debug_settings: AllocatorDebugSettings {
+                log_memory_information: true,
+                log_leaks_on_shutdown: true,
+                store_stack_traces: false,
+                log_allocations: true,
+                log_frees: true,
+                log_stack_traces: false,
+            },
+            buffer_device_address: true,
+            allocation_sizes: Default::default(),
+        })?;
 
         Ok(Self {
             _entry: entry,
@@ -88,14 +91,13 @@ impl Core {
             graphics_queue,
             present_queue,
             queue_family_indices,
-            allocator,
+            allocator: ManuallyDrop::new(allocator),
         })
     }
 
-    pub fn cleanup(mut self) {
+    pub fn cleanup(self) {
         log::info!("Cleaning up core ...");
         unsafe {
-            self.allocator.cleanup(AshMemoryDevice::wrap(&self.device));
             self.device.destroy_device(None);
             // Segfault occurs here if window gets destroyed before surface
             self.surface_loader.destroy_surface(self.surface, None);
