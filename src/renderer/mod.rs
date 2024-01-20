@@ -42,7 +42,7 @@ impl Renderer {
         event_loop: &winit::event_loop::EventLoop<()>,
     ) -> anyhow::Result<Self> {
         let mut core = Core::new(window, event_loop)?;
-        let swapchain = Swapchain::new(&core, window)?;
+        let swapchain = Swapchain::new(&mut core, window)?;
         let commands = Commands::new(&core)?;
         let sync_objs = SyncObjs::new(&core)?;
         let assets = Assets::new(&mut core, &swapchain, window)?;
@@ -320,7 +320,7 @@ impl Renderer {
         self.assets.cleanup(device, &mut self.core.allocator);
         self.sync_objs.cleanup(device);
         self.commands.cleanup(device);
-        self.swapchain.cleanup(device);
+        self.swapchain.cleanup(device, &mut self.core.allocator);
 
         // We need to do this because the allocator doesn't destroy all
         // memory blocks (VkDeviceMemory) until it is dropped.

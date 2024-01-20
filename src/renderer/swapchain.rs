@@ -1,6 +1,7 @@
 use ash::vk;
+use gpu_allocator::vulkan::Allocator;
 
-use super::core::Core;
+use super::{core::Core, memory::AllocatedImage};
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
@@ -10,14 +11,12 @@ pub struct Swapchain {
     pub extent: vk::Extent2D,
     pub image_views: Vec<vk::ImageView>,
 
-    //pub depth_image_view: vk::ImageView,
-    //pub depth_image: AllocatedImage,
-    //pub depth_format: vk::Format,
+    pub depth_image: AllocatedImage,
 }
 
 impl Swapchain {
     pub fn new(
-        core: &Core,
+        core: &mut Core,
         window: &winit::window::Window,
     ) -> anyhow::Result<Self> {
         let (
@@ -33,6 +32,15 @@ impl Swapchain {
             &images,
         )?;
 
+        let depth_image = {
+            let extent = vk::Extent3D {
+                width: extent.width,
+                height: extent.height,
+                depth: 1,
+            };
+            AllocatedImage::new_depth_image(extent, &core.device, &mut core.allocator)?
+        };
+
         let objs = Self {
             swapchain,
             swapchain_loader,
@@ -40,14 +48,16 @@ impl Swapchain {
             image_format,
             extent,
             image_views,
+            depth_image,
         };
         
         Ok(objs)
     }
 
-    pub fn cleanup(self, device: &ash::Device) {
+    pub fn cleanup(self, device: &ash::Device, allocator: &mut Allocator) {
         log::info!("Cleaning up swapchain ...");
         unsafe {
+            self.depth_image.cleanup(device, allocator);
             for view in &self.image_views {
                 device.destroy_image_view(*view, None);
             }

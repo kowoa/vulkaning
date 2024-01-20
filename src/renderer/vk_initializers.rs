@@ -113,7 +113,7 @@ pub fn image_create_info(
     info
 }
 
-pub fn imageview_create_info(
+pub fn image_view_create_info(
     format: vk::Format,
     image: vk::Image,
     aspect_flags: vk::ImageAspectFlags,
@@ -131,6 +131,13 @@ pub fn imageview_create_info(
         },
         ..Default::default()
     }
+}
+
+pub fn depth_stencil_create_info(
+    depth_test: bool,
+    depth_write: bool,
+    compare_op: vk::CompareOp,
+) -> vk::PipelineDepthStencilStateCreateInfo {
 }
 
 pub fn debug_utils_messenger_create_info(
