@@ -34,6 +34,7 @@ pub struct PipelineBuilder {
     color_blend_attachment: vk::PipelineColorBlendAttachmentState,
     multisampling: vk::PipelineMultisampleStateCreateInfo,
     pipeline_layout: vk::PipelineLayout,
+    depth_stencil: vk::PipelineDepthStencilStateCreateInfo,
 }
 
 impl PipelineBuilder {
@@ -79,6 +80,11 @@ impl PipelineBuilder {
         let color_blend_attachment = vkinit::color_blend_attachment_state();
         let multisampling = vkinit::multisampling_state_create_info();
         let pipeline_layout = default_pipeline_layout(device)?;
+        let depth_stencil = vkinit::depth_stencil_create_info(
+            true,
+            true,
+            vk::CompareOp::LESS_OR_EQUAL,
+        );
 
         Ok(Self {
             _shader_main_fn_name: shader_main_fn_name,
@@ -92,10 +98,15 @@ impl PipelineBuilder {
             color_blend_attachment,
             multisampling,
             pipeline_layout,
+            depth_stencil,
         })
     }
 
-    pub fn pipeline_layout(mut self, layout: vk::PipelineLayout, device: &ash::Device) -> Self {
+    pub fn pipeline_layout(
+        mut self,
+        layout: vk::PipelineLayout,
+        device: &ash::Device,
+    ) -> Self {
         unsafe {
             device.destroy_pipeline_layout(self.pipeline_layout, None);
         }
@@ -103,7 +114,10 @@ impl PipelineBuilder {
         self
     }
 
-    pub fn shader_stages(mut self, stages: Vec<vk::PipelineShaderStageCreateInfo>) -> Self {
+    pub fn shader_stages(
+        mut self,
+        stages: Vec<vk::PipelineShaderStageCreateInfo>,
+    ) -> Self {
         self.shader_stages = stages;
         self
     }
@@ -122,7 +136,8 @@ impl PipelineBuilder {
         self
     }
 
-    pub fn build(self,
+    pub fn build(
+        self,
         device: &ash::Device,
         renderpass: vk::RenderPass,
     ) -> anyhow::Result<Pipeline> {
@@ -157,6 +172,7 @@ impl PipelineBuilder {
             subpass: 0,
             base_pipeline_handle: vk::Pipeline::null(),
             p_tessellation_state: std::ptr::null(),
+            p_depth_stencil_state: &self.depth_stencil,
             ..Default::default()
         }];
 
@@ -183,7 +199,5 @@ fn default_pipeline_layout(
 ) -> anyhow::Result<vk::PipelineLayout> {
     // Build the pipeline layout that controls the inputs/outputs of the shader
     let layout_info = vk_initializers::pipeline_layout_create_info();
-    Ok(unsafe {
-        device.create_pipeline_layout(&layout_info, None)?
-    })
+    Ok(unsafe { device.create_pipeline_layout(&layout_info, None)? })
 }

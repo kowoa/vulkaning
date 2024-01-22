@@ -147,12 +147,24 @@ impl Renderer {
             };
             device.begin_command_buffer(cmd, &cmd_begin_info)?;
 
-            // Make clear color from frame number
-            let flash = (self.frame_number % 100) as f32 / 100.0;
-            let clear = vk::ClearValue {
-                color: vk::ClearColorValue {
-                    float32: [0.0, 0.0, flash, 1.0],
-                },
+            let clear_values = {
+                // Make clear color from frame number
+                let flash = (self.frame_number % 100) as f32 / 100.0;
+                let clear = vk::ClearValue {
+                    color: vk::ClearColorValue {
+                        float32: [0.0, 0.0, flash, 1.0],
+                    },
+                };
+
+                // Make clear value for depth buffer
+                let depth_clear = vk::ClearValue {
+                    depth_stencil: vk::ClearDepthStencilValue {
+                        depth: 1.0,
+                        stencil: 0,
+                    },
+                };
+
+                [clear, depth_clear]
             };
 
             // Start the main renderpass
@@ -167,8 +179,8 @@ impl Renderer {
                     },
                 },
                 framebuffer: rp.framebuffers[swapchain_image_index as usize],
-                clear_value_count: 1,
-                p_clear_values: &clear,
+                clear_value_count: clear_values.len() as u32,
+                p_clear_values: clear_values.as_ptr(),
                 ..Default::default()
             };
             device.cmd_begin_render_pass(
@@ -179,33 +191,9 @@ impl Renderer {
 
             // RENDERING COMMANDS START
 
-            /*
-            if self.selected_shader == 0 {
-                device.cmd_bind_pipeline(
-                    cmd,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    self.assets.pipelines[0].pipeline,
-                );
-                device.cmd_bind_vertex_buffers(
-                    cmd,
-                    0,
-                    &[self.assets.meshes[0].vertex_buffer],
-                    &[0],
-                );
-                device.cmd_draw(cmd, self.assets.meshes[0].vertices.len() as u32, 1, 0, 0);
-            } else {
-                device.cmd_bind_pipeline(
-                    cmd,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    self.assets.pipelines[1].pipeline,
-                );
-                device.cmd_draw(cmd, 3, 1, 0, 0);
-            }
-            */
-
             {
-                let cam_pos = Vec3::new(0.0, 0.0, -2.0);
-                let view = Mat4::from_translation(cam_pos);
+                let cam_pos = Vec3::new(0.0, 0.0, 4.0);
+                let view = Mat4::look_to_rh(cam_pos, -Vec3::Z, -Vec3::Y);
                 let proj = Mat4::perspective_rh(
                     70.0,
                     window.inner_size().width as f32

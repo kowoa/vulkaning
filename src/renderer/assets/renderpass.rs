@@ -17,7 +17,7 @@ impl Renderpass {
         let framebuffers = create_framebuffers(
             &renderpass,
             device,
-            &swapchain.image_views,
+            swapchain,
             window,
         )?;
 
@@ -67,7 +67,7 @@ fn create_renderpass(
 
     let depth_attachment = vk::AttachmentDescription {
         flags: vk::AttachmentDescriptionFlags::empty(),
-        format: swapchain.depth_image.format,
+        format: swapchain.depth_image.image_format,
         samples: vk::SampleCountFlags::TYPE_1,
         load_op: vk::AttachmentLoadOp::CLEAR,
         store_op: vk::AttachmentStoreOp::STORE,
@@ -96,7 +96,7 @@ fn create_renderpass(
         src_subpass: vk::SUBPASS_EXTERNAL,
         dst_subpass: 0,
         src_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-        src_access_mask: 0,
+        src_access_mask: vk::AccessFlags::empty(),
         dst_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
         dst_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
         ..Default::default()
@@ -106,7 +106,7 @@ fn create_renderpass(
         src_subpass: vk::SUBPASS_EXTERNAL,
         dst_subpass: 0,
         src_stage_mask: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
-        src_access_mask: 0,
+        src_access_mask: vk::AccessFlags::empty(),
         dst_stage_mask: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
         dst_access_mask: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
         ..Default::default()
@@ -116,11 +116,11 @@ fn create_renderpass(
     
     let renderpass_info = vk::RenderPassCreateInfo {
         attachment_count: 2,
-        p_attachments: &attachments,
+        p_attachments: attachments.as_ptr(),
         subpass_count: 1,
         p_subpasses: &subpass,
         dependency_count: 2,
-        p_dependencies: &dependencies,
+        p_dependencies: dependencies.as_ptr(),
         ..Default::default()
     };
 
@@ -142,8 +142,8 @@ fn create_framebuffers(
                 width: swapchain.extent.width,
                 height: swapchain.extent.height,
                 layers: 1,
-                p_attachments: &attachments,
-                attachment_count: attachments.len(),
+                p_attachments: attachments.as_ptr(),
+                attachment_count: attachments.len() as u32,
                 ..Default::default()
             };
 
