@@ -5,12 +5,21 @@ use crate::renderer::{core::Core, assets::vertex::Vertex};
 
 use super::mesh::Mesh;
 
+#[derive(Default, PartialEq)]
 pub struct Model {
     pub meshes: Vec<Mesh>,
 }
 
 impl Model {
-    pub fn load_from_obj(filename: &str, core: &mut Core) -> anyhow::Result<Self> {
+    pub fn new(meshes: Vec<Mesh>) -> Self {
+        Self { meshes }
+    }
+
+    pub fn load_from_obj(
+        filename: &str,
+        device: &ash::Device,
+        allocator: &mut Allocator,
+    ) -> anyhow::Result<Self> {
         let (models, materials) =
             tobj::load_obj(filename, &tobj::LoadOptions {
                 single_index: true,
@@ -57,7 +66,29 @@ impl Model {
                 });
             }
 
-            let mesh = Mesh::new(vertices, &core.device, &mut core.allocator)?;
+            // Process material
+            if let Some(material_id) = mesh.material_id {
+                let material = &materials[material_id];
+
+                // Diffuse map
+                if let Some(filename) = &material.diffuse_texture {
+                    log::info!("Diffuse map: {}", filename);
+                }
+
+                // Specular map
+                if let Some(filename) = &material.specular_texture {
+                    log::info!("Specular map: {}", filename);
+                }
+
+                // Normal map
+                if let Some(filename) = &material.normal_texture {
+                    log::info!("Normal map: {}", filename);
+                }
+
+                // NOTE: no height maps for now
+            }
+
+            let mesh = Mesh::new(vertices, device, allocator)?;
             meshes.push(mesh);
         }
 

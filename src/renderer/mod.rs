@@ -4,9 +4,9 @@ mod vk_initializers;
 mod assets;
 mod commands;
 mod core;
+mod memory;
 mod swapchain;
 mod sync_objs;
-mod memory;
 
 use std::mem::ManuallyDrop;
 
@@ -21,7 +21,10 @@ use winit::{
 };
 
 use self::{
-    assets::{Assets, mesh::MeshPushConstants}, commands::Commands, core::Core, swapchain::Swapchain,
+    assets::{mesh::MeshPushConstants, Assets},
+    commands::Commands,
+    core::Core,
+    swapchain::Swapchain,
     sync_objs::SyncObjs,
 };
 
@@ -191,52 +194,12 @@ impl Renderer {
 
             // RENDERING COMMANDS START
 
-            {
-                let cam_pos = Vec3::new(0.0, 0.0, 4.0);
-                let view = Mat4::look_to_rh(cam_pos, -Vec3::Z, -Vec3::Y);
-                let proj = Mat4::perspective_rh(
-                    70.0,
-                    window.inner_size().width as f32
-                        / window.inner_size().height as f32,
-                    0.1,
-                    200.0,
-                );
-                let model = Mat4::from_rotation_y(
-                    (self.frame_number as f32 * 0.4).to_radians(),
-                );
-
-                let mesh_matrix = proj * view * model;
-                let constants = MeshPushConstants {
-                    data: Vec4::default(),
-                    render_matrix: mesh_matrix,
-                };
-
-                device.cmd_push_constants(
-                    cmd,
-                    self.assets.pipelines[0].pipeline_layout,
-                    vk::ShaderStageFlags::VERTEX,
-                    0,
-                    bytemuck::bytes_of(&constants)
-                );
-            }
-            
-            device.cmd_bind_pipeline(
-                cmd,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.assets.pipelines[0].pipeline,
-            );
-            device.cmd_bind_vertex_buffers(
-                cmd,
+            self.assets.draw_render_objects(
+                device,
+                &cmd,
+                window,
                 0,
-                &[self.assets.models[0].meshes[0].vertex_buffer.buffer],
-                &[0],
-            );
-            device.cmd_draw(
-                cmd,
-                self.assets.models[0].meshes[0].vertices.len() as u32,
-                1,
-                0,
-                0,
+                self.assets.render_objs.len(),
             );
 
             // RENDERING COMMANDS END
