@@ -8,7 +8,7 @@ pub mod renderpass;
 pub mod shader;
 pub mod vertex;
 
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, rc::Rc, mem::ManuallyDrop};
 
 use ash::vk;
 use glam::{Mat4, Vec3, Vec4};
@@ -29,7 +29,8 @@ pub struct Assets {
     pub renderpasses: Vec<Renderpass>,
     pub pipelines: HashMap<String, Rc<Pipeline>>,
     pub models: HashMap<String, Rc<Model>>,
-    pub render_objs: Vec<RenderObject>,
+
+    pub render_objs: ManuallyDrop<Vec<RenderObject>>,
 }
 
 impl Assets {
@@ -78,9 +79,7 @@ impl Assets {
             for x in -20..=20 {
                 for y in -20..=20 {
                     let translation = Mat4::from_translation(Vec3::new(
-                        x as f32,
-                        0.0,
-                        y as f32,
+                        x as f32, 0.0, y as f32,
                     ));
                     let scale = Mat4::from_scale(Vec3::new(0.2, 0.2, 0.2));
                     let transform = translation * scale;
@@ -100,22 +99,30 @@ impl Assets {
             renderpasses: vec![renderpass],
             pipelines,
             models,
-            render_objs,
+            render_objs: ManuallyDrop::new(render_objs),
         })
     }
 
-    pub fn cleanup(self, device: &ash::Device, allocator: &mut Allocator) {
+    pub fn cleanup(mut self, device: &ash::Device, allocator: &mut Allocator) {
         log::info!("Cleaning up assets ...");
+
+        unsafe {
+            ManuallyDrop::drop(&mut self.render_objs);
+        }
 
         for (_, model) in self.models {
             if let Ok(model) = Rc::try_unwrap(model) {
                 model.cleanup(device, allocator);
+            } else {
+                panic!("Failed to cleanup model because there are still multiple references");
             }
         }
 
         for (_, pipeline) in self.pipelines {
             if let Ok(pipeline) = Rc::try_unwrap(pipeline) {
                 pipeline.cleanup(device);
+            } else {
+                panic!("Failed to cleanup pipeline because there are still multiple references");
             }
         }
 
@@ -132,19 +139,24 @@ impl Assets {
         first_index: usize,
         count: usize,
     ) {
-        let cam_pos = Vec3::new(0.0, -6.0, -10.0);
-        let view = Mat4::from_translation(cam_pos);
-        let proj = Mat4::perspective_rh(
+        let cam_pos = Vec3::new(0.0, 6.0, 20.0);
+        let view = Mat4::look_to_rh(
+            cam_pos,
+            Vec3::new(0.0, 0.0, -1.0),
+            Vec3::new(0.0, 1.0, 0.0),
+        );
+        let mut proj = Mat4::perspective_rh(
             70.0,
             window.inner_size().width as f32
                 / window.inner_size().height as f32,
             0.1,
             200.0,
         );
+        proj.y_axis.y *= -1.0;
 
         let mut last_pipeline = vk::Pipeline::null();
         let mut last_model = None;
-        for i in first_index..(first_index+count) {
+        for i in first_index..(first_index + count) {
             let render_obj = &self.render_objs[i];
 
             // Only bind the pipeline if it doesn't match the already bound one
@@ -167,9 +179,20 @@ impl Assets {
                 render_matrix: transform,
             };
 
+            unsafe {
+                device.cmd_push_constants(
+                    *cmd,
+                    render_obj.pipeline.pipeline_layout,
+                    vk::ShaderStageFlags::VERTEX,
+                    0,
+                    bytemuck::bytes_of(&constants),
+                );
+            }
+
             // Only bind the mesh if it's a different one from last bind
-            let model = render_obj.model.clone();
-            if Some(model) != last_model {
+            let last = last_model.take();
+            let model = Some(render_obj.model.clone());
+            if model != last {
                 // Bind the vertex buffer with offset 0
                 let offset = 0;
                 unsafe {
@@ -180,9 +203,11 @@ impl Assets {
                         &[offset],
                     );
                 }
-                last_model = Some(model);
+                last_model = model;
+            } else {
+                last_model = last;
             }
-            
+
             unsafe {
                 device.cmd_draw(
                     *cmd,

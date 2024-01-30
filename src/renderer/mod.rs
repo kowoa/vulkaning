@@ -12,7 +12,6 @@ use std::mem::ManuallyDrop;
 
 use ash::vk;
 
-use glam::{Mat4, Vec3, Vec4};
 use winit::{
     event::{ElementState, Event, KeyEvent, WindowEvent},
     event_loop::EventLoop,
@@ -21,7 +20,7 @@ use winit::{
 };
 
 use self::{
-    assets::{mesh::MeshPushConstants, Assets},
+    assets::Assets,
     commands::Commands,
     core::Core,
     swapchain::Swapchain,

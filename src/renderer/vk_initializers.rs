@@ -139,9 +139,21 @@ pub fn depth_stencil_create_info(
     depth_compare_op: vk::CompareOp,
 ) -> vk::PipelineDepthStencilStateCreateInfo {
     vk::PipelineDepthStencilStateCreateInfo {
-        depth_test_enable: if depth_test_enable { vk::TRUE } else { vk::FALSE },
-        depth_write_enable: if depth_write_enable { vk::TRUE } else { vk::FALSE },
-        depth_compare_op: if depth_test_enable { depth_compare_op } else { vk::CompareOp::ALWAYS },
+        depth_test_enable: if depth_test_enable {
+            vk::TRUE
+        } else {
+            vk::FALSE
+        },
+        depth_write_enable: if depth_write_enable {
+            vk::TRUE
+        } else {
+            vk::FALSE
+        },
+        depth_compare_op: if depth_test_enable {
+            depth_compare_op
+        } else {
+            vk::CompareOp::ALWAYS
+        },
         depth_bounds_test_enable: vk::FALSE,
         min_depth_bounds: 0.0,
         max_depth_bounds: 1.0,
