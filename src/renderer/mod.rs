@@ -20,22 +20,26 @@ use winit::{
 };
 
 use self::{
-    assets::Assets,
+    assets::{frame::Frame, Assets},
     commands::Commands,
     core::Core,
     swapchain::Swapchain,
     sync_objs::SyncObjs,
 };
 
+const FRAME_OVERLAP: usize = 2;
+
 pub struct Renderer {
     core: Core,
     swapchain: Swapchain,
-    commands: Commands,
-    sync_objs: SyncObjs,
+    //commands: Commands,
+    //sync_objs: SyncObjs,
     assets: Assets,
 
     frame_number: u32,
     selected_shader: i32,
+
+    frames: Vec<Frame>,
 }
 
 impl Renderer {
@@ -45,18 +49,29 @@ impl Renderer {
     ) -> anyhow::Result<Self> {
         let mut core = Core::new(window, event_loop)?;
         let swapchain = Swapchain::new(&mut core, window)?;
-        let commands = Commands::new(&core)?;
-        let sync_objs = SyncObjs::new(&core)?;
+        //let commands = Commands::new(&core)?;
+        //let sync_objs = SyncObjs::new(&core)?;
         let assets = Assets::new(&mut core, &swapchain, window)?;
+        let frames = {
+            let mut frames = Vec::with_capacity(FRAME_OVERLAP);
+            for i in 0..FRAME_OVERLAP {
+                frames.push(Frame::new(
+                    &core.device,
+                    core.queue_family_indices.graphics_family.unwrap(),
+                )?)
+            }
+            frames
+        };
 
         Ok(Self {
             core,
             swapchain,
-            commands,
-            sync_objs,
+            //commands,
+            //sync_objs,
             assets,
             frame_number: 0,
             selected_shader: 0,
+            frames,
         })
     }
 
@@ -268,8 +283,11 @@ impl Renderer {
 
         let device = &self.core.device;
         self.assets.cleanup(device, &mut self.core.allocator);
-        self.sync_objs.cleanup(device);
-        self.commands.cleanup(device);
+        for frame in self.frames {
+            frame.cleanup(device);
+        }
+        //self.sync_objs.cleanup(device);
+        //self.commands.cleanup(device);
         self.swapchain.cleanup(device, &mut self.core.allocator);
 
         // We need to do this because the allocator doesn't destroy all

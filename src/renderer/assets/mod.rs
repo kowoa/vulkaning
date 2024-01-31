@@ -7,6 +7,7 @@ pub mod render_object;
 pub mod renderpass;
 pub mod shader;
 pub mod vertex;
+pub mod frame;
 
 use std::{collections::HashMap, rc::Rc, mem::ManuallyDrop};
 
