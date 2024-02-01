@@ -2,11 +2,9 @@ mod utils;
 mod vk_initializers;
 
 mod assets;
-mod commands;
 mod core;
 mod memory;
 mod swapchain;
-mod sync_objs;
 
 use std::mem::ManuallyDrop;
 
@@ -21,24 +19,18 @@ use winit::{
 
 use self::{
     assets::{frame::Frame, Assets},
-    commands::Commands,
     core::Core,
     swapchain::Swapchain,
-    sync_objs::SyncObjs,
 };
 
-const FRAME_OVERLAP: usize = 2;
+const FRAME_OVERLAP: u32 = 2;
 
 pub struct Renderer {
     core: Core,
     swapchain: Swapchain,
-    //commands: Commands,
-    //sync_objs: SyncObjs,
     assets: Assets,
 
     frame_number: u32,
-    selected_shader: i32,
-
     frames: Vec<Frame>,
 }
 
@@ -53,12 +45,12 @@ impl Renderer {
         //let sync_objs = SyncObjs::new(&core)?;
         let assets = Assets::new(&mut core, &swapchain, window)?;
         let frames = {
-            let mut frames = Vec::with_capacity(FRAME_OVERLAP);
-            for i in 0..FRAME_OVERLAP {
+            let mut frames = Vec::with_capacity(FRAME_OVERLAP as usize);
+            for _ in 0..FRAME_OVERLAP {
                 frames.push(Frame::new(
                     &core.device,
                     core.queue_family_indices.graphics_family.unwrap(),
-                )?)
+                )?);
             }
             frames
         };
@@ -70,7 +62,6 @@ impl Renderer {
             //sync_objs,
             assets,
             frame_number: 0,
-            selected_shader: 0,
             frames,
         })
     }
@@ -99,11 +90,6 @@ impl Renderer {
                         ..
                     } => match key.as_ref() {
                         Key::Named(NamedKey::Escape) => close_requested = true,
-                        Key::Named(NamedKey::Space) => {
-                            if let Some(r) = &mut renderer {
-                                r.selected_shader = (r.selected_shader + 1) % 2;
-                            }
-                        }
                         _ => (),
                     },
                     WindowEvent::RedrawRequested => {
@@ -129,13 +115,18 @@ impl Renderer {
         })?)
     }
 
+    fn get_current_frame(&self) -> &Frame {
+        &self.frames[(self.frame_number % FRAME_OVERLAP) as usize]
+    }
+
     fn draw_frame(
         &self,
         window: &winit::window::Window,
     ) -> anyhow::Result<u32> {
+        let frame = self.get_current_frame();
         unsafe {
             let device = &self.core.device;
-            let fences = [self.sync_objs.render_fence];
+            let fences = [frame.render_fence];
 
             // Wait until GPU has finished rendering last frame (1 sec timeout)
             device.wait_for_fences(&fences, true, 1000000000)?;
@@ -146,12 +137,12 @@ impl Renderer {
                 self.swapchain.swapchain_loader.acquire_next_image(
                     self.swapchain.swapchain,
                     1000000000,
-                    self.sync_objs.present_semaphore,
+                    frame.present_semaphore,
                     vk::Fence::null(),
                 )?;
 
             // Reset the command buffer to begin recording
-            let cmd = self.commands.main_command_buffer;
+            let cmd = frame.command_buffer;
             device.reset_command_buffer(
                 cmd,
                 vk::CommandBufferResetFlags::empty(),
@@ -228,9 +219,9 @@ impl Renderer {
             let submit_info = vk::SubmitInfo {
                 p_wait_dst_stage_mask: wait_stages.as_ptr(),
                 wait_semaphore_count: 1,
-                p_wait_semaphores: &self.sync_objs.present_semaphore,
+                p_wait_semaphores: &frame.present_semaphore,
                 signal_semaphore_count: 1,
-                p_signal_semaphores: &self.sync_objs.render_semaphore,
+                p_signal_semaphores: &frame.render_semaphore,
                 command_buffer_count: 1,
                 p_command_buffers: &cmd,
                 ..Default::default()
@@ -238,7 +229,7 @@ impl Renderer {
             device.queue_submit(
                 self.core.graphics_queue,
                 &[submit_info],
-                self.sync_objs.render_fence,
+                frame.render_fence,
             )?;
 
             Ok(swapchain_image_index)
@@ -249,10 +240,11 @@ impl Renderer {
         &mut self,
         swapchain_image_index: u32,
     ) -> anyhow::Result<()> {
+        let frame = self.get_current_frame();
         let present_info = vk::PresentInfoKHR {
             p_swapchains: &self.swapchain.swapchain,
             swapchain_count: 1,
-            p_wait_semaphores: &self.sync_objs.render_semaphore,
+            p_wait_semaphores: &frame.render_semaphore,
             wait_semaphore_count: 1,
             p_image_indices: &swapchain_image_index,
             ..Default::default()
@@ -270,15 +262,18 @@ impl Renderer {
     }
 
     fn cleanup(mut self) {
-        unsafe {
-            self.core
-                .device
-                .wait_for_fences(
-                    &[self.sync_objs.render_fence],
-                    true,
-                    1000000000,
-                )
-                .unwrap();
+        // Wait until all frames have finished rendering
+        for frame in &self.frames {
+            unsafe {
+                self.core
+                    .device
+                    .wait_for_fences(
+                        &[frame.render_fence],
+                        true,
+                        1000000000,
+                    )
+                    .unwrap();
+            }
         }
 
         let device = &self.core.device;
@@ -286,8 +281,6 @@ impl Renderer {
         for frame in self.frames {
             frame.cleanup(device);
         }
-        //self.sync_objs.cleanup(device);
-        //self.commands.cleanup(device);
         self.swapchain.cleanup(device, &mut self.core.allocator);
 
         // We need to do this because the allocator doesn't destroy all
