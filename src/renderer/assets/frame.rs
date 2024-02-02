@@ -1,4 +1,14 @@
 use ash::vk;
+use glam::Mat4;
+use gpu_allocator::vulkan::Allocator;
+
+use crate::renderer::memory::AllocatedBuffer;
+
+struct CameraData {
+    view: Mat4,
+    proj: Mat4,
+    viewproj: Mat4,
+}
 
 pub struct Frame {
     pub present_semaphore: vk::Semaphore,
@@ -6,12 +16,16 @@ pub struct Frame {
     pub render_fence: vk::Fence,
     pub command_pool: vk::CommandPool,
     pub command_buffer: vk::CommandBuffer,
+    pub camera_buffer: AllocatedBuffer,
+    pub global_descriptor_set: vk::DescriptorSet,
 }
 
 impl Frame {
     pub fn new(
         device: &ash::Device,
+        allocator: &mut Allocator,
         graphics_family_index: u32,
+        global_descriptor_set: vk::DescriptorSet,
     ) -> anyhow::Result<Self> {
         let (command_pool, command_buffer) =
             Self::create_commands(device, graphics_family_index)?;
@@ -20,6 +34,14 @@ impl Frame {
             render_semaphore,
             render_fence,
         ) = Self::create_sync_objs(device)?;
+        let camera_buffer = AllocatedBuffer::new(
+            device,
+            allocator,
+            std::mem::size_of::<CameraData>() as u64,
+            vk::BufferUsageFlags::UNIFORM_BUFFER,
+            "Uniform Camera Buffer",
+            gpu_allocator::MemoryLocation::CpuToGpu,
+        )?;
 
         Ok(Self {
             present_semaphore,
@@ -27,6 +49,8 @@ impl Frame {
             render_fence,
             command_pool,
             command_buffer,
+            camera_buffer,
+            global_descriptor_set,
         })
     }
 
