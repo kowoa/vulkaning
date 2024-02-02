@@ -36,7 +36,7 @@ impl Mesh {
     ) -> anyhow::Result<Self> {
         let id = MESH_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
         let vertex_buffer =
-            AllocatedBuffer::new(&vertices, device, allocator)?;
+            AllocatedBuffer::new_vertex_buffer(&vertices, device, allocator)?;
         Ok(Self {
             id,
             vertices,
@@ -44,18 +44,14 @@ impl Mesh {
         })
     }
 
-    pub fn cleanup(
-        self,
-        device: &ash::Device,
-        allocator: &mut Allocator,
-    ) {
+    pub fn cleanup(self, device: &ash::Device, allocator: &mut Allocator) {
         log::info!("Cleaning up mesh ...");
         self.vertex_buffer.cleanup(device, allocator);
     }
 
     pub fn new_triangle(
         device: &ash::Device,
-        allocator: &mut Allocator
+        allocator: &mut Allocator,
     ) -> anyhow::Result<Self> {
         let vertices = vec![
             Vertex {

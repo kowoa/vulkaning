@@ -41,16 +41,13 @@ impl Renderer {
     ) -> anyhow::Result<Self> {
         let mut core = Core::new(window, event_loop)?;
         let swapchain = Swapchain::new(&mut core, window)?;
-        //let commands = Commands::new(&core)?;
-        //let sync_objs = SyncObjs::new(&core)?;
         let assets = Assets::new(&mut core, &swapchain, window)?;
         let frames = {
             let mut frames = Vec::with_capacity(FRAME_OVERLAP as usize);
+            let graphics_family_index =
+                core.queue_family_indices.graphics_family.unwrap();
             for _ in 0..FRAME_OVERLAP {
-                frames.push(Frame::new(
-                    &core.device,
-                    core.queue_family_indices.graphics_family.unwrap(),
-                )?);
+                frames.push(Frame::new(&core.device, graphics_family_index)?);
             }
             frames
         };
@@ -58,8 +55,6 @@ impl Renderer {
         Ok(Self {
             core,
             swapchain,
-            //commands,
-            //sync_objs,
             assets,
             frame_number: 0,
             frames,
@@ -267,11 +262,7 @@ impl Renderer {
             unsafe {
                 self.core
                     .device
-                    .wait_for_fences(
-                        &[frame.render_fence],
-                        true,
-                        1000000000,
-                    )
+                    .wait_for_fences(&[frame.render_fence], true, 1000000000)
                     .unwrap();
             }
         }

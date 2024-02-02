@@ -14,52 +14,71 @@ pub struct AllocatedBuffer {
 
 impl AllocatedBuffer {
     pub fn new(
-        vertices: &Vec<Vertex>,
         device: &ash::Device,
         allocator: &mut Allocator,
+        buffer_size: u64,
+        buffer_usage: vk::BufferUsageFlags,
+        alloc_name: &str,
+        alloc_loc: MemoryLocation,
     ) -> anyhow::Result<Self> {
-        let vertex_buffer = {
+        let buffer = {
             let buffer_info = vk::BufferCreateInfo {
-                size: (vertices.len() * std::mem::size_of::<Vertex>()) as u64,
-                usage: vk::BufferUsageFlags::VERTEX_BUFFER,
+                size: buffer_size,
+                usage: buffer_usage,
                 sharing_mode: vk::SharingMode::EXCLUSIVE,
                 ..Default::default()
             };
-
-            let buffer = unsafe { device.create_buffer(&buffer_info, None)? };
-
-            buffer
+            unsafe { device.create_buffer(&buffer_info, None)? }
         };
 
-        let reqs =
-            unsafe { device.get_buffer_memory_requirements(vertex_buffer) };
-
-        let mut allocation = allocator.allocate(&AllocationCreateDesc {
-            name: "Vertex Buffer Allocation",
+        let reqs = unsafe { device.get_buffer_memory_requirements(buffer) };
+        let allocation = allocator.allocate(&AllocationCreateDesc {
+            name: alloc_name,
             requirements: reqs,
-            location: MemoryLocation::CpuToGpu,
+            location: alloc_loc,
             linear: true,
             allocation_scheme: AllocationScheme::GpuAllocatorManaged,
         })?;
 
         unsafe {
             device.bind_buffer_memory(
-                vertex_buffer,
+                buffer,
                 allocation.memory(),
                 allocation.offset(),
             )?;
         }
 
-        let _copy_record = presser::copy_from_slice_to_offset(
-            &vertices[..],
-            &mut allocation,
-            0,
+        Ok(Self { buffer, allocation })
+    }
+
+    pub fn new_vertex_buffer(
+        vertices: &Vec<Vertex>,
+        device: &ash::Device,
+        allocator: &mut Allocator,
+    ) -> anyhow::Result<Self> {
+        let mut buffer = Self::new(
+            device,
+            allocator,
+            (vertices.len() * std::mem::size_of::<Vertex>()) as u64,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+            "Vertex Buffer Allocation",
+            MemoryLocation::CpuToGpu,
         )?;
 
-        Ok(Self {
-            buffer: vertex_buffer,
-            allocation,
-        })
+        let _copy_record = buffer.write(&vertices[..])?;
+
+        Ok(buffer)
+    }
+
+    pub fn write<T>(&mut self, data: &[T]) -> anyhow::Result<presser::CopyRecord>
+    where
+        T: Copy,
+    {
+        Ok(presser::copy_from_slice_to_offset(
+            data,
+            &mut self.allocation,
+            0,
+        )?)
     }
 
     pub fn cleanup(self, device: &ash::Device, allocator: &mut Allocator) {
