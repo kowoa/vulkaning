@@ -17,7 +17,7 @@ pub struct Frame {
     pub command_pool: vk::CommandPool,
     pub command_buffer: vk::CommandBuffer,
     pub camera_buffer: AllocatedBuffer,
-    pub global_descriptor_set: vk::DescriptorSet,
+    pub descriptor_set: vk::DescriptorSet,
 }
 
 impl Frame {
@@ -25,7 +25,8 @@ impl Frame {
         device: &ash::Device,
         allocator: &mut Allocator,
         graphics_family_index: u32,
-        global_descriptor_set: vk::DescriptorSet,
+        descriptor_pool: vk::DescriptorPool,
+        descriptor_set_layout: vk::DescriptorSetLayout,
     ) -> anyhow::Result<Self> {
         let (command_pool, command_buffer) =
             Self::create_commands(device, graphics_family_index)?;
@@ -42,6 +43,29 @@ impl Frame {
             "Uniform Camera Buffer",
             gpu_allocator::MemoryLocation::CpuToGpu,
         )?;
+
+        // Allocate one descriptor set for this frame
+        let descriptor_set = {
+            let info = vk::DescriptorSetAllocateInfo {
+                descriptor_pool,
+                descriptor_set_count: 1,
+                p_set_layouts: &descriptor_set_layout,
+                ..Default::default()
+            };
+            unsafe {
+                device.allocate_descriptor_sets(&info)?[0]
+            }
+        };
+
+        // Point descriptor set to camera buffer
+        {
+            let binfo = vk::DescriptorBufferInfo {
+                buffer: camera_buffer.buffer,
+                offset: 0,
+                range: std::mem::size_of::<CameraData>(),
+                
+            };
+        }
 
         Ok(Self {
             present_semaphore,

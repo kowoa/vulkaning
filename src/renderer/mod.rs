@@ -32,9 +32,6 @@ pub struct Renderer {
 
     frame_number: u32,
     frames: Vec<Frame>,
-
-    global_set_layout: vk::DescriptorSetLayout,
-    descriptor_pool: vk::DescriptorPool,
 }
 
 impl Renderer {
@@ -45,13 +42,41 @@ impl Renderer {
         let mut core = Core::new(window, event_loop)?;
         let swapchain = Swapchain::new(&mut core, window)?;
         let assets = Assets::new(&mut core, &swapchain, window)?;
-        let (global_set_layout, descriptor_pool) = Self::create_descriptors();
         let frames = {
             let mut frames = Vec::with_capacity(FRAME_OVERLAP as usize);
             let graphics_family_index =
                 core.queue_family_indices.graphics_family.unwrap();
             for _ in 0..FRAME_OVERLAP {
-                frames.push(Frame::new(&core.device, graphics_family_index)?);
+                // Allocate one descriptor set for each frame
+                let global_descriptor_set = {
+                    let info = vk::DescriptorSetAllocateInfo {
+                        descriptor_pool: assets.descriptor_pool,
+                        descriptor_set_count: 1,
+                        p_set_layouts: &assets.global_set_layout,
+                        ..Default::default()
+                    };
+                    unsafe {
+                        core.device.allocate_descriptor_sets(&info)?[0]
+                    }
+                };
+
+                // Call Frame constructor
+                let frame = Frame::new(
+                    &core.device,
+                    &mut core.allocator,
+                    graphics_family_index,
+                    global_descriptor_set,
+                )?;
+
+                // Point descriptor to camera buffer
+                let binfo = vk::DescriptorBufferInfo {
+                    buffer: frame.camera_buffer.buffer,
+                    offset: 0,
+                    range: std::mem::size_of::<CameraData>();
+                };
+                
+
+                frames.push(frame);
             }
             frames
         };
@@ -64,33 +89,6 @@ impl Renderer {
             frames,
         })
     }
-
-    fn create_descriptors(device: &ash::Device) -> anyhow::Result<(vk::DescriptorSetLayout, vk::DescriptorPool)> {
-        let camera_buffer_binding = vk::DescriptorSetLayoutBinding {
-            binding: 0,
-            descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-            descriptor_count: 1,
-            stage_flags: vk::ShaderStageFlags::VERTEX,
-            ..Default::default()
-        };
-
-        let set_info = vk::DescriptorSetLayoutCreateInfo {
-            binding_count: 1,
-            flags: vk::DescriptorSetLayoutCreateFlags::empty(),
-            p_bindings: &camera_buffer_binding,
-            ..Default::default()
-        };
-
-        unsafe {
-            let global_set_layout = device.create_descriptor_set_layout(
-                &set_info,
-                None,
-            )?;
-        }
-
-        Ok
-    }
-    
 
     pub fn render_loop(
         self,

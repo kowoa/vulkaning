@@ -1,5 +1,6 @@
 // Asset initialization
 // VkPipeline, VkBuffer, VkImage, VkRenderPass
+pub mod frame;
 pub mod mesh;
 pub mod model;
 pub mod pipeline;
@@ -7,9 +8,8 @@ pub mod render_object;
 pub mod renderpass;
 pub mod shader;
 pub mod vertex;
-pub mod frame;
 
-use std::{collections::HashMap, rc::Rc, mem::ManuallyDrop};
+use std::{collections::HashMap, mem::ManuallyDrop, rc::Rc};
 
 use ash::vk;
 use glam::{Mat4, Vec3, Vec4};
@@ -28,6 +28,10 @@ use super::{core::Core, swapchain::Swapchain, vk_initializers};
 
 pub struct Assets {
     pub renderpasses: Vec<Renderpass>,
+
+    pub global_set_layout: vk::DescriptorSetLayout,
+    pub descriptor_pool: vk::DescriptorPool,
+
     pub pipelines: HashMap<String, Rc<Pipeline>>,
     pub models: HashMap<String, Rc<Model>>,
 
@@ -44,11 +48,16 @@ impl Assets {
         let allocator = &mut core.allocator;
 
         let renderpass = Renderpass::new(device, swapchain, window)?;
+
+        let (global_set_layout, descriptor_pool) =
+            create_descriptors(&core.device)?;
+
         let pipelines = {
             let pipeline = Rc::new(create_default_pipeline(
                 device,
                 swapchain,
                 &renderpass,
+                &global_set_layout,
             )?);
             let mut pipelines = HashMap::new();
             pipelines.insert("default".into(), pipeline);
@@ -101,6 +110,8 @@ impl Assets {
             pipelines,
             models,
             render_objs: ManuallyDrop::new(render_objs),
+            global_set_layout,
+            descriptor_pool,
         })
     }
 
@@ -226,17 +237,22 @@ fn create_default_pipeline(
     device: &ash::Device,
     swapchain: &Swapchain,
     renderpass: &Renderpass,
+    global_set_layout: &vk::DescriptorSetLayout,
 ) -> anyhow::Result<Pipeline> {
     let mut layout_info = vk_initializers::pipeline_layout_create_info();
 
+    // Push constants setup
     let push_constant = vk::PushConstantRange {
         offset: 0,
         size: std::mem::size_of::<MeshPushConstants>() as u32,
         stage_flags: vk::ShaderStageFlags::VERTEX,
     };
-
     layout_info.p_push_constant_ranges = &push_constant;
     layout_info.push_constant_range_count = 1;
+
+    // Descriptor set layout setup
+    layout_info.set_layout_count = 1;
+    layout_info.p_set_layouts = global_set_layout;
 
     let layout = unsafe { device.create_pipeline_layout(&layout_info, None)? };
 
@@ -255,4 +271,42 @@ fn create_default_pipeline(
     shader.destroy(device);
 
     Ok(pipeline)
+}
+
+fn create_descriptors(
+    device: &ash::Device,
+) -> anyhow::Result<(vk::DescriptorSetLayout, vk::DescriptorPool)> {
+    let global_set_layout = {
+        let camera_buffer_binding = vk::DescriptorSetLayoutBinding {
+            binding: 0,
+            descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+            descriptor_count: 1,
+            stage_flags: vk::ShaderStageFlags::VERTEX,
+            ..Default::default()
+        };
+        let set_info = vk::DescriptorSetLayoutCreateInfo {
+            binding_count: 1,
+            flags: vk::DescriptorSetLayoutCreateFlags::empty(),
+            p_bindings: &camera_buffer_binding,
+            ..Default::default()
+        };
+        unsafe { device.create_descriptor_set_layout(&set_info, None)? }
+    };
+
+    let descriptor_pool = {
+        // Create a descriptor pool that will hold 10 uniform buffers
+        let sizes = vec![vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::UNIFORM_BUFFER,
+            descriptor_count: 10,
+        }];
+        let pool_info = vk::DescriptorPoolCreateInfo {
+            max_sets: 10,
+            pool_size_count: sizes.len() as u32,
+            p_pool_sizes: sizes.as_ptr(),
+            ..Default::default()
+        };
+        unsafe { device.create_descriptor_pool(&pool_info, None)? }
+    };
+
+    Ok((global_set_layout, descriptor_pool))
 }
