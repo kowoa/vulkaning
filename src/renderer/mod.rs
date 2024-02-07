@@ -31,7 +31,6 @@ pub struct Renderer {
     assets: Assets,
 
     frame_number: u32,
-    frames: Vec<Frame>,
 }
 
 impl Renderer {
@@ -42,51 +41,12 @@ impl Renderer {
         let mut core = Core::new(window, event_loop)?;
         let swapchain = Swapchain::new(&mut core, window)?;
         let assets = Assets::new(&mut core, &swapchain, window)?;
-        let frames = {
-            let mut frames = Vec::with_capacity(FRAME_OVERLAP as usize);
-            let graphics_family_index =
-                core.queue_family_indices.graphics_family.unwrap();
-            for _ in 0..FRAME_OVERLAP {
-                // Allocate one descriptor set for each frame
-                let global_descriptor_set = {
-                    let info = vk::DescriptorSetAllocateInfo {
-                        descriptor_pool: assets.descriptor_pool,
-                        descriptor_set_count: 1,
-                        p_set_layouts: &assets.global_set_layout,
-                        ..Default::default()
-                    };
-                    unsafe {
-                        core.device.allocate_descriptor_sets(&info)?[0]
-                    }
-                };
-
-                // Call Frame constructor
-                let frame = Frame::new(
-                    &core.device,
-                    &mut core.allocator,
-                    graphics_family_index,
-                    global_descriptor_set,
-                )?;
-
-                // Point descriptor to camera buffer
-                let binfo = vk::DescriptorBufferInfo {
-                    buffer: frame.camera_buffer.buffer,
-                    offset: 0,
-                    range: std::mem::size_of::<CameraData>();
-                };
-                
-
-                frames.push(frame);
-            }
-            frames
-        };
 
         Ok(Self {
             core,
             swapchain,
             assets,
             frame_number: 0,
-            frames,
         })
     }
 
@@ -97,6 +57,37 @@ impl Renderer {
     ) -> anyhow::Result<()> {
         let mut close_requested = false;
         let mut renderer = Some(self);
+        let frames = {
+            let mut frames = Vec::with_capacity(FRAME_OVERLAP as usize);
+            let mut core = renderer.unwrap().core;
+            let assets = renderer.unwrap().assets;
+            let graphics_family_index =
+                core.queue_family_indices.graphics_family.unwrap();
+            for _ in 0..FRAME_OVERLAP {
+                // Allocate one descriptor set for each frame
+                let descriptor_set = {
+                    let info = vk::DescriptorSetAllocateInfo {
+                        descriptor_pool: assets.descriptor_pool,
+                        descriptor_set_count: 1,
+                        p_set_layouts: &assets.global_set_layout,
+                        ..Default::default()
+                    };
+                    unsafe { core.device.allocate_descriptor_sets(&info)?[0] }
+                };
+
+                // Call Frame constructor
+                let frame = Frame::new(
+                    &core.device,
+                    &mut core.allocator,
+                    graphics_family_index,
+                    assets.descriptor_pool,
+                    assets.global_set_layout,
+                )?;
+
+                frames.push(frame);
+            }
+            frames
+        };
 
         Ok(event_loop.run(move |event, elwt| match event {
             Event::WindowEvent { event, window_id }
@@ -118,10 +109,11 @@ impl Renderer {
                     },
                     WindowEvent::RedrawRequested => {
                         if let Some(r) = &mut renderer {
+                            let frame = r.get_current_frame(&frames);
                             let swapchain_image_index =
-                                r.draw_frame(&window).unwrap();
+                                r.draw_frame(frame, &window).unwrap();
                             window.pre_present_notify();
-                            r.present_frame(swapchain_image_index).unwrap();
+                            r.present_frame(frame, swapchain_image_index).unwrap();
                         }
                     }
                     _ => (),
@@ -129,7 +121,7 @@ impl Renderer {
             }
             Event::AboutToWait => {
                 if close_requested {
-                    renderer.take().unwrap().cleanup();
+                    renderer.take().unwrap().cleanup(frames);
                     elwt.exit();
                 } else {
                     window.request_redraw();
@@ -139,15 +131,15 @@ impl Renderer {
         })?)
     }
 
-    fn get_current_frame(&self) -> &Frame {
-        &self.frames[(self.frame_number % FRAME_OVERLAP) as usize]
+    fn get_current_frame(&self, frames: &Vec<Frame>) -> &mut Frame {
+        &mut frames[(self.frame_number % FRAME_OVERLAP) as usize]
     }
 
     fn draw_frame(
         &self,
+        frame: &mut Frame,
         window: &winit::window::Window,
     ) -> anyhow::Result<u32> {
-        let frame = self.get_current_frame();
         unsafe {
             let device = &self.core.device;
             let fences = [frame.render_fence];
@@ -229,6 +221,7 @@ impl Renderer {
                 window,
                 0,
                 self.assets.render_objs.len(),
+                frame,
             );
 
             // RENDERING COMMANDS END
@@ -262,9 +255,9 @@ impl Renderer {
 
     fn present_frame(
         &mut self,
+        frame: &Frame,
         swapchain_image_index: u32,
     ) -> anyhow::Result<()> {
-        let frame = self.get_current_frame();
         let present_info = vk::PresentInfoKHR {
             p_swapchains: &self.swapchain.swapchain,
             swapchain_count: 1,
@@ -285,9 +278,9 @@ impl Renderer {
         Ok(())
     }
 
-    fn cleanup(mut self) {
+    fn cleanup(mut self, frames: Vec<Frame>) {
         // Wait until all frames have finished rendering
-        for frame in &self.frames {
+        for frame in &frames {
             unsafe {
                 self.core
                     .device
@@ -298,7 +291,7 @@ impl Renderer {
 
         let device = &self.core.device;
         self.assets.cleanup(device, &mut self.core.allocator);
-        for frame in self.frames {
+        for frame in frames {
             frame.cleanup(device);
         }
         self.swapchain.cleanup(device, &mut self.core.allocator);

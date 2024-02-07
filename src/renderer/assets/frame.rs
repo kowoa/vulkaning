@@ -4,10 +4,11 @@ use gpu_allocator::vulkan::Allocator;
 
 use crate::renderer::memory::AllocatedBuffer;
 
-struct CameraData {
-    view: Mat4,
-    proj: Mat4,
-    viewproj: Mat4,
+#[derive(Copy, Clone)]
+pub struct CameraData {
+    pub view: Mat4,
+    pub proj: Mat4,
+    pub viewproj: Mat4,
 }
 
 pub struct Frame {
@@ -30,11 +31,8 @@ impl Frame {
     ) -> anyhow::Result<Self> {
         let (command_pool, command_buffer) =
             Self::create_commands(device, graphics_family_index)?;
-        let (
-            present_semaphore,
-            render_semaphore,
-            render_fence,
-        ) = Self::create_sync_objs(device)?;
+        let (present_semaphore, render_semaphore, render_fence) =
+            Self::create_sync_objs(device)?;
         let camera_buffer = AllocatedBuffer::new(
             device,
             allocator,
@@ -52,9 +50,7 @@ impl Frame {
                 p_set_layouts: &descriptor_set_layout,
                 ..Default::default()
             };
-            unsafe {
-                device.allocate_descriptor_sets(&info)?[0]
-            }
+            unsafe { device.allocate_descriptor_sets(&info)?[0] }
         };
 
         // Point descriptor set to camera buffer
@@ -62,9 +58,20 @@ impl Frame {
             let binfo = vk::DescriptorBufferInfo {
                 buffer: camera_buffer.buffer,
                 offset: 0,
-                range: std::mem::size_of::<CameraData>(),
-                
+                range: std::mem::size_of::<CameraData>() as u64,
             };
+
+            let write = vk::WriteDescriptorSet {
+                // Write into binding number 0
+                dst_binding: 0,
+                dst_set: descriptor_set,
+                descriptor_count: 1,
+                descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+                p_buffer_info: &binfo,
+                ..Default::default()
+            };
+
+            unsafe { device.update_descriptor_sets(&[write], &[]) }
         }
 
         Ok(Self {
@@ -74,8 +81,22 @@ impl Frame {
             command_pool,
             command_buffer,
             camera_buffer,
-            global_descriptor_set,
+            descriptor_set,
         })
+    }
+
+    pub fn copy_data_to_camera_buffer<T>(
+        &mut self,
+        data: &[T],
+    ) -> anyhow::Result<presser::CopyRecord>
+    where
+        T: Copy,
+    {
+        Ok(presser::copy_from_slice_to_offset(
+            data,
+            &mut self.camera_buffer.allocation,
+            0,
+        )?)
     }
 
     pub fn cleanup(self, device: &ash::Device) {
@@ -113,26 +134,21 @@ impl Frame {
     }
 
     fn create_sync_objs(
-        device: &ash::Device
+        device: &ash::Device,
     ) -> anyhow::Result<(vk::Semaphore, vk::Semaphore, vk::Fence)> {
         let fence_info = vk::FenceCreateInfo {
             // Fence starts out signaled so we can wait on it for the first frame
             flags: vk::FenceCreateFlags::SIGNALED,
             ..Default::default()
         };
-        let render_fence = unsafe {
-            device.create_fence(&fence_info, None)?
-        };
+        let render_fence = unsafe { device.create_fence(&fence_info, None)? };
 
         let sem_info = vk::SemaphoreCreateInfo::default();
-        let present_semaphore = unsafe {
-            device.create_semaphore(&sem_info, None)?
-        };
-        let render_semaphore = unsafe {
-            device.create_semaphore(&sem_info, None)?
-        };
+        let present_semaphore =
+            unsafe { device.create_semaphore(&sem_info, None)? };
+        let render_semaphore =
+            unsafe { device.create_semaphore(&sem_info, None)? };
 
         Ok((present_semaphore, render_semaphore, render_fence))
     }
-
 }

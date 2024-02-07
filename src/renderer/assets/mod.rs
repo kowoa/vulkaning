@@ -1,5 +1,4 @@
 // Asset initialization
-// VkPipeline, VkBuffer, VkImage, VkRenderPass
 pub mod frame;
 pub mod mesh;
 pub mod model;
@@ -20,8 +19,12 @@ use renderpass::Renderpass;
 use shader::Shader;
 
 use self::{
-    mesh::MeshPushConstants, model::Model, pipeline::Pipeline,
-    render_object::RenderObject, vertex::Vertex,
+    frame::{CameraData, Frame},
+    mesh::MeshPushConstants,
+    model::Model,
+    pipeline::Pipeline,
+    render_object::RenderObject,
+    vertex::Vertex,
 };
 
 use super::{core::Core, swapchain::Swapchain, vk_initializers};
@@ -150,6 +153,7 @@ impl Assets {
         window: &winit::window::Window,
         first_index: usize,
         count: usize,
+        frame: &mut Frame,
     ) {
         let cam_pos = Vec3::new(0.0, 6.0, 20.0);
         let view = Mat4::look_to_rh(
@@ -165,6 +169,16 @@ impl Assets {
             200.0,
         );
         proj.y_axis.y *= -1.0;
+
+        // Fill a CameraData struct
+        let cam_data = CameraData {
+            proj,
+            view,
+            viewproj: proj * view,
+        };
+
+        // Copy CameraData struct to buffer
+        frame.copy_data_to_camera_buffer(&[cam_data]);
 
         let mut last_pipeline = vk::Pipeline::null();
         let mut last_model = None;
@@ -183,12 +197,9 @@ impl Assets {
                 last_pipeline = render_obj.pipeline.pipeline;
             }
 
-            let model = render_obj.transform;
-            let transform = proj * view * model;
-
             let constants = MeshPushConstants {
                 data: Vec4::new(0.0, 0.0, 0.0, 0.0),
-                render_matrix: transform,
+                render_matrix: render_obj.transform,
             };
 
             unsafe {
@@ -213,6 +224,14 @@ impl Assets {
                         0,
                         &[render_obj.model.meshes[0].vertex_buffer.buffer],
                         &[offset],
+                    );
+                    device.cmd_bind_descriptor_sets(
+                        *cmd,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        render_obj.pipeline.pipeline_layout,
+                        0,
+                        &[frame.descriptor_set],
+                        &[],
                     );
                 }
                 last_model = model;
