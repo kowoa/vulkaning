@@ -7,6 +7,7 @@ use gpu_allocator::{
 
 use super::vk_initializers;
 
+#[derive(Debug)]
 pub struct AllocatedBuffer {
     pub buffer: vk::Buffer,
     pub allocation: Allocation,

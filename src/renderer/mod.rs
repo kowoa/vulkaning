@@ -6,7 +6,7 @@ mod core;
 mod memory;
 mod swapchain;
 
-use std::mem::ManuallyDrop;
+use std::{cell::RefCell, mem::ManuallyDrop, rc::Rc};
 
 use ash::vk;
 
@@ -31,6 +31,7 @@ pub struct Renderer {
     assets: Assets,
 
     frame_number: u32,
+    frames: Vec<Rc<RefCell<Frame>>>,
 }
 
 impl Renderer {
@@ -41,26 +42,8 @@ impl Renderer {
         let mut core = Core::new(window, event_loop)?;
         let swapchain = Swapchain::new(&mut core, window)?;
         let assets = Assets::new(&mut core, &swapchain, window)?;
-
-        Ok(Self {
-            core,
-            swapchain,
-            assets,
-            frame_number: 0,
-        })
-    }
-
-    pub fn render_loop(
-        self,
-        window: winit::window::Window,
-        event_loop: EventLoop<()>,
-    ) -> anyhow::Result<()> {
-        let mut close_requested = false;
-        let mut renderer = Some(self);
         let frames = {
             let mut frames = Vec::with_capacity(FRAME_OVERLAP as usize);
-            let mut core = renderer.unwrap().core;
-            let assets = renderer.unwrap().assets;
             let graphics_family_index =
                 core.queue_family_indices.graphics_family.unwrap();
             for _ in 0..FRAME_OVERLAP {
@@ -84,10 +67,27 @@ impl Renderer {
                     assets.global_set_layout,
                 )?;
 
-                frames.push(frame);
+                frames.push(Rc::new(RefCell::new(frame)));
             }
             frames
         };
+
+        Ok(Self {
+            core,
+            swapchain,
+            assets,
+            frame_number: 0,
+            frames,
+        })
+    }
+
+    pub fn render_loop(
+        self,
+        window: winit::window::Window,
+        event_loop: EventLoop<()>,
+    ) -> anyhow::Result<()> {
+        let mut close_requested = false;
+        let mut renderer = Some(self);
 
         Ok(event_loop.run(move |event, elwt| match event {
             Event::WindowEvent { event, window_id }
@@ -109,11 +109,10 @@ impl Renderer {
                     },
                     WindowEvent::RedrawRequested => {
                         if let Some(r) = &mut renderer {
-                            let frame = r.get_current_frame(&frames);
                             let swapchain_image_index =
-                                r.draw_frame(frame, &window).unwrap();
+                                r.draw_frame(&window).unwrap();
                             window.pre_present_notify();
-                            r.present_frame(frame, swapchain_image_index).unwrap();
+                            r.present_frame(swapchain_image_index).unwrap();
                         }
                     }
                     _ => (),
@@ -121,7 +120,7 @@ impl Renderer {
             }
             Event::AboutToWait => {
                 if close_requested {
-                    renderer.take().unwrap().cleanup(frames);
+                    renderer.take().unwrap().cleanup();
                     elwt.exit();
                 } else {
                     window.request_redraw();
@@ -131,15 +130,16 @@ impl Renderer {
         })?)
     }
 
-    fn get_current_frame(&self, frames: &Vec<Frame>) -> &mut Frame {
-        &mut frames[(self.frame_number % FRAME_OVERLAP) as usize]
+    fn get_current_frame(&self) -> Rc<RefCell<Frame>> {
+        self.frames[(self.frame_number % FRAME_OVERLAP) as usize].clone()
     }
 
     fn draw_frame(
         &self,
-        frame: &mut Frame,
         window: &winit::window::Window,
     ) -> anyhow::Result<u32> {
+        let frame = self.get_current_frame();
+        let mut frame = frame.borrow_mut();
         unsafe {
             let device = &self.core.device;
             let fences = [frame.render_fence];
@@ -221,7 +221,7 @@ impl Renderer {
                 window,
                 0,
                 self.assets.render_objs.len(),
-                frame,
+                &mut frame,
             );
 
             // RENDERING COMMANDS END
@@ -255,13 +255,13 @@ impl Renderer {
 
     fn present_frame(
         &mut self,
-        frame: &Frame,
         swapchain_image_index: u32,
     ) -> anyhow::Result<()> {
+        let frame = self.get_current_frame();
         let present_info = vk::PresentInfoKHR {
             p_swapchains: &self.swapchain.swapchain,
             swapchain_count: 1,
-            p_wait_semaphores: &frame.render_semaphore,
+            p_wait_semaphores: &frame.borrow().render_semaphore,
             wait_semaphore_count: 1,
             p_image_indices: &swapchain_image_index,
             ..Default::default()
@@ -278,21 +278,27 @@ impl Renderer {
         Ok(())
     }
 
-    fn cleanup(mut self, frames: Vec<Frame>) {
+    fn cleanup(mut self) {
         // Wait until all frames have finished rendering
-        for frame in &frames {
+        for frame in &self.frames {
             unsafe {
                 self.core
                     .device
-                    .wait_for_fences(&[frame.render_fence], true, 1000000000)
+                    .wait_for_fences(
+                        &[frame.borrow().render_fence],
+                        true,
+                        1000000000,
+                    )
                     .unwrap();
             }
         }
 
         let device = &self.core.device;
         self.assets.cleanup(device, &mut self.core.allocator);
-        for frame in frames {
-            frame.cleanup(device);
+        for frame in self.frames {
+            let frame = Rc::try_unwrap(frame);
+            let frame = frame.expect("Failed to cleanup frame");
+            frame.into_inner().cleanup(device, &mut self.core.allocator);
         }
         self.swapchain.cleanup(device, &mut self.core.allocator);
 

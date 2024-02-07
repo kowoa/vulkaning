@@ -11,6 +11,7 @@ pub struct CameraData {
     pub viewproj: Mat4,
 }
 
+#[derive(Debug)]
 pub struct Frame {
     pub present_semaphore: vk::Semaphore,
     pub render_semaphore: vk::Semaphore,
@@ -99,8 +100,9 @@ impl Frame {
         )?)
     }
 
-    pub fn cleanup(self, device: &ash::Device) {
+    pub fn cleanup(self, device: &ash::Device, allocator: &mut Allocator) {
         unsafe {
+            self.camera_buffer.cleanup(device, allocator);
             device.destroy_semaphore(self.render_semaphore, None);
             device.destroy_semaphore(self.present_semaphore, None);
             device.destroy_fence(self.render_fence, None);

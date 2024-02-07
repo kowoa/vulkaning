@@ -122,6 +122,11 @@ impl Assets {
         log::info!("Cleaning up assets ...");
 
         unsafe {
+            device.destroy_descriptor_pool(self.descriptor_pool, None);
+            device.destroy_descriptor_set_layout(self.global_set_layout, None);
+        }
+
+        unsafe {
             ManuallyDrop::drop(&mut self.render_objs);
         }
 
