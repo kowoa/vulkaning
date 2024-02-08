@@ -47,17 +47,6 @@ impl Renderer {
             let graphics_family_index =
                 core.queue_family_indices.graphics_family.unwrap();
             for _ in 0..FRAME_OVERLAP {
-                // Allocate one descriptor set for each frame
-                let descriptor_set = {
-                    let info = vk::DescriptorSetAllocateInfo {
-                        descriptor_pool: assets.descriptor_pool,
-                        descriptor_set_count: 1,
-                        p_set_layouts: &assets.global_set_layout,
-                        ..Default::default()
-                    };
-                    unsafe { core.device.allocate_descriptor_sets(&info)?[0] }
-                };
-
                 // Call Frame constructor
                 let frame = Frame::new(
                     &core.device,
