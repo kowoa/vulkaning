@@ -1,15 +1,9 @@
 use ash::vk;
-use glam::Mat4;
 use gpu_allocator::vulkan::Allocator;
 
 use crate::renderer::memory::AllocatedBuffer;
 
-#[derive(Copy, Clone)]
-pub struct CameraData {
-    pub view: Mat4,
-    pub proj: Mat4,
-    pub viewproj: Mat4,
-}
+use super::camera::GpuCameraData;
 
 #[derive(Debug)]
 pub struct Frame {
@@ -37,7 +31,7 @@ impl Frame {
         let camera_buffer = AllocatedBuffer::new(
             device,
             allocator,
-            std::mem::size_of::<CameraData>() as u64,
+            std::mem::size_of::<GpuCameraData>() as u64,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
             "Uniform Camera Buffer",
             gpu_allocator::MemoryLocation::CpuToGpu,
@@ -59,7 +53,7 @@ impl Frame {
             let binfo = vk::DescriptorBufferInfo {
                 buffer: camera_buffer.buffer,
                 offset: 0,
-                range: std::mem::size_of::<CameraData>() as u64,
+                range: std::mem::size_of::<GpuCameraData>() as u64,
             };
 
             let write = vk::WriteDescriptorSet {

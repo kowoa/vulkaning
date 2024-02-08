@@ -2,12 +2,16 @@
 
 use std::{
     collections::HashSet,
-    ffi::{c_void, CStr, CString}, mem::ManuallyDrop,
+    ffi::{c_void, CStr, CString},
+    mem::ManuallyDrop,
 };
 
 use anyhow::anyhow;
 use ash::vk;
-use gpu_allocator::{vulkan::{Allocator, AllocatorCreateDesc}, AllocatorDebugSettings};
+use gpu_allocator::{
+    vulkan::{Allocator, AllocatorCreateDesc},
+    AllocatorDebugSettings,
+};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use winit::event_loop::EventLoop;
 
@@ -33,6 +37,7 @@ pub struct Core {
     pub surface_loader: ash::extensions::khr::Surface,
 
     pub physical_device: vk::PhysicalDevice,
+    pub physical_device_props: vk::PhysicalDeviceProperties,
     pub device: ash::Device,
 
     pub graphics_queue: vk::Queue,
@@ -55,6 +60,16 @@ impl Core {
             create_surface(&entry, &instance, window)?;
         let physical_device =
             create_physical_device(&instance, &surface, &surface_loader)?;
+
+        let physical_device_props =
+            unsafe { instance.get_physical_device_properties(physical_device) };
+        log::info!(
+            "GPU has a minimum buffer alignment of {}",
+            physical_device_props
+                .limits
+                .min_uniform_buffer_offset_alignment
+        );
+
         let (device, graphics_queue, present_queue, queue_family_indices) =
             create_logical_device(
                 &instance,
@@ -87,6 +102,7 @@ impl Core {
             surface,
             surface_loader,
             physical_device,
+            physical_device_props,
             device,
             graphics_queue,
             present_queue,

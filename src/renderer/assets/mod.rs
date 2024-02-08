@@ -7,6 +7,8 @@ pub mod render_object;
 pub mod renderpass;
 pub mod shader;
 pub mod vertex;
+pub mod scene;
+pub mod camera;
 
 use std::{collections::HashMap, mem::ManuallyDrop, rc::Rc};
 
@@ -19,15 +21,15 @@ use renderpass::Renderpass;
 use shader::Shader;
 
 use self::{
-    frame::{CameraData, Frame},
+    frame::Frame,
     mesh::MeshPushConstants,
     model::Model,
     pipeline::Pipeline,
     render_object::RenderObject,
-    vertex::Vertex,
+    vertex::Vertex, camera::GpuCameraData, scene::GpuSceneData,
 };
 
-use super::{core::Core, swapchain::Swapchain, vk_initializers};
+use super::{core::Core, swapchain::Swapchain, vk_initializers, memory::AllocatedBuffer, FRAME_OVERLAP, utils};
 
 pub struct Assets {
     pub renderpasses: Vec<Renderpass>,
@@ -39,6 +41,9 @@ pub struct Assets {
     pub models: HashMap<String, Rc<Model>>,
 
     pub render_objs: ManuallyDrop<Vec<RenderObject>>,
+
+    //pub scene_params: GpuSceneData,
+    //pub scene_params_buffer: AllocatedBuffer,
 }
 
 impl Assets {
@@ -176,14 +181,14 @@ impl Assets {
         proj.y_axis.y *= -1.0;
 
         // Fill a CameraData struct
-        let cam_data = CameraData {
+        let cam_data = GpuCameraData {
             proj,
             view,
             viewproj: proj * view,
         };
 
         // Copy CameraData struct to buffer
-        frame.copy_data_to_camera_buffer(&[cam_data]);
+        let _ = frame.copy_data_to_camera_buffer(&[cam_data]);
 
         let mut last_pipeline = vk::Pipeline::null();
         let mut last_model = None;
