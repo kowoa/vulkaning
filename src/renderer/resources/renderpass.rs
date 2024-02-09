@@ -1,7 +1,7 @@
 use ash::vk;
 use color_eyre::eyre::Result;
 
-use crate::renderer::swapchain::Swapchain;
+use crate::{renderer::swapchain::Swapchain, window::Window};
 
 pub struct Renderpass {
     pub renderpass: vk::RenderPass,
@@ -12,15 +12,9 @@ impl Renderpass {
     pub fn new(
         device: &ash::Device,
         swapchain: &Swapchain,
-        window: &winit::window::Window,
     ) -> Result<Self> {
         let renderpass = create_renderpass(device, &swapchain)?;
-        let framebuffers = create_framebuffers(
-            &renderpass,
-            device,
-            swapchain,
-            window,
-        )?;
+        let framebuffers = create_framebuffers(&renderpass, device, swapchain)?;
 
         Ok(Self {
             renderpass,
@@ -106,15 +100,17 @@ fn create_renderpass(
     let depth_dependency = vk::SubpassDependency {
         src_subpass: vk::SUBPASS_EXTERNAL,
         dst_subpass: 0,
-        src_stage_mask: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
+        src_stage_mask: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+            | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
         src_access_mask: vk::AccessFlags::empty(),
-        dst_stage_mask: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
+        dst_stage_mask: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+            | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
         dst_access_mask: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
         ..Default::default()
     };
 
     let dependencies = [color_dependency, depth_dependency];
-    
+
     let renderpass_info = vk::RenderPassCreateInfo {
         attachment_count: 2,
         p_attachments: attachments.as_ptr(),
@@ -132,9 +128,9 @@ fn create_framebuffers(
     renderpass: &vk::RenderPass,
     device: &ash::Device,
     swapchain: &Swapchain,
-    window: &winit::window::Window,
 ) -> Result<Vec<vk::Framebuffer>> {
-    Ok(swapchain.image_views
+    Ok(swapchain
+        .image_views
         .iter()
         .map(|view| {
             let attachments = [*view, swapchain.depth_image.image_view];

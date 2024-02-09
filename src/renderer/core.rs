@@ -17,7 +17,7 @@ use winit::event_loop::EventLoop;
 
 use crate::renderer::vk_initializers;
 
-use super::{swapchain::query_swapchain_support, utils};
+use super::{swapchain::query_swapchain_support, utils, window::Window};
 
 const ENABLE_VALIDATION_LAYERS: bool = cfg!(debug_assertions);
 const REQUIRED_VALIDATION_LAYERS: [&'static str; 1] =
@@ -48,16 +48,13 @@ pub struct Core {
 }
 
 impl Core {
-    pub fn new(
-        window: &winit::window::Window,
-        event_loop: &EventLoop<()>,
-    ) -> Result<Self> {
+    pub fn new(window: &Window) -> Result<Self> {
         let entry = ash::Entry::linked();
-        let instance = create_instance(&entry, event_loop)?;
+        let instance = create_instance(&entry, &window.event_loop)?;
         let (debug_messenger, debug_messenger_loader) =
             create_debug_messenger(&entry, &instance)?;
         let (surface, surface_loader) =
-            create_surface(&entry, &instance, window)?;
+            create_surface(&entry, &instance, &window.window)?;
         let physical_device =
             create_physical_device(&instance, &surface, &surface_loader)?;
 

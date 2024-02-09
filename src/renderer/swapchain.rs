@@ -2,7 +2,7 @@ use color_eyre::eyre::Result;
 use ash::vk;
 use gpu_allocator::vulkan::Allocator;
 
-use super::{core::Core, memory::AllocatedImage};
+use super::{core::Core, memory::AllocatedImage, window::Window};
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
@@ -18,7 +18,7 @@ pub struct Swapchain {
 impl Swapchain {
     pub fn new(
         core: &mut Core,
-        window: &winit::window::Window,
+        window: &Window,
     ) -> Result<Self> {
         let (
             swapchain,
@@ -70,7 +70,7 @@ impl Swapchain {
 
 fn create_swapchain(
     core: &Core,
-    window: &winit::window::Window,
+    window: &Window,
 ) -> Result<(
     vk::SwapchainKHR,
     ash::extensions::khr::Swapchain,
@@ -91,7 +91,7 @@ fn create_swapchain(
         choose_swapchain_present_mode(&swapchain_support.present_modes);
 
     let extent =
-        choose_swapchain_extent(&swapchain_support.capabilities, window);
+        choose_swapchain_extent(&swapchain_support.capabilities, &window.window);
 
     let min_image_count = {
         let min = swapchain_support.capabilities.min_image_count;

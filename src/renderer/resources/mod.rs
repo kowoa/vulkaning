@@ -1,17 +1,17 @@
 // Asset initialization
+pub mod camera;
 pub mod frame;
 pub mod mesh;
 pub mod model;
 pub mod pipeline;
 pub mod render_object;
 pub mod renderpass;
+pub mod scene;
 pub mod shader;
 pub mod vertex;
-pub mod scene;
-pub mod camera;
 
-use std::{collections::HashMap, mem::ManuallyDrop, rc::Rc};
 use color_eyre::eyre::Result;
+use std::{collections::HashMap, mem::ManuallyDrop, rc::Rc};
 
 use ash::vk;
 use glam::{Mat4, Vec3, Vec4};
@@ -21,16 +21,18 @@ use pipeline::PipelineBuilder;
 use renderpass::Renderpass;
 use shader::Shader;
 
+use crate::window::Window;
+
 use self::{
-    frame::Frame,
-    mesh::MeshPushConstants,
-    model::Model,
-    pipeline::Pipeline,
-    render_object::RenderObject,
-    vertex::Vertex, camera::GpuCameraData, scene::GpuSceneData,
+    camera::GpuCameraData, frame::Frame, mesh::MeshPushConstants, model::Model,
+    pipeline::Pipeline, render_object::RenderObject, scene::GpuSceneData,
+    vertex::Vertex,
 };
 
-use super::{core::Core, swapchain::Swapchain, vk_initializers, memory::AllocatedBuffer, FRAME_OVERLAP, utils};
+use super::{
+    core::Core, memory::AllocatedBuffer, swapchain::Swapchain, utils,
+    vk_initializers, FRAME_OVERLAP,
+};
 
 pub struct Resources {
     pub renderpasses: Vec<Renderpass>,
@@ -42,7 +44,6 @@ pub struct Resources {
     pub models: HashMap<String, Rc<Model>>,
 
     pub render_objs: ManuallyDrop<Vec<RenderObject>>,
-
     //pub scene_params: GpuSceneData,
     //pub scene_params_buffer: AllocatedBuffer,
 }
@@ -51,12 +52,11 @@ impl Resources {
     pub fn new(
         core: &mut Core,
         swapchain: &Swapchain,
-        window: &winit::window::Window,
+        window: &Window,
     ) -> Result<Self> {
         let device = &core.device;
         let allocator = &mut core.allocator;
-
-        let renderpass = Renderpass::new(device, swapchain, window)?;
+        let renderpass = Renderpass::new(device, swapchain)?;
 
         let (global_set_layout, descriptor_pool) =
             create_descriptors(&core.device)?;

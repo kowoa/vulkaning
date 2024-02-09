@@ -6,7 +6,9 @@ mod memory;
 mod resources;
 mod swapchain;
 
-use color_eyre::eyre::Result;
+pub mod window;
+
+use color_eyre::eyre::{OptionExt, Result};
 use std::{cell::RefCell, mem::ManuallyDrop, rc::Rc};
 
 use ash::vk;
@@ -15,18 +17,19 @@ use winit::{
     event::{ElementState, Event, KeyEvent, WindowEvent},
     event_loop::EventLoop,
     keyboard::{Key, NamedKey},
-    window::{Window, WindowBuilder},
 };
 
 use self::{
     core::Core,
     resources::{frame::Frame, Resources},
     swapchain::Swapchain,
+    window::Window,
 };
 
 const FRAME_OVERLAP: u32 = 2;
 
 pub struct Renderer {
+    window: Option<Window>,
     core: Core,
     swapchain: Swapchain,
     resources: Resources,
@@ -36,13 +39,12 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(
-        window: &winit::window::Window,
-        event_loop: &winit::event_loop::EventLoop<()>,
-    ) -> Result<Self> {
-        let mut core = Core::new(window, event_loop)?;
-        let swapchain = Swapchain::new(&mut core, window)?;
-        let resources = Resources::new(&mut core, &swapchain, window)?;
+    pub fn new(window: Window) -> Result<Self> {
+        log::info!("Initializing renderer ...");
+
+        let mut core = Core::new(&window)?;
+        let swapchain = Swapchain::new(&mut core, &window)?;
+        let resources = Resources::new(&mut core, &swapchain, &window)?;
         let frames = {
             let mut frames = Vec::with_capacity(FRAME_OVERLAP as usize);
             let graphics_family_index =
@@ -63,6 +65,7 @@ impl Renderer {
         };
 
         Ok(Self {
+            window: Some(window),
             core,
             swapchain,
             resources,
@@ -71,14 +74,17 @@ impl Renderer {
         })
     }
 
-    pub fn run_loop(
-        self,
-        window: winit::window::Window,
-        event_loop: EventLoop<()>,
-    ) -> Result<()> {
-        let mut close_requested = false;
+    pub fn run_loop(mut self) -> Result<()> {
+        let window = self
+            .window
+            .take()
+            .ok_or_eyre("Renderer does not own a Window")?;
+        let event_loop = window.event_loop;
+        let window = window.window;
         let mut renderer = Some(self);
+        let mut close_requested = false;
 
+        log::info!("Starting render loop ...");
         Ok(event_loop.run(move |event, elwt| match event {
             Event::WindowEvent { event, window_id }
                 if window_id == window.id() =>
@@ -293,15 +299,4 @@ impl Renderer {
         }
         self.core.cleanup();
     }
-}
-
-pub fn create_window() -> Result<(Window, EventLoop<()>)> {
-    let event_loop = EventLoop::new()?;
-    let window = WindowBuilder::new()
-        .with_title("Vulkaning")
-        .with_inner_size(winit::dpi::LogicalSize::new(800, 600))
-        .with_resizable(false)
-        .build(&event_loop)?;
-
-    Ok((window, event_loop))
 }
