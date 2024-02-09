@@ -1,4 +1,3 @@
-use crate::renderer::assets::vertex::Vertex;
 use ash::vk;
 use gpu_allocator::{
     vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator},
@@ -6,7 +5,7 @@ use gpu_allocator::{
 };
 use color_eyre::eyre::Result;
 
-use super::vk_initializers;
+use super::{resources::vertex::Vertex, vk_initializers};
 
 #[derive(Debug)]
 pub struct AllocatedBuffer {

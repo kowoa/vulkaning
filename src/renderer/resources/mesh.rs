@@ -1,12 +1,13 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::renderer::assets::vertex::Vertex;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec4};
 use gpu_allocator::vulkan::Allocator;
 use color_eyre::eyre::Result;
 
 use crate::renderer::memory::AllocatedBuffer;
+
+use super::vertex::Vertex;
 
 #[derive(Pod, Zeroable, Copy, Clone, Debug)]
 #[repr(C)]

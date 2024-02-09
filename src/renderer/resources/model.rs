@@ -2,7 +2,7 @@ use glam::{Vec3, Vec2};
 use gpu_allocator::vulkan::Allocator;
 use color_eyre::eyre::Result;
 
-use crate::renderer::{core::Core, assets::vertex::Vertex};
+use crate::renderer::resources::vertex::Vertex;
 
 use super::mesh::Mesh;
 

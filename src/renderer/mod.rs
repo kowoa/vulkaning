@@ -1,13 +1,13 @@
 mod utils;
 mod vk_initializers;
 
-mod assets;
 mod core;
 mod memory;
+mod resources;
 mod swapchain;
 
-use std::{cell::RefCell, mem::ManuallyDrop, rc::Rc};
 use color_eyre::eyre::Result;
+use std::{cell::RefCell, mem::ManuallyDrop, rc::Rc};
 
 use ash::vk;
 
@@ -19,8 +19,8 @@ use winit::{
 };
 
 use self::{
-    assets::{frame::Frame, Assets},
     core::Core,
+    resources::{frame::Frame, Resources},
     swapchain::Swapchain,
 };
 
@@ -29,7 +29,7 @@ const FRAME_OVERLAP: u32 = 2;
 pub struct Renderer {
     core: Core,
     swapchain: Swapchain,
-    assets: Assets,
+    resources: Resources,
 
     frame_number: u32,
     frames: Vec<Rc<RefCell<Frame>>>,
@@ -42,7 +42,7 @@ impl Renderer {
     ) -> Result<Self> {
         let mut core = Core::new(window, event_loop)?;
         let swapchain = Swapchain::new(&mut core, window)?;
-        let assets = Assets::new(&mut core, &swapchain, window)?;
+        let resources = Resources::new(&mut core, &swapchain, window)?;
         let frames = {
             let mut frames = Vec::with_capacity(FRAME_OVERLAP as usize);
             let graphics_family_index =
@@ -53,8 +53,8 @@ impl Renderer {
                     &core.device,
                     &mut core.allocator,
                     graphics_family_index,
-                    assets.descriptor_pool,
-                    assets.global_set_layout,
+                    resources.descriptor_pool,
+                    resources.global_set_layout,
                 )?;
 
                 frames.push(Rc::new(RefCell::new(frame)));
@@ -65,7 +65,7 @@ impl Renderer {
         Ok(Self {
             core,
             swapchain,
-            assets,
+            resources,
             frame_number: 0,
             frames,
         })
@@ -124,10 +124,7 @@ impl Renderer {
         self.frames[(self.frame_number % FRAME_OVERLAP) as usize].clone()
     }
 
-    fn draw_frame(
-        &self,
-        window: &winit::window::Window,
-    ) -> Result<u32> {
+    fn draw_frame(&self, window: &winit::window::Window) -> Result<u32> {
         let frame = self.get_current_frame();
         let mut frame = frame.borrow_mut();
         unsafe {
@@ -182,7 +179,7 @@ impl Renderer {
             };
 
             // Start the main renderpass
-            let rp = &self.assets.renderpasses[0];
+            let rp = &self.resources.renderpasses[0];
             let rp_begin_info = vk::RenderPassBeginInfo {
                 render_pass: rp.renderpass,
                 render_area: vk::Rect2D {
@@ -205,12 +202,12 @@ impl Renderer {
 
             // RENDERING COMMANDS START
 
-            self.assets.draw_render_objects(
+            self.resources.draw_render_objects(
                 device,
                 &cmd,
                 window,
                 0,
-                self.assets.render_objs.len(),
+                self.resources.render_objs.len(),
                 &mut frame,
             );
 
@@ -243,10 +240,7 @@ impl Renderer {
         }
     }
 
-    fn present_frame(
-        &mut self,
-        swapchain_image_index: u32,
-    ) -> Result<()> {
+    fn present_frame(&mut self, swapchain_image_index: u32) -> Result<()> {
         let frame = self.get_current_frame();
         let present_info = vk::PresentInfoKHR {
             p_swapchains: &self.swapchain.swapchain,
@@ -284,7 +278,7 @@ impl Renderer {
         }
 
         let device = &self.core.device;
-        self.assets.cleanup(device, &mut self.core.allocator);
+        self.resources.cleanup(device, &mut self.core.allocator);
         for frame in self.frames {
             let frame = Rc::try_unwrap(frame);
             let frame = frame.expect("Failed to cleanup frame");

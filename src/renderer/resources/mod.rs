@@ -32,7 +32,7 @@ use self::{
 
 use super::{core::Core, swapchain::Swapchain, vk_initializers, memory::AllocatedBuffer, FRAME_OVERLAP, utils};
 
-pub struct Assets {
+pub struct Resources {
     pub renderpasses: Vec<Renderpass>,
 
     pub global_set_layout: vk::DescriptorSetLayout,
@@ -47,7 +47,7 @@ pub struct Assets {
     //pub scene_params_buffer: AllocatedBuffer,
 }
 
-impl Assets {
+impl Resources {
     pub fn new(
         core: &mut Core,
         swapchain: &Swapchain,
