@@ -11,6 +11,7 @@ pub mod scene;
 pub mod camera;
 
 use std::{collections::HashMap, mem::ManuallyDrop, rc::Rc};
+use color_eyre::eyre::Result;
 
 use ash::vk;
 use glam::{Mat4, Vec3, Vec4};
@@ -51,7 +52,7 @@ impl Assets {
         core: &mut Core,
         swapchain: &Swapchain,
         window: &winit::window::Window,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self> {
         let device = &core.device;
         let allocator = &mut core.allocator;
 
@@ -267,7 +268,7 @@ fn create_default_pipeline(
     swapchain: &Swapchain,
     renderpass: &Renderpass,
     global_set_layout: &vk::DescriptorSetLayout,
-) -> anyhow::Result<Pipeline> {
+) -> Result<Pipeline> {
     let mut layout_info = vk_initializers::pipeline_layout_create_info();
 
     // Push constants setup
@@ -304,7 +305,7 @@ fn create_default_pipeline(
 
 fn create_descriptors(
     device: &ash::Device,
-) -> anyhow::Result<(vk::DescriptorSetLayout, vk::DescriptorPool)> {
+) -> Result<(vk::DescriptorSetLayout, vk::DescriptorPool)> {
     let global_set_layout = {
         let camera_buffer_binding = vk::DescriptorSetLayoutBinding {
             binding: 0,

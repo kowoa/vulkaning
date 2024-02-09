@@ -1,5 +1,6 @@
 use ash::vk;
 use gpu_allocator::vulkan::Allocator;
+use color_eyre::eyre::Result;
 
 use crate::renderer::memory::AllocatedBuffer;
 
@@ -23,7 +24,7 @@ impl Frame {
         graphics_family_index: u32,
         descriptor_pool: vk::DescriptorPool,
         descriptor_set_layout: vk::DescriptorSetLayout,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self> {
         let (command_pool, command_buffer) =
             Self::create_commands(device, graphics_family_index)?;
         let (present_semaphore, render_semaphore, render_fence) =
@@ -83,7 +84,7 @@ impl Frame {
     pub fn copy_data_to_camera_buffer<T>(
         &mut self,
         data: &[T],
-    ) -> anyhow::Result<presser::CopyRecord>
+    ) -> Result<presser::CopyRecord>
     where
         T: Copy,
     {
@@ -107,7 +108,7 @@ impl Frame {
     fn create_commands(
         device: &ash::Device,
         graphics_family_index: u32,
-    ) -> anyhow::Result<(vk::CommandPool, vk::CommandBuffer)> {
+    ) -> Result<(vk::CommandPool, vk::CommandBuffer)> {
         let pool_info = vk::CommandPoolCreateInfo {
             queue_family_index: graphics_family_index,
             // Allow the pool to reset individual command buffers
@@ -131,7 +132,7 @@ impl Frame {
 
     fn create_sync_objs(
         device: &ash::Device,
-    ) -> anyhow::Result<(vk::Semaphore, vk::Semaphore, vk::Fence)> {
+    ) -> Result<(vk::Semaphore, vk::Semaphore, vk::Fence)> {
         let fence_info = vk::FenceCreateInfo {
             // Fence starts out signaled so we can wait on it for the first frame
             flags: vk::FenceCreateFlags::SIGNALED,

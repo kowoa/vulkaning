@@ -1,6 +1,6 @@
 use std::ffi::CString;
+use color_eyre::eyre::{eyre, Result};
 
-use anyhow::anyhow;
 use ash::vk;
 
 use crate::renderer::{swapchain::Swapchain, vk_initializers};
@@ -43,7 +43,7 @@ impl PipelineBuilder {
         frag_shader_mod: &vk::ShaderModule,
         device: &ash::Device,
         swapchain: &Swapchain,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self> {
         use vk_initializers as vkinit;
 
         let shader_main_fn_name = CString::new("main").unwrap();
@@ -140,7 +140,7 @@ impl PipelineBuilder {
         self,
         device: &ash::Device,
         renderpass: vk::RenderPass,
-    ) -> anyhow::Result<Pipeline> {
+    ) -> Result<Pipeline> {
         let viewport_state_info = vk::PipelineViewportStateCreateInfo {
             viewport_count: 1,
             p_viewports: &self.viewport,
@@ -183,7 +183,7 @@ impl PipelineBuilder {
                 None,
             ) {
                 Ok(pipelines) => Ok(pipelines),
-                Err(_) => Err(anyhow!("Failed to create graphics piplines")),
+                Err(_) => Err(eyre!("Failed to create graphics piplines")),
             }
         }?;
 
@@ -196,7 +196,7 @@ impl PipelineBuilder {
 
 fn default_pipeline_layout(
     device: &ash::Device,
-) -> anyhow::Result<vk::PipelineLayout> {
+) -> Result<vk::PipelineLayout> {
     // Build the pipeline layout that controls the inputs/outputs of the shader
     let layout_info = vk_initializers::pipeline_layout_create_info();
     Ok(unsafe { device.create_pipeline_layout(&layout_info, None)? })

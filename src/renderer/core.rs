@@ -5,8 +5,8 @@ use std::{
     ffi::{c_void, CStr, CString},
     mem::ManuallyDrop,
 };
+use color_eyre::eyre::{eyre, Result};
 
-use anyhow::anyhow;
 use ash::vk;
 use gpu_allocator::{
     vulkan::{Allocator, AllocatorCreateDesc},
@@ -51,7 +51,7 @@ impl Core {
     pub fn new(
         window: &winit::window::Window,
         event_loop: &EventLoop<()>,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self> {
         let entry = ash::Entry::linked();
         let instance = create_instance(&entry, event_loop)?;
         let (debug_messenger, debug_messenger_loader) =
@@ -129,7 +129,7 @@ impl Core {
 fn create_instance(
     entry: &ash::Entry,
     event_loop: &EventLoop<()>,
-) -> anyhow::Result<ash::Instance> {
+) -> Result<ash::Instance> {
     if ENABLE_VALIDATION_LAYERS {
         check_required_validation_layers(entry)?;
     }
@@ -179,7 +179,7 @@ fn create_instance(
 fn create_debug_messenger(
     entry: &ash::Entry,
     instance: &ash::Instance,
-) -> anyhow::Result<(
+) -> Result<(
     vk::DebugUtilsMessengerEXT,
     ash::extensions::ext::DebugUtils,
 )> {
@@ -201,7 +201,7 @@ fn create_surface(
     entry: &ash::Entry,
     instance: &ash::Instance,
     window: &winit::window::Window,
-) -> anyhow::Result<(vk::SurfaceKHR, ash::extensions::khr::Surface)> {
+) -> Result<(vk::SurfaceKHR, ash::extensions::khr::Surface)> {
     let surface = unsafe {
         ash_window::create_surface(
             entry,
@@ -219,10 +219,10 @@ fn create_physical_device(
     instance: &ash::Instance,
     surface: &vk::SurfaceKHR,
     surface_loader: &ash::extensions::khr::Surface,
-) -> anyhow::Result<vk::PhysicalDevice> {
+) -> Result<vk::PhysicalDevice> {
     let devices = unsafe { instance.enumerate_physical_devices()? };
     if devices.is_empty() {
-        return Err(anyhow!("Failed to find a GPU with Vulkan support"));
+        return Err(eyre!("Failed to find a GPU with Vulkan support"));
     }
 
     let suitable_devices = devices
@@ -241,7 +241,7 @@ fn create_physical_device(
     let chosen_device = suitable_devices.get(0);
     match chosen_device {
         Some(device) => Ok(**device),
-        None => Err(anyhow!("Failed to find a suitable GPU")),
+        None => Err(eyre!("Failed to find a suitable GPU")),
     }
 }
 
@@ -250,7 +250,7 @@ fn create_logical_device(
     physical_device: &vk::PhysicalDevice,
     surface: &vk::SurfaceKHR,
     surface_loader: &ash::extensions::khr::Surface,
-) -> anyhow::Result<(ash::Device, vk::Queue, vk::Queue, QueueFamilyIndices)> {
+) -> Result<(ash::Device, vk::Queue, vk::Queue, QueueFamilyIndices)> {
     let indices = find_queue_families(
         instance,
         physical_device,
@@ -260,10 +260,10 @@ fn create_logical_device(
 
     let graphics_family = indices
         .graphics_family
-        .ok_or(anyhow!("Graphics queue family not initialized"))?;
+        .ok_or(eyre!("Graphics queue family not initialized"))?;
     let present_family = indices
         .present_family
-        .ok_or(anyhow!("Presentation queue family not initialized"))?;
+        .ok_or(eyre!("Presentation queue family not initialized"))?;
     let unique_queue_families =
         HashSet::from([graphics_family, present_family]);
 
@@ -312,7 +312,7 @@ fn create_logical_device(
     Ok((device, graphics_queue, present_queue, indices))
 }
 
-fn check_required_validation_layers(entry: &ash::Entry) -> anyhow::Result<()> {
+fn check_required_validation_layers(entry: &ash::Entry) -> Result<()> {
     if !ENABLE_VALIDATION_LAYERS {
         return Ok(());
     }
@@ -330,14 +330,14 @@ fn check_required_validation_layers(entry: &ash::Entry) -> anyhow::Result<()> {
     match all_layers_found {
         true => Ok(()),
         false => {
-            Err(anyhow!("Required validation layers are not all available"))
+            Err(eyre!("Required validation layers are not all available"))
         }
     }
 }
 
 fn get_required_extension_names(
     event_loop: &EventLoop<()>,
-) -> anyhow::Result<Vec<*const i8>> {
+) -> Result<Vec<*const i8>> {
     let mut ext_names = Vec::new();
     ext_names.extend(ash_window::enumerate_required_extensions(
         event_loop.raw_display_handle(),
@@ -353,7 +353,7 @@ fn physical_device_is_suitable(
     instance: &ash::Instance,
     surface: &vk::SurfaceKHR,
     surface_loader: &ash::extensions::khr::Surface,
-) -> anyhow::Result<bool> {
+) -> Result<bool> {
     #[cfg(debug_assertions)]
     {
         let dev_properties = unsafe {
@@ -430,7 +430,7 @@ fn physical_device_is_suitable(
 fn check_required_device_extensions(
     physical_device: &vk::PhysicalDevice,
     instance: &ash::Instance,
-) -> anyhow::Result<bool> {
+) -> Result<bool> {
     let available_exts = unsafe {
         instance.enumerate_device_extension_properties(*physical_device)?
     }
@@ -462,7 +462,7 @@ fn find_queue_families(
     physical_device: &vk::PhysicalDevice,
     surface: &vk::SurfaceKHR,
     surface_loader: &ash::extensions::khr::Surface,
-) -> anyhow::Result<QueueFamilyIndices> {
+) -> Result<QueueFamilyIndices> {
     let queue_families = unsafe {
         instance.get_physical_device_queue_family_properties(*physical_device)
     };

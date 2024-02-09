@@ -1,5 +1,6 @@
 use glam::{Vec3, Vec2};
 use gpu_allocator::vulkan::Allocator;
+use color_eyre::eyre::Result;
 
 use crate::renderer::{core::Core, assets::vertex::Vertex};
 
@@ -19,7 +20,7 @@ impl Model {
         filename: &str,
         device: &ash::Device,
         allocator: &mut Allocator,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self> {
         let (models, materials) =
             tobj::load_obj(filename, &tobj::LoadOptions {
                 single_index: true,

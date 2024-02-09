@@ -1,7 +1,6 @@
-use anyhow::Context;
+use color_eyre::eyre::{Context, Result};
 use ash::vk;
-use std::fs::File;
-use std::io::Read;
+use std::{fs::File, io::Read};
 
 const SHADERBUILD_DIR: &'static str = "./shaderbuild";
 
@@ -14,7 +13,7 @@ impl Shader {
     pub fn new(
         shadername: &str,
         device: &ash::Device,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self> {
         let vert_filepath =
             format!("{}/{}-vert.spv", SHADERBUILD_DIR, shadername);
         let frag_filepath =
@@ -45,7 +44,7 @@ impl Shader {
     fn create_shader_module(
         device: &ash::Device,
         code: &Vec<u8>,
-    ) -> anyhow::Result<vk::ShaderModule> {
+    ) -> Result<vk::ShaderModule> {
         let create_info = vk::ShaderModuleCreateInfo {
             code_size: code.len(),
             p_code: code.as_ptr() as *const u32,

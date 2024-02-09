@@ -1,3 +1,4 @@
+use color_eyre::eyre::Result;
 use ash::vk;
 use gpu_allocator::vulkan::Allocator;
 
@@ -18,7 +19,7 @@ impl Swapchain {
     pub fn new(
         core: &mut Core,
         window: &winit::window::Window,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self> {
         let (
             swapchain,
             swapchain_loader,
@@ -70,7 +71,7 @@ impl Swapchain {
 fn create_swapchain(
     core: &Core,
     window: &winit::window::Window,
-) -> anyhow::Result<(
+) -> Result<(
     vk::SwapchainKHR,
     ash::extensions::khr::Swapchain,
     Vec<vk::Image>,
@@ -167,7 +168,7 @@ fn create_image_views(
     core_objs: &Core,
     swapchain_image_format: &vk::Format,
     images: &Vec<vk::Image>,
-) -> anyhow::Result<Vec<vk::ImageView>> {
+) -> Result<Vec<vk::ImageView>> {
     let views = images
         .iter()
         .map(|image| {
@@ -255,7 +256,7 @@ pub fn query_swapchain_support(
     device: &vk::PhysicalDevice,
     surface: &vk::SurfaceKHR,
     surface_loader: &ash::extensions::khr::Surface,
-) -> anyhow::Result<SwapchainSupportDetails> {
+) -> Result<SwapchainSupportDetails> {
     let capabilities = unsafe {
         surface_loader
             .get_physical_device_surface_capabilities(*device, *surface)?

@@ -1,4 +1,5 @@
 use ash::vk;
+use color_eyre::eyre::Result;
 
 use crate::renderer::swapchain::Swapchain;
 
@@ -12,7 +13,7 @@ impl Renderpass {
         device: &ash::Device,
         swapchain: &Swapchain,
         window: &winit::window::Window,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self> {
         let renderpass = create_renderpass(device, &swapchain)?;
         let framebuffers = create_framebuffers(
             &renderpass,
@@ -41,7 +42,7 @@ impl Renderpass {
 fn create_renderpass(
     device: &ash::Device,
     swapchain: &Swapchain,
-) -> anyhow::Result<vk::RenderPass> {
+) -> Result<vk::RenderPass> {
     // Description of the image we will be writing into with rendering commands
     let color_attachment = vk::AttachmentDescription {
         format: swapchain.image_format,
@@ -132,7 +133,7 @@ fn create_framebuffers(
     device: &ash::Device,
     swapchain: &Swapchain,
     window: &winit::window::Window,
-) -> anyhow::Result<Vec<vk::Framebuffer>> {
+) -> Result<Vec<vk::Framebuffer>> {
     Ok(swapchain.image_views
         .iter()
         .map(|view| {

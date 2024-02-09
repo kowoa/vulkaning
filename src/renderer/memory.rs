@@ -4,6 +4,7 @@ use gpu_allocator::{
     vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator},
     MemoryLocation,
 };
+use color_eyre::eyre::Result;
 
 use super::vk_initializers;
 
@@ -21,7 +22,7 @@ impl AllocatedBuffer {
         buffer_usage: vk::BufferUsageFlags,
         alloc_name: &str,
         alloc_loc: MemoryLocation,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self> {
         let buffer = {
             let buffer_info = vk::BufferCreateInfo {
                 size: buffer_size,
@@ -56,7 +57,7 @@ impl AllocatedBuffer {
         vertices: &Vec<Vertex>,
         device: &ash::Device,
         allocator: &mut Allocator,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self> {
         let mut buffer = Self::new(
             device,
             allocator,
@@ -71,7 +72,7 @@ impl AllocatedBuffer {
         Ok(buffer)
     }
 
-    pub fn write<T>(&mut self, data: &[T]) -> anyhow::Result<presser::CopyRecord>
+    pub fn write<T>(&mut self, data: &[T]) -> Result<presser::CopyRecord>
     where
         T: Copy,
     {
@@ -102,7 +103,7 @@ impl AllocatedImage {
         extent: vk::Extent3D,
         device: &ash::Device,
         allocator: &mut Allocator,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self> {
         let format = vk::Format::D32_SFLOAT;
 
         let image = {

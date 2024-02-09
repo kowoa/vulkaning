@@ -4,6 +4,7 @@ use crate::renderer::assets::vertex::Vertex;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec4};
 use gpu_allocator::vulkan::Allocator;
+use color_eyre::eyre::Result;
 
 use crate::renderer::memory::AllocatedBuffer;
 
@@ -33,7 +34,7 @@ impl Mesh {
         vertices: Vec<Vertex>,
         device: &ash::Device,
         allocator: &mut Allocator,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self> {
         let id = MESH_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
         let vertex_buffer =
             AllocatedBuffer::new_vertex_buffer(&vertices, device, allocator)?;
@@ -52,7 +53,7 @@ impl Mesh {
     pub fn new_triangle(
         device: &ash::Device,
         allocator: &mut Allocator,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self> {
         let vertices = vec![
             Vertex {
                 position: [-0.5, -0.5, 0.0].into(),

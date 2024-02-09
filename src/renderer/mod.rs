@@ -7,6 +7,7 @@ mod memory;
 mod swapchain;
 
 use std::{cell::RefCell, mem::ManuallyDrop, rc::Rc};
+use color_eyre::eyre::Result;
 
 use ash::vk;
 
@@ -38,7 +39,7 @@ impl Renderer {
     pub fn new(
         window: &winit::window::Window,
         event_loop: &winit::event_loop::EventLoop<()>,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self> {
         let mut core = Core::new(window, event_loop)?;
         let swapchain = Swapchain::new(&mut core, window)?;
         let assets = Assets::new(&mut core, &swapchain, window)?;
@@ -70,11 +71,11 @@ impl Renderer {
         })
     }
 
-    pub fn render_loop(
+    pub fn run_loop(
         self,
         window: winit::window::Window,
         event_loop: EventLoop<()>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         let mut close_requested = false;
         let mut renderer = Some(self);
 
@@ -126,7 +127,7 @@ impl Renderer {
     fn draw_frame(
         &self,
         window: &winit::window::Window,
-    ) -> anyhow::Result<u32> {
+    ) -> Result<u32> {
         let frame = self.get_current_frame();
         let mut frame = frame.borrow_mut();
         unsafe {
@@ -245,7 +246,7 @@ impl Renderer {
     fn present_frame(
         &mut self,
         swapchain_image_index: u32,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         let frame = self.get_current_frame();
         let present_info = vk::PresentInfoKHR {
             p_swapchains: &self.swapchain.swapchain,
@@ -300,7 +301,7 @@ impl Renderer {
     }
 }
 
-pub fn create_window() -> anyhow::Result<(Window, EventLoop<()>)> {
+pub fn create_window() -> Result<(Window, EventLoop<()>)> {
     let event_loop = EventLoop::new()?;
     let window = WindowBuilder::new()
         .with_title("Vulkaning")
