@@ -1,11 +1,11 @@
 // Engine initialization
 
+use color_eyre::eyre::{eyre, Result};
 use std::{
     collections::HashSet,
     ffi::{c_void, CStr, CString},
     mem::ManuallyDrop,
 };
-use color_eyre::eyre::{eyre, Result};
 
 use ash::vk;
 use gpu_allocator::{
@@ -15,9 +15,9 @@ use gpu_allocator::{
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use winit::event_loop::EventLoop;
 
-use crate::renderer::vk_initializers;
-
-use super::{swapchain::query_swapchain_support, utils, window::Window};
+use super::{
+    swapchain::query_swapchain_support, utils, vkinit, window::Window,
+};
 
 const ENABLE_VALIDATION_LAYERS: bool = cfg!(debug_assertions);
 const REQUIRED_VALIDATION_LAYERS: [&'static str; 1] =
@@ -108,6 +108,20 @@ impl Core {
         })
     }
 
+    pub fn min_uniform_buffer_offset_alignment(&self) -> u64 {
+        self.physical_device_props
+            .limits
+            .min_uniform_buffer_offset_alignment
+    }
+
+    /// Returns the padded size of the buffer
+    pub fn pad_uniform_buffer_size(&self, original_size: u64) -> u64 {
+        utils::pad_uniform_buffer_size(
+            original_size,
+            self.min_uniform_buffer_offset_alignment()
+        )
+    }
+
     pub fn cleanup(self) {
         log::info!("Cleaning up core ...");
         unsafe {
@@ -146,7 +160,7 @@ fn create_instance(
         .map(|s| s.as_c_str())
         .collect::<Vec<_>>();
 
-    let debug_info = vk_initializers::debug_utils_messenger_create_info();
+    let debug_info = vkinit::debug_utils_messenger_create_info();
     let instance_info = vk::InstanceCreateInfo {
         p_next: if ENABLE_VALIDATION_LAYERS {
             &debug_info as *const vk::DebugUtilsMessengerCreateInfoEXT
@@ -176,15 +190,12 @@ fn create_instance(
 fn create_debug_messenger(
     entry: &ash::Entry,
     instance: &ash::Instance,
-) -> Result<(
-    vk::DebugUtilsMessengerEXT,
-    ash::extensions::ext::DebugUtils,
-)> {
+) -> Result<(vk::DebugUtilsMessengerEXT, ash::extensions::ext::DebugUtils)> {
     let debug_messenger_loader =
         ash::extensions::ext::DebugUtils::new(entry, instance);
 
     if ENABLE_VALIDATION_LAYERS {
-        let info = vk_initializers::debug_utils_messenger_create_info();
+        let info = vkinit::debug_utils_messenger_create_info();
         let debug_messenger = unsafe {
             debug_messenger_loader.create_debug_utils_messenger(&info, None)?
         };
@@ -326,9 +337,7 @@ fn check_required_validation_layers(entry: &ash::Entry) -> Result<()> {
 
     match all_layers_found {
         true => Ok(()),
-        false => {
-            Err(eyre!("Required validation layers are not all available"))
-        }
+        false => Err(eyre!("Required validation layers are not all available")),
     }
 }
 

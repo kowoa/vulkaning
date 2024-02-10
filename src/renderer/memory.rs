@@ -5,7 +5,7 @@ use gpu_allocator::{
 };
 use color_eyre::eyre::Result;
 
-use super::{resources::vertex::Vertex, vk_initializers};
+use super::{resources::vertex::Vertex, vkinit};
 
 #[derive(Debug)]
 pub struct AllocatedBuffer {
@@ -66,19 +66,19 @@ impl AllocatedBuffer {
             MemoryLocation::CpuToGpu,
         )?;
 
-        let _copy_record = buffer.write(&vertices[..])?;
+        let _copy_record = buffer.write(&vertices[..], 0)?;
 
         Ok(buffer)
     }
 
-    pub fn write<T>(&mut self, data: &[T]) -> Result<presser::CopyRecord>
+    pub fn write<T>(&mut self, data: &[T], start_offset: usize) -> Result<presser::CopyRecord>
     where
         T: Copy,
     {
         Ok(presser::copy_from_slice_to_offset(
             data,
             &mut self.allocation,
-            0,
+            start_offset
         )?)
     }
 
@@ -108,7 +108,7 @@ impl AllocatedImage {
         let image = {
             let usage_flags = vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
             let info =
-                vk_initializers::image_create_info(format, usage_flags, extent);
+                vkinit::image_create_info(format, usage_flags, extent);
             unsafe { device.create_image(&info, None)? }
         };
 
@@ -127,7 +127,7 @@ impl AllocatedImage {
         }
 
         let image_view = {
-            let info = vk_initializers::image_view_create_info(
+            let info = vkinit::image_view_create_info(
                 format,
                 image,
                 vk::ImageAspectFlags::DEPTH,

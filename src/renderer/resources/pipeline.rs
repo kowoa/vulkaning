@@ -3,7 +3,7 @@ use color_eyre::eyre::{eyre, Result};
 
 use ash::vk;
 
-use crate::renderer::{swapchain::Swapchain, vk_initializers};
+use crate::renderer::{swapchain::Swapchain, vkinit};
 
 use super::vertex::VertexInputDescription;
 
@@ -44,8 +44,6 @@ impl PipelineBuilder {
         device: &ash::Device,
         swapchain: &Swapchain,
     ) -> Result<Self> {
-        use vk_initializers as vkinit;
-
         let shader_main_fn_name = CString::new("main").unwrap();
         let shader_stages = vec![
             vkinit::pipeline_shader_stage_create_info(
@@ -198,6 +196,6 @@ fn default_pipeline_layout(
     device: &ash::Device,
 ) -> Result<vk::PipelineLayout> {
     // Build the pipeline layout that controls the inputs/outputs of the shader
-    let layout_info = vk_initializers::pipeline_layout_create_info();
+    let layout_info = vkinit::pipeline_layout_create_info();
     Ok(unsafe { device.create_pipeline_layout(&layout_info, None)? })
 }

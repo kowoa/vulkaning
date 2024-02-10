@@ -24,17 +24,32 @@ mod tests {
     use crate::renderer::utils::pad_uniform_buffer_size;
 
     #[test]
-    fn test_pad_uniform_buffer_size_0_alignment() {
+    fn test_pad_uniform_buffer_32_size_0_alignment() {
         assert_eq!(pad_uniform_buffer_size(32, 0), 32);
     }
 
     #[test]
-    fn test_pad_uniform_buffer_size_32_alignment() {
+    fn test_pad_uniform_buffer_32_size_32_alignment() {
         assert_eq!(pad_uniform_buffer_size(32, 32), 32);
     }
 
     #[test]
-    fn test_pad_uniform_buffer_size_64_alignment() {
+    fn test_pad_uniform_buffer_32_size_64_alignment() {
         assert_eq!(pad_uniform_buffer_size(32, 64), 64);
+    }
+
+    #[test]
+    fn test_pad_uniform_buffer_32_size_54_alignment() {
+        assert_eq!(pad_uniform_buffer_size(32, 54), 64);
+    }
+
+    #[test]
+    fn test_pad_uniform_buffer_22_size_64_alignment() {
+        assert_eq!(pad_uniform_buffer_size(22, 64), 64);
+    }
+
+    #[test]
+    fn test_pad_uniform_buffer_22_size_54_alignment() {
+        assert_eq!(pad_uniform_buffer_size(22, 54), 74);
     }
 }

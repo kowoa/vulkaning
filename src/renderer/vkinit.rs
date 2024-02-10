@@ -162,6 +162,36 @@ pub fn depth_stencil_create_info(
     }
 }
 
+pub fn descriptor_set_layout_binding(
+    descriptor_type: vk::DescriptorType,
+    stage_flags: vk::ShaderStageFlags,
+    binding: u32,
+) -> vk::DescriptorSetLayoutBinding {
+    vk::DescriptorSetLayoutBinding {
+        binding,
+        descriptor_count: 1,
+        descriptor_type,
+        p_immutable_samplers: std::ptr::null(),
+        stage_flags,
+    }
+}
+
+pub fn write_descriptor_set(
+    descriptor_type: vk::DescriptorType,
+    dst_set: vk::DescriptorSet,
+    dst_binding: u32,
+    p_buffer_info: *const vk::DescriptorBufferInfo,
+) -> vk::WriteDescriptorSet {
+    vk::WriteDescriptorSet {
+        dst_binding,
+        dst_set,
+        descriptor_count: 1,
+        descriptor_type,
+        p_buffer_info,
+        ..Default::default()
+    }
+}
+
 pub fn debug_utils_messenger_create_info(
 ) -> vk::DebugUtilsMessengerCreateInfoEXT {
     let message_severity = vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE

@@ -1,9 +1,10 @@
 use glam::Vec4;
 
+#[derive(Default, Copy, Clone)]
 pub struct GpuSceneData {
-    fog_color: Vec4, // w for exponent
-    fog_distances: Vec4, // x for min, y for max, zw unused
-    ambient_color: Vec4,
-    sunlight_direction: Vec4, // w for sun power
-    sunlight_color: Vec4,
+    pub fog_color: Vec4, // w for exponent
+    pub fog_distances: Vec4, // x for min, y for max, zw unused
+    pub ambient_color: Vec4,
+    pub sunlight_direction: Vec4, // w for sun power
+    pub sunlight_color: Vec4,
 }

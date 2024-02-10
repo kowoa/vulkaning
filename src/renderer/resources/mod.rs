@@ -21,52 +21,39 @@ use pipeline::PipelineBuilder;
 use renderpass::Renderpass;
 use shader::Shader;
 
-use crate::window::Window;
-
 use self::{
     camera::GpuCameraData, frame::Frame, mesh::MeshPushConstants, model::Model,
     pipeline::Pipeline, render_object::RenderObject, scene::GpuSceneData,
     vertex::Vertex,
 };
 
-use super::{
-    core::Core, memory::AllocatedBuffer, swapchain::Swapchain, utils,
-    vk_initializers, FRAME_OVERLAP,
-};
+use super::{core::Core, memory::AllocatedBuffer, swapchain::Swapchain, vkinit, FRAME_OVERLAP};
 
 pub struct Resources {
     pub renderpasses: Vec<Renderpass>,
-
-    pub global_set_layout: vk::DescriptorSetLayout,
-    pub descriptor_pool: vk::DescriptorPool,
 
     pub pipelines: HashMap<String, Rc<Pipeline>>,
     pub models: HashMap<String, Rc<Model>>,
 
     pub render_objs: ManuallyDrop<Vec<RenderObject>>,
-    //pub scene_params: GpuSceneData,
-    //pub scene_params_buffer: AllocatedBuffer,
 }
 
 impl Resources {
     pub fn new(
         core: &mut Core,
         swapchain: &Swapchain,
-        window: &Window,
+        global_set_layout: &vk::DescriptorSetLayout,
     ) -> Result<Self> {
         let device = &core.device;
         let allocator = &mut core.allocator;
         let renderpass = Renderpass::new(device, swapchain)?;
-
-        let (global_set_layout, descriptor_pool) =
-            create_descriptors(&core.device)?;
 
         let pipelines = {
             let pipeline = Rc::new(create_default_pipeline(
                 device,
                 swapchain,
                 &renderpass,
-                &global_set_layout,
+                global_set_layout,
             )?);
             let mut pipelines = HashMap::new();
             pipelines.insert("default".into(), pipeline);
@@ -119,18 +106,11 @@ impl Resources {
             pipelines,
             models,
             render_objs: ManuallyDrop::new(render_objs),
-            global_set_layout,
-            descriptor_pool,
         })
     }
 
     pub fn cleanup(mut self, device: &ash::Device, allocator: &mut Allocator) {
         log::info!("Cleaning up assets ...");
-
-        unsafe {
-            device.destroy_descriptor_pool(self.descriptor_pool, None);
-            device.destroy_descriptor_set_layout(self.global_set_layout, None);
-        }
 
         unsafe {
             ManuallyDrop::drop(&mut self.render_objs);
@@ -159,41 +139,59 @@ impl Resources {
 
     pub fn draw_render_objects(
         &self,
-        device: &ash::Device,
+        core: &mut Core,
         cmd: &vk::CommandBuffer,
         window: &winit::window::Window,
         first_index: usize,
         count: usize,
         frame: &mut Frame,
-    ) {
-        let cam_pos = Vec3::new(0.0, 6.0, 20.0);
-        let view = Mat4::look_to_rh(
-            cam_pos,
-            Vec3::new(0.0, 0.0, -1.0),
-            Vec3::new(0.0, 1.0, 0.0),
-        );
-        let mut proj = Mat4::perspective_rh(
-            70.0,
-            window.inner_size().width as f32
-                / window.inner_size().height as f32,
-            0.1,
-            200.0,
-        );
-        proj.y_axis.y *= -1.0;
+        frame_number: u32,
+        scene_params_buffer: &mut AllocatedBuffer,
+    ) -> Result<()> {
+        {
+            // Fill a GpuCameraData struct
+            let cam_pos = Vec3::new(0.0, 6.0, 20.0);
+            let view = Mat4::look_to_rh(
+                cam_pos,
+                Vec3::new(0.0, 0.0, -1.0),
+                Vec3::new(0.0, 1.0, 0.0),
+            );
+            let mut proj = Mat4::perspective_rh(
+                70.0,
+                window.inner_size().width as f32
+                    / window.inner_size().height as f32,
+                0.1,
+                200.0,
+            );
+            proj.y_axis.y *= -1.0;
+            let cam_data = GpuCameraData {
+                proj,
+                view,
+                viewproj: proj * view,
+            };
 
-        // Fill a CameraData struct
-        let cam_data = GpuCameraData {
-            proj,
-            view,
-            viewproj: proj * view,
-        };
+            // Copy GpuCameraData struct to buffer
+            let _ = frame.write_to_camera_buffer(&[cam_data])?;
+        }
 
-        // Copy CameraData struct to buffer
-        let _ = frame.copy_data_to_camera_buffer(&[cam_data]);
+        {
+            let framed = frame_number as f32 / 120.0;
+            let scene_data = GpuSceneData {
+                ambient_color: Vec4::new(framed.sin(), 0.0, framed.cos(), 1.0),
+                ..Default::default()
+            };
+
+            let frame_index = frame_number % FRAME_OVERLAP;
+            let start_offset = core.pad_uniform_buffer_size(
+                std::mem::size_of::<GpuSceneData>() as u64,
+            ) * frame_index as u64;
+            scene_params_buffer.write(&[scene_data], start_offset as usize);
+        }
 
         let mut last_pipeline = vk::Pipeline::null();
         let mut last_model = None;
         for i in first_index..(first_index + count) {
+            let device = &core.device;
             let render_obj = &self.render_objs[i];
 
             // Only bind the pipeline if it doesn't match the already bound one
@@ -260,6 +258,8 @@ impl Resources {
                 );
             }
         }
+
+        Ok(())
     }
 }
 
@@ -269,7 +269,7 @@ fn create_default_pipeline(
     renderpass: &Renderpass,
     global_set_layout: &vk::DescriptorSetLayout,
 ) -> Result<Pipeline> {
-    let mut layout_info = vk_initializers::pipeline_layout_create_info();
+    let mut layout_info = vkinit::pipeline_layout_create_info();
 
     // Push constants setup
     let push_constant = vk::PushConstantRange {
@@ -286,7 +286,8 @@ fn create_default_pipeline(
 
     let layout = unsafe { device.create_pipeline_layout(&layout_info, None)? };
 
-    let shader = Shader::new("tri-mesh", device)?;
+    //let shader = Shader::new("tri-mesh", device)?;
+    let shader = Shader::new("default-lit", device)?;
 
     let pipeline = PipelineBuilder::new(
         &shader.vert_shader_mod,
@@ -301,42 +302,4 @@ fn create_default_pipeline(
     shader.destroy(device);
 
     Ok(pipeline)
-}
-
-fn create_descriptors(
-    device: &ash::Device,
-) -> Result<(vk::DescriptorSetLayout, vk::DescriptorPool)> {
-    let global_set_layout = {
-        let camera_buffer_binding = vk::DescriptorSetLayoutBinding {
-            binding: 0,
-            descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-            descriptor_count: 1,
-            stage_flags: vk::ShaderStageFlags::VERTEX,
-            ..Default::default()
-        };
-        let set_info = vk::DescriptorSetLayoutCreateInfo {
-            binding_count: 1,
-            flags: vk::DescriptorSetLayoutCreateFlags::empty(),
-            p_bindings: &camera_buffer_binding,
-            ..Default::default()
-        };
-        unsafe { device.create_descriptor_set_layout(&set_info, None)? }
-    };
-
-    let descriptor_pool = {
-        // Create a descriptor pool that will hold 10 uniform buffers
-        let sizes = vec![vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::UNIFORM_BUFFER,
-            descriptor_count: 10,
-        }];
-        let pool_info = vk::DescriptorPoolCreateInfo {
-            max_sets: 10,
-            pool_size_count: sizes.len() as u32,
-            p_pool_sizes: sizes.as_ptr(),
-            ..Default::default()
-        };
-        unsafe { device.create_descriptor_pool(&pool_info, None)? }
-    };
-
-    Ok((global_set_layout, descriptor_pool))
 }
