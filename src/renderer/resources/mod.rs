@@ -27,7 +27,10 @@ use self::{
     vertex::Vertex,
 };
 
-use super::{core::Core, memory::AllocatedBuffer, swapchain::Swapchain, vkinit, FRAME_OVERLAP};
+use super::{
+    core::Core, memory::AllocatedBuffer, swapchain::Swapchain, vkinit,
+    FRAME_OVERLAP,
+};
 
 pub struct Resources {
     pub renderpasses: Vec<Renderpass>,
@@ -175,12 +178,14 @@ impl Resources {
         }
 
         {
+            // Fill a GpuSceneData struct
             let framed = frame_number as f32 / 120.0;
             let scene_data = GpuSceneData {
                 ambient_color: Vec4::new(framed.sin(), 0.0, framed.cos(), 1.0),
                 ..Default::default()
             };
 
+            // Copy GpuSceneData struct to buffer
             let frame_index = frame_number % FRAME_OVERLAP;
             let start_offset = core.pad_uniform_buffer_size(
                 std::mem::size_of::<GpuSceneData>() as u64,
@@ -234,13 +239,21 @@ impl Resources {
                         &[render_obj.model.meshes[0].vertex_buffer.buffer],
                         &[offset],
                     );
+
+                    let uniform_offset =
+                        core.pad_uniform_buffer_size(std::mem::size_of::<
+                            GpuSceneData,
+                        >()
+                            as u64) as u32;
                     device.cmd_bind_descriptor_sets(
                         *cmd,
                         vk::PipelineBindPoint::GRAPHICS,
                         render_obj.pipeline.pipeline_layout,
                         0,
                         &[frame.descriptor_set],
-                        &[],
+                        // Because binding 0 has no dynamic offset, sending 1 offset will affecting binding 1,
+                        // which should have a dynamic descriptor.
+                        &[uniform_offset],
                     );
                 }
                 last_model = model;

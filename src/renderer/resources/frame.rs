@@ -63,10 +63,13 @@ impl Frame {
             };
             let scene_info = vk::DescriptorBufferInfo {
                 buffer: scene_params_buffer.buffer,
+                /*
                 offset: core
                     .pad_uniform_buffer_size(
                         std::mem::size_of::<GpuSceneData>() as u64,
                     ),
+                */
+                offset: 0,
                 range: std::mem::size_of::<GpuSceneData>() as u64,
             };
 
@@ -77,7 +80,7 @@ impl Frame {
                 &camera_info,
             );
             let scene_write = vkinit::write_descriptor_set(
-                vk::DescriptorType::UNIFORM_BUFFER,
+                vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
                 descriptor_set,
                 1,
                 &scene_info,

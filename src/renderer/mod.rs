@@ -358,7 +358,7 @@ fn create_descriptors(
         );
         // Binding 1 for GpuSceneData
         let scene_bind = vkinit::descriptor_set_layout_binding(
-            vk::DescriptorType::UNIFORM_BUFFER,
+            vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
             vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
             1,
         );
@@ -375,10 +375,17 @@ fn create_descriptors(
 
     let descriptor_pool = {
         // Create a descriptor pool that will hold 10 uniform buffers
-        let sizes = vec![vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::UNIFORM_BUFFER,
-            descriptor_count: 10,
-        }];
+        // and 10 dynamic uniform buffers
+        let sizes = vec![
+            vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::UNIFORM_BUFFER,
+                descriptor_count: 10,
+            },
+            vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
+                descriptor_count: 10,
+            },
+        ];
         let pool_info = vk::DescriptorPoolCreateInfo {
             max_sets: 10,
             pool_size_count: sizes.len() as u32,
