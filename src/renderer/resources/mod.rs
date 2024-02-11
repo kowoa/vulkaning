@@ -3,6 +3,7 @@ pub mod camera;
 pub mod frame;
 pub mod mesh;
 pub mod model;
+pub mod object;
 pub mod pipeline;
 pub mod render_object;
 pub mod renderpass;

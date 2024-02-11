@@ -4,9 +4,13 @@ use ash::vk;
 use color_eyre::eyre::{OptionExt, Result};
 use gpu_allocator::vulkan::Allocator;
 
-use crate::renderer::{core::Core, memory::AllocatedBuffer, utils, vkinit};
+use crate::renderer::{
+    core::Core, memory::AllocatedBuffer, utils, vkinit, MAX_OBJECTS,
+};
 
-use super::{camera::GpuCameraData, scene::GpuSceneData};
+use super::{
+    camera::GpuCameraData, object::GpuObjectData, scene::GpuSceneData,
+};
 
 #[derive(Debug)]
 pub struct Frame {
@@ -15,17 +19,20 @@ pub struct Frame {
     pub render_fence: vk::Fence,
     pub command_pool: vk::CommandPool,
     pub command_buffer: vk::CommandBuffer,
-    pub descriptor_set: vk::DescriptorSet,
+
+    pub global_desc_set: vk::DescriptorSet,
+    pub object_desc_set: vk::DescriptorSet,
 
     pub camera_buffer: AllocatedBuffer,
+    pub object_buffer: AllocatedBuffer,
 }
 
 impl Frame {
     pub fn new(
         core: &mut Core,
         descriptor_pool: &vk::DescriptorPool,
-        global_set_layout: &vk::DescriptorSetLayout,
-        camera_buffer: AllocatedBuffer,
+        global_desc_set_layout: &vk::DescriptorSetLayout,
+        object_desc_set_layout: &vk::DescriptorSetLayout,
         scene_params_buffer: &AllocatedBuffer,
     ) -> Result<Self> {
         let device = &core.device;
@@ -43,16 +50,46 @@ impl Frame {
         let (present_semaphore, render_semaphore, render_fence) =
             Self::create_sync_objs(device)?;
 
-        // Allocate one descriptor set for this frame
-        let descriptor_set = {
+        // Allocate descriptor set using the global descriptor set layout
+        let global_desc_set = {
             let info = vk::DescriptorSetAllocateInfo {
                 descriptor_pool: *descriptor_pool,
                 descriptor_set_count: 1,
-                p_set_layouts: global_set_layout,
+                p_set_layouts: global_desc_set_layout,
                 ..Default::default()
             };
             unsafe { device.allocate_descriptor_sets(&info)?[0] }
         };
+
+        // Allocate descriptor set using the object descriptor set layout
+        let object_desc_set = {
+            let info = vk::DescriptorSetAllocateInfo {
+                descriptor_pool: *descriptor_pool,
+                descriptor_set_count: 1,
+                p_set_layouts: object_desc_set_layout,
+                ..Default::default()
+            };
+            unsafe { device.allocate_descriptor_sets(&info)?[0] }
+        };
+
+        let camera_buffer = AllocatedBuffer::new(
+            &core.device,
+            &mut core.allocator,
+            std::mem::size_of::<GpuCameraData>() as u64,
+            vk::BufferUsageFlags::UNIFORM_BUFFER,
+            "Uniform Camera Buffer",
+            gpu_allocator::MemoryLocation::CpuToGpu,
+        )?;
+
+        // Create object buffer
+        let object_buffer = AllocatedBuffer::new(
+            &core.device,
+            &mut core.allocator,
+            std::mem::size_of::<GpuObjectData>() as u64 * MAX_OBJECTS as u64,
+            vk::BufferUsageFlags::STORAGE_BUFFER,
+            "Object Storage Buffer",
+            gpu_allocator::MemoryLocation::CpuToGpu,
+        )?;
 
         // Point descriptor set to camera buffer
         {
@@ -63,31 +100,38 @@ impl Frame {
             };
             let scene_info = vk::DescriptorBufferInfo {
                 buffer: scene_params_buffer.buffer,
-                /*
-                offset: core
-                    .pad_uniform_buffer_size(
-                        std::mem::size_of::<GpuSceneData>() as u64,
-                    ),
-                */
                 offset: 0,
                 range: std::mem::size_of::<GpuSceneData>() as u64,
+            };
+            let object_info = vk::DescriptorBufferInfo {
+                buffer: object_buffer.buffer,
+                offset: 0,
+                range: std::mem::size_of::<GpuObjectData>() as u64
+                    * MAX_OBJECTS as u64,
             };
 
             let camera_write = vkinit::write_descriptor_set(
                 vk::DescriptorType::UNIFORM_BUFFER,
-                descriptor_set,
+                global_desc_set,
                 0,
                 &camera_info,
             );
             let scene_write = vkinit::write_descriptor_set(
                 vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-                descriptor_set,
+                global_desc_set,
                 1,
                 &scene_info,
             );
+            let object_write = vkinit::write_descriptor_set(
+                vk::DescriptorType::STORAGE_BUFFER,
+                object_desc_set,
+                0,
+                &object_info,
+            );
 
+            let writes = [camera_write, scene_write, object_write];
             unsafe {
-                device.update_descriptor_sets(&[camera_write, scene_write], &[])
+                device.update_descriptor_sets(&writes, &[])
             }
         }
 
@@ -97,8 +141,9 @@ impl Frame {
             render_fence,
             command_pool,
             command_buffer,
-            descriptor_set,
+            global_desc_set,
             camera_buffer,
+            object_buffer,
         })
     }
 
@@ -114,6 +159,7 @@ impl Frame {
 
     pub fn cleanup(self, device: &ash::Device, allocator: &mut Allocator) {
         unsafe {
+            self.object_buffer.cleanup(device, allocator);
             self.camera_buffer.cleanup(device, allocator);
             device.destroy_semaphore(self.render_semaphore, None);
             device.destroy_semaphore(self.present_semaphore, None);

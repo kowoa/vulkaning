@@ -8,10 +8,7 @@ mod swapchain;
 
 pub mod window;
 
-use color_eyre::{
-    eyre::{OptionExt, Result},
-    owo_colors::OwoColorize,
-};
+use color_eyre::eyre::{OptionExt, Result};
 use std::{cell::RefCell, mem::ManuallyDrop, rc::Rc};
 
 use ash::vk;
@@ -32,6 +29,7 @@ use self::{
 };
 
 const FRAME_OVERLAP: u32 = 2;
+const MAX_OBJECTS: u32 = 10000; // Max objects per frame
 
 pub struct Renderer {
     window: Option<Window>,
@@ -42,7 +40,8 @@ pub struct Renderer {
     frame_number: u32,
     frames: Vec<Rc<RefCell<Frame>>>,
 
-    global_set_layout: vk::DescriptorSetLayout,
+    global_desc_set_layout: vk::DescriptorSetLayout,
+    object_desc_set_layout: vk::DescriptorSetLayout,
     descriptor_pool: vk::DescriptorPool,
 
     scene_params_buffer: AllocatedBuffer,
@@ -54,37 +53,38 @@ impl Renderer {
 
         let mut core = Core::new(&window)?;
         let swapchain = Swapchain::new(&mut core, &window)?;
-        let (global_set_layout, descriptor_pool) = create_descriptors(&core)?;
+        let (
+            global_desc_set_layout,
+            object_desc_set_layout,
+            descriptor_pool
+        ) = Self::create_descriptors(&core)?;
         let resources =
             Resources::new(&mut core, &swapchain, &global_set_layout)?;
 
-        let scene_params_buffer = AllocatedBuffer::new(
-            &core.device,
-            &mut core.allocator,
-            FRAME_OVERLAP as u64 * std::mem::size_of::<GpuCameraData>() as u64,
-            vk::BufferUsageFlags::UNIFORM_BUFFER,
-            "Uniform Scene Params Buffer",
-            gpu_allocator::MemoryLocation::CpuToGpu,
-        )?;
+        let scene_params_buffer = {
+            let size = FRAME_OVERLAP as u64
+                * core.pad_uniform_buffer_size(
+                    std::mem::size_of::<GpuSceneData>() as u64,
+                );
+            AllocatedBuffer::new(
+                &core.device,
+                &mut core.allocator,
+                size,
+                vk::BufferUsageFlags::UNIFORM_BUFFER,
+                "Uniform Scene Params Buffer",
+                gpu_allocator::MemoryLocation::CpuToGpu,
+            )?
+        };
 
         let frames = {
             let mut frames = Vec::with_capacity(FRAME_OVERLAP as usize);
             for _ in 0..FRAME_OVERLAP {
-                let camera_buffer = AllocatedBuffer::new(
-                    &core.device,
-                    &mut core.allocator,
-                    std::mem::size_of::<GpuCameraData>() as u64,
-                    vk::BufferUsageFlags::UNIFORM_BUFFER,
-                    "Uniform Camera Buffer",
-                    gpu_allocator::MemoryLocation::CpuToGpu,
-                )?;
-
                 // Call Frame constructor
                 let frame = Frame::new(
                     &mut core,
                     &descriptor_pool,
-                    &global_set_layout,
-                    camera_buffer,
+                    &global_desc_set_layout,
+                    &object_desc_set_layout,
                     &scene_params_buffer,
                 )?;
 
@@ -100,7 +100,8 @@ impl Renderer {
             resources,
             frame_number: 0,
             frames,
-            global_set_layout,
+            global_desc_set_layout,
+            object_desc_set_layout,
             descriptor_pool,
             scene_params_buffer,
         })
@@ -169,7 +170,9 @@ impl Renderer {
             let fences = [frame.render_fence];
 
             // Wait until GPU has finished rendering last frame (1 sec timeout)
-            self.core.device.wait_for_fences(&fences, true, 1000000000)?;
+            self.core
+                .device
+                .wait_for_fences(&fences, true, 1000000000)?;
             self.core.device.reset_fences(&fences)?;
 
             // Request image from swapchain (1 sec timeout)
@@ -193,7 +196,9 @@ impl Renderer {
                 flags: vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
                 ..Default::default()
             };
-            self.core.device.begin_command_buffer(cmd, &cmd_begin_info)?;
+            self.core
+                .device
+                .begin_command_buffer(cmd, &cmd_begin_info)?;
 
             let clear_values = {
                 // Make clear color from frame number
@@ -321,7 +326,14 @@ impl Renderer {
 
         unsafe {
             device.destroy_descriptor_pool(self.descriptor_pool, None);
-            device.destroy_descriptor_set_layout(self.global_set_layout, None);
+            device.destroy_descriptor_set_layout(
+                self.object_desc_set_layout,
+                None,
+            );
+            device.destroy_descriptor_set_layout(
+                self.global_desc_set_layout,
+                None,
+            );
         }
         self.resources.cleanup(device, allocator);
 
@@ -344,64 +356,92 @@ impl Renderer {
         }
         self.core.cleanup();
     }
-}
 
-fn create_descriptors(
-    core: &Core,
-) -> Result<(vk::DescriptorSetLayout, vk::DescriptorPool)> {
-    let global_set_layout = {
-        // Binding 0 for GpuCameraData
-        let camera_bind = vkinit::descriptor_set_layout_binding(
-            vk::DescriptorType::UNIFORM_BUFFER,
-            vk::ShaderStageFlags::VERTEX,
-            0,
-        );
-        // Binding 1 for GpuSceneData
-        let scene_bind = vkinit::descriptor_set_layout_binding(
-            vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-            vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-            1,
-        );
-        let bindings = [camera_bind, scene_bind];
+    fn create_descriptors(
+        core: &Core,
+    ) -> Result<(
+        vk::DescriptorSetLayout,
+        vk::DescriptorSetLayout,
+        vk::DescriptorPool,
+    )> {
+        let global_desc_set_layout = {
+            // Binding 0 for GpuCameraData
+            let camera_bind = vkinit::descriptor_set_layout_binding(
+                vk::DescriptorType::UNIFORM_BUFFER,
+                vk::ShaderStageFlags::VERTEX,
+                0,
+            );
+            // Binding 1 for GpuSceneData
+            let scene_bind = vkinit::descriptor_set_layout_binding(
+                vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
+                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                1,
+            );
+            let bindings = [camera_bind, scene_bind];
 
-        let set_info = vk::DescriptorSetLayoutCreateInfo {
-            binding_count: bindings.len() as u32,
-            flags: vk::DescriptorSetLayoutCreateFlags::empty(),
-            p_bindings: bindings.as_ptr(),
-            ..Default::default()
+            let set_info = vk::DescriptorSetLayoutCreateInfo {
+                binding_count: bindings.len() as u32,
+                flags: vk::DescriptorSetLayoutCreateFlags::empty(),
+                p_bindings: bindings.as_ptr(),
+                ..Default::default()
+            };
+            unsafe {
+                core.device.create_descriptor_set_layout(&set_info, None)?
+            }
         };
-        unsafe { core.device.create_descriptor_set_layout(&set_info, None)? }
-    };
 
-    let descriptor_pool = {
-        // Create a descriptor pool that will hold 10 uniform buffers
-        // and 10 dynamic uniform buffers
-        let sizes = vec![
-            vk::DescriptorPoolSize {
-                ty: vk::DescriptorType::UNIFORM_BUFFER,
-                descriptor_count: 10,
-            },
-            vk::DescriptorPoolSize {
-                ty: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-                descriptor_count: 10,
-            },
-        ];
-        let pool_info = vk::DescriptorPoolCreateInfo {
-            max_sets: 10,
-            pool_size_count: sizes.len() as u32,
-            p_pool_sizes: sizes.as_ptr(),
-            ..Default::default()
+        let object_desc_set_layout = {
+            // Binding 0 for GpuObjectData
+            let object_bind = vkinit::descriptor_set_layout_binding(
+                vk::DescriptorType::STORAGE_BUFFER,
+                vk::ShaderStageFlags::VERTEX,
+                0,
+            );
+
+            let set_info = vk::DescriptorSetLayoutCreateInfo {
+                binding_count: 1,
+                p_bindings: &object_bind,
+                ..Default::default()
+            };
+            unsafe {
+                core.device.create_descriptor_set_layout(&set_info, None)?
+            }
         };
-        unsafe { core.device.create_descriptor_pool(&pool_info, None)? }
-    };
 
-    let scene_param_buffer_size = FRAME_OVERLAP as u64
-        * utils::pad_uniform_buffer_size(
-            std::mem::size_of::<GpuSceneData>() as u64,
-            core.physical_device_props
-                .limits
-                .min_uniform_buffer_offset_alignment,
-        );
+        let descriptor_pool = {
+            // Create a descriptor pool that will hold 10 uniform buffers
+            // and 10 dynamic uniform buffers
+            // and 10 storage buffers
+            let sizes = vec![
+                vk::DescriptorPoolSize {
+                    // For the camera buffer
+                    ty: vk::DescriptorType::UNIFORM_BUFFER,
+                    descriptor_count: 10,
+                },
+                vk::DescriptorPoolSize {
+                    // For the scene params buffer
+                    ty: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
+                    descriptor_count: 10,
+                },
+                vk::DescriptorPoolSize {
+                    // For the object buffer
+                    ty: vk::DescriptorType::STORAGE_BUFFER,
+                    descriptor_count: 10,
+                },
+            ];
+            let pool_info = vk::DescriptorPoolCreateInfo {
+                max_sets: 10,
+                pool_size_count: sizes.len() as u32,
+                p_pool_sizes: sizes.as_ptr(),
+                ..Default::default()
+            };
+            unsafe { core.device.create_descriptor_pool(&pool_info, None)? }
+        };
 
-    Ok((global_set_layout, descriptor_pool))
+        Ok((
+            global_desc_set_layout,
+            object_desc_set_layout,
+            descriptor_pool,
+        ))
+    }
 }

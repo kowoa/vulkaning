@@ -298,15 +298,26 @@ fn create_logical_device(
             .buffer_device_address(true)
             .build();
 
+    let shader_draw_params_features = vk::PhysicalDeviceShaderDrawParametersFeatures {
+        shader_draw_parameters: vk::TRUE,
+        ..Default::default()
+    };
+    let next = [
+        buffer_device_address_features,
+        shader_draw_params_features,
+    ];
     let device_info = vk::DeviceCreateInfo {
         p_queue_create_infos: queue_infos.as_ptr(),
         p_enabled_features: &physical_device_features,
         queue_create_info_count: queue_infos.len() as u32,
         enabled_extension_count: req_ext_names.len() as u32,
         pp_enabled_extension_names: req_ext_names.as_ptr(),
+        p_next: &next,
+        /*
         p_next: &buffer_device_address_features
             as *const vk::PhysicalDeviceBufferDeviceAddressFeatures
             as *const c_void,
+        */
         ..Default::default()
     };
 
