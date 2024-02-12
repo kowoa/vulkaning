@@ -1,8 +1,8 @@
-use color_eyre::eyre::{Context, Result};
 use ash::vk;
+use color_eyre::eyre::{Context, OptionExt, Result};
 use std::{fs::File, io::Read};
 
-const SHADERBUILD_DIR: &'static str = "./shaderbuild";
+pub static mut SHADERBUILD_DIR: Option<String> = None;
 
 pub struct Shader {
     pub vert_shader_mod: vk::ShaderModule,
@@ -10,14 +10,17 @@ pub struct Shader {
 }
 
 impl Shader {
-    pub fn new(
-        shadername: &str,
-        device: &ash::Device,
-    ) -> Result<Self> {
+    pub fn new(shadername: &str, device: &ash::Device) -> Result<Self> {
+        let shaderbuild_dir = unsafe {
+            SHADERBUILD_DIR
+                .as_ref()
+                .ok_or_eyre("Shader build directory not specified")
+        }?;
+
         let vert_filepath =
-            format!("{}/{}-vert.spv", SHADERBUILD_DIR, shadername);
+            format!("{}/{}-vert.spv", shaderbuild_dir, shadername);
         let frag_filepath =
-            format!("{}/{}-frag.spv", SHADERBUILD_DIR, shadername);
+            format!("{}/{}-frag.spv", shaderbuild_dir, shadername);
 
         let mut vert_spv = Vec::new();
         let mut vert_file = File::open(&vert_filepath).with_context(|| {
@@ -38,7 +41,10 @@ impl Shader {
         let vert_shader_mod = Self::create_shader_module(device, &vert_spv)?;
         let frag_shader_mod = Self::create_shader_module(device, &frag_spv)?;
 
-        Ok(Self { vert_shader_mod, frag_shader_mod })
+        Ok(Self {
+            vert_shader_mod,
+            frag_shader_mod,
+        })
     }
 
     fn create_shader_module(
@@ -51,9 +57,8 @@ impl Shader {
             ..Default::default()
         };
 
-        let shader_module = unsafe {
-            device.create_shader_module(&create_info, None)?
-        };
+        let shader_module =
+            unsafe { device.create_shader_module(&create_info, None)? };
 
         Ok(shader_module)
     }

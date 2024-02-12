@@ -3,7 +3,7 @@ mod vkinit;
 
 mod core;
 mod memory;
-mod resources;
+pub mod resources;
 mod swapchain;
 
 pub mod window;
