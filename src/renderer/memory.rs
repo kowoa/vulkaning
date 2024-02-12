@@ -53,20 +53,20 @@ impl AllocatedBuffer {
     }
 
     pub fn new_vertex_buffer(
-        vertices: &Vec<Vertex>,
+        vertices: &[Vertex],
         device: &ash::Device,
         allocator: &mut Allocator,
     ) -> Result<Self> {
         let mut buffer = Self::new(
             device,
             allocator,
-            (vertices.len() * std::mem::size_of::<Vertex>()) as u64,
+            std::mem::size_of_val(vertices) as u64,
             vk::BufferUsageFlags::VERTEX_BUFFER,
             "Vertex Buffer Allocation",
             MemoryLocation::CpuToGpu,
         )?;
 
-        let _copy_record = buffer.write(&vertices[..], 0)?;
+        let _copy_record = buffer.write(vertices, 0)?;
 
         Ok(buffer)
     }
