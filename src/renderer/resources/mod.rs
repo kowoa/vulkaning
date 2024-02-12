@@ -24,8 +24,8 @@ use shader::Shader;
 
 use self::{
     camera::GpuCameraData, frame::Frame, mesh::MeshPushConstants, model::Model,
-    pipeline::Pipeline, render_object::RenderObject, scene::GpuSceneData,
-    vertex::Vertex,
+    object::GpuObjectData, pipeline::Pipeline, render_object::RenderObject,
+    scene::GpuSceneData, vertex::Vertex,
 };
 
 use super::{
@@ -46,7 +46,8 @@ impl Resources {
     pub fn new(
         core: &mut Core,
         swapchain: &Swapchain,
-        global_set_layout: &vk::DescriptorSetLayout,
+        global_desc_set_layout: &vk::DescriptorSetLayout,
+        object_desc_set_layout: &vk::DescriptorSetLayout,
     ) -> Result<Self> {
         let device = &core.device;
         let allocator = &mut core.allocator;
@@ -57,7 +58,8 @@ impl Resources {
                 device,
                 swapchain,
                 &renderpass,
-                global_set_layout,
+                global_desc_set_layout,
+                object_desc_set_layout,
             )?);
             let mut pipelines = HashMap::new();
             pipelines.insert("default".into(), pipeline);
@@ -152,6 +154,7 @@ impl Resources {
         frame_number: u32,
         scene_params_buffer: &mut AllocatedBuffer,
     ) -> Result<()> {
+        // Write into camera buffer
         {
             // Fill a GpuCameraData struct
             let cam_pos = Vec3::new(0.0, 6.0, 20.0);
@@ -178,6 +181,14 @@ impl Resources {
             let _ = frame.write_to_camera_buffer(&[cam_data])?;
         }
 
+        // Write into object storage buffer
+        let object_data = self
+            .render_objs
+            .iter()
+            .map(|obj| obj.transform)
+            .collect::<Vec<_>>();
+        frame.object_buffer.write(&object_data, 0)?;
+
         {
             // Fill a GpuSceneData struct
             let framed = frame_number as f32 / 120.0;
@@ -191,7 +202,7 @@ impl Resources {
             let start_offset = core.pad_uniform_buffer_size(
                 std::mem::size_of::<GpuSceneData>() as u64,
             ) * frame_index as u64;
-            scene_params_buffer.write(&[scene_data], start_offset as usize);
+            scene_params_buffer.write(&[scene_data], start_offset as usize)?;
         }
 
         let mut last_pipeline = vk::Pipeline::null();
@@ -241,6 +252,7 @@ impl Resources {
                         &[offset],
                     );
 
+                    // Bind global descriptor set
                     let uniform_offset =
                         core.pad_uniform_buffer_size(std::mem::size_of::<
                             GpuSceneData,
@@ -251,10 +263,20 @@ impl Resources {
                         vk::PipelineBindPoint::GRAPHICS,
                         render_obj.pipeline.pipeline_layout,
                         0,
-                        &[frame.descriptor_set],
+                        &[frame.global_desc_set],
                         // Because binding 0 has no dynamic offset, sending 1 offset will affecting binding 1,
                         // which should have a dynamic descriptor.
                         &[uniform_offset],
+                    );
+
+                    // Bind object descriptor set
+                    device.cmd_bind_descriptor_sets(
+                        *cmd,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        render_obj.pipeline.pipeline_layout,
+                        1,
+                        &[frame.object_desc_set],
+                        &[],
                     );
                 }
                 last_model = model;
@@ -268,7 +290,7 @@ impl Resources {
                     render_obj.model.meshes[0].vertices.len() as u32,
                     1,
                     0,
-                    0,
+                    i as u32,
                 );
             }
         }
@@ -281,7 +303,8 @@ fn create_default_pipeline(
     device: &ash::Device,
     swapchain: &Swapchain,
     renderpass: &Renderpass,
-    global_set_layout: &vk::DescriptorSetLayout,
+    global_desc_set_layout: &vk::DescriptorSetLayout,
+    object_desc_set_layout: &vk::DescriptorSetLayout,
 ) -> Result<Pipeline> {
     let mut layout_info = vkinit::pipeline_layout_create_info();
 
@@ -295,12 +318,12 @@ fn create_default_pipeline(
     layout_info.push_constant_range_count = 1;
 
     // Descriptor set layout setup
-    layout_info.set_layout_count = 1;
-    layout_info.p_set_layouts = global_set_layout;
+    let set_layouts = [*global_desc_set_layout, *object_desc_set_layout];
+    layout_info.set_layout_count = set_layouts.len() as u32;
+    layout_info.p_set_layouts = set_layouts.as_ptr();
 
     let layout = unsafe { device.create_pipeline_layout(&layout_info, None)? };
 
-    //let shader = Shader::new("tri-mesh", device)?;
     let shader = Shader::new("default-lit", device)?;
 
     let pipeline = PipelineBuilder::new(

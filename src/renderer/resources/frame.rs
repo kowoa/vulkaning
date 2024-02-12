@@ -91,18 +91,20 @@ impl Frame {
             gpu_allocator::MemoryLocation::CpuToGpu,
         )?;
 
-        // Point descriptor set to camera buffer
         {
+            // Point descriptor set to camera buffer
             let camera_info = vk::DescriptorBufferInfo {
                 buffer: camera_buffer.buffer,
                 offset: 0,
                 range: std::mem::size_of::<GpuCameraData>() as u64,
             };
+            // Point descriptor set to scene params buffer
             let scene_info = vk::DescriptorBufferInfo {
                 buffer: scene_params_buffer.buffer,
                 offset: 0,
                 range: std::mem::size_of::<GpuSceneData>() as u64,
             };
+            // Point descriptor set to object buffer
             let object_info = vk::DescriptorBufferInfo {
                 buffer: object_buffer.buffer,
                 offset: 0,
@@ -142,6 +144,7 @@ impl Frame {
             command_pool,
             command_buffer,
             global_desc_set,
+            object_desc_set,
             camera_buffer,
             object_buffer,
         })

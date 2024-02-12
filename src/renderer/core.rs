@@ -118,7 +118,7 @@ impl Core {
     pub fn pad_uniform_buffer_size(&self, original_size: u64) -> u64 {
         utils::pad_uniform_buffer_size(
             original_size,
-            self.min_uniform_buffer_offset_alignment()
+            self.min_uniform_buffer_offset_alignment(),
         )
     }
 
@@ -293,31 +293,27 @@ fn create_logical_device(
         .map(|ext| ext.as_ptr())
         .collect::<Vec<_>>();
 
-    let buffer_device_address_features =
+    let mut buffer_device_address_features =
         vk::PhysicalDeviceBufferDeviceAddressFeatures::builder()
             .buffer_device_address(true)
             .build();
-
-    let shader_draw_params_features = vk::PhysicalDeviceShaderDrawParametersFeatures {
-        shader_draw_parameters: vk::TRUE,
-        ..Default::default()
-    };
-    let next = [
-        buffer_device_address_features,
-        shader_draw_params_features,
-    ];
+    let shader_draw_params_features =
+        vk::PhysicalDeviceShaderDrawParametersFeatures {
+            shader_draw_parameters: vk::TRUE,
+            p_next: &mut buffer_device_address_features
+                as *mut vk::PhysicalDeviceBufferDeviceAddressFeatures
+                as *mut c_void,
+            ..Default::default()
+        };
     let device_info = vk::DeviceCreateInfo {
         p_queue_create_infos: queue_infos.as_ptr(),
         p_enabled_features: &physical_device_features,
         queue_create_info_count: queue_infos.len() as u32,
         enabled_extension_count: req_ext_names.len() as u32,
         pp_enabled_extension_names: req_ext_names.as_ptr(),
-        p_next: &next,
-        /*
-        p_next: &buffer_device_address_features
-            as *const vk::PhysicalDeviceBufferDeviceAddressFeatures
+        p_next: &shader_draw_params_features
+            as *const vk::PhysicalDeviceShaderDrawParametersFeatures
             as *const c_void,
-        */
         ..Default::default()
     };
 

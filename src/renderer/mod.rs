@@ -53,13 +53,14 @@ impl Renderer {
 
         let mut core = Core::new(&window)?;
         let swapchain = Swapchain::new(&mut core, &window)?;
-        let (
-            global_desc_set_layout,
-            object_desc_set_layout,
-            descriptor_pool
-        ) = Self::create_descriptors(&core)?;
-        let resources =
-            Resources::new(&mut core, &swapchain, &global_set_layout)?;
+        let (global_desc_set_layout, object_desc_set_layout, descriptor_pool) =
+            Self::create_descriptors(&core)?;
+        let resources = Resources::new(
+            &mut core,
+            &swapchain,
+            &global_desc_set_layout,
+            &object_desc_set_layout,
+        )?;
 
         let scene_params_buffer = {
             let size = FRAME_OVERLAP as u64
