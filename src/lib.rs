@@ -16,7 +16,9 @@ pub fn run() -> Result<()> {
     } else if args.len() == 2 {
         unsafe { SHADERBUILD_DIR = Some(args[1].clone()) };
     } else {
-        unsafe { SHADERBUILD_DIR = Some("./shaderbuild".into()) };
+        let dir = std::env::var("SHADER_BUILD_DIR")
+            .unwrap_or_else(|_| "./shaderbuild".to_string());
+        unsafe { SHADERBUILD_DIR = Some(dir) };
     }
 
     let window = Window::new()?;
