@@ -1,10 +1,14 @@
-use glam::{Vec3, Vec2};
+use std::path::PathBuf;
+
+use color_eyre::eyre::{OptionExt, Result};
+use glam::{Vec2, Vec3};
 use gpu_allocator::vulkan::Allocator;
-use color_eyre::eyre::Result;
 
 use crate::renderer::resources::vertex::Vertex;
 
 use super::mesh::Mesh;
+
+pub static mut ASSETS_DIR: Option<String> = None;
 
 #[derive(Default, PartialEq)]
 pub struct Model {
@@ -21,11 +25,24 @@ impl Model {
         device: &ash::Device,
         allocator: &mut Allocator,
     ) -> Result<Self> {
-        let (models, materials) =
-            tobj::load_obj(filename, &tobj::LoadOptions {
+        let filepath = unsafe {
+            let mut path = PathBuf::from(
+                ASSETS_DIR
+                    .as_ref()
+                    .ok_or_eyre("Assets directory not specified")?
+                    .clone(),
+            );
+            path.push(filename);
+            path
+        };
+
+        let (models, materials) = tobj::load_obj(
+            filepath,
+            &tobj::LoadOptions {
                 single_index: true,
                 ..Default::default()
-            })?;
+            },
+        )?;
         let materials = materials?;
 
         log::info!("Number of models: {}", models.len());
@@ -50,14 +67,14 @@ impl Model {
                 let tex = &mesh.texcoords;
 
                 let i = *i as usize;
-                let p = Vec3::new(pos[3*i], pos[3*i+1], pos[3*i+2]);
+                let p = Vec3::new(pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]);
                 let n = if !nor.is_empty() {
-                    Vec3::new(nor[3*i], nor[3*i+1], nor[3*i+2])
+                    Vec3::new(nor[3 * i], nor[3 * i + 1], nor[3 * i + 2])
                 } else {
                     Vec3::ZERO
                 };
                 let t = if !tex.is_empty() {
-                    Vec2::new(tex[2*i], 1.0-tex[2*i+1])
+                    Vec2::new(tex[2 * i], 1.0 - tex[2 * i + 1])
                 } else {
                     Vec2::ZERO
                 };
@@ -103,5 +120,4 @@ impl Model {
             mesh.cleanup(device, allocator);
         }
     }
-
 }

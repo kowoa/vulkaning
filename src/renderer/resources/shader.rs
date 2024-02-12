@@ -1,6 +1,6 @@
 use ash::vk;
 use color_eyre::eyre::{Context, OptionExt, Result};
-use std::{fs::File, io::Read};
+use std::{fs::File, io::Read, path::{Path, PathBuf}};
 
 pub static mut SHADERBUILD_DIR: Option<String> = None;
 
@@ -14,28 +14,28 @@ impl Shader {
         let shaderbuild_dir = unsafe {
             SHADERBUILD_DIR
                 .as_ref()
-                .ok_or_eyre("Shader build directory not specified")
-        }?;
+                .ok_or_eyre("Shader build directory not specified")?
+        };
 
-        let vert_filepath =
-            format!("{}/{}-vert.spv", shaderbuild_dir, shadername);
-        let frag_filepath =
-            format!("{}/{}-frag.spv", shaderbuild_dir, shadername);
+        let mut vert_filepath = PathBuf::from(shaderbuild_dir);
+        vert_filepath.push(format!("{}-vert.spv", shadername));
+        let mut frag_filepath = PathBuf::from(shaderbuild_dir);
+        frag_filepath.push(format!("{}-frag.spv", shadername));
 
         let mut vert_spv = Vec::new();
         let mut vert_file = File::open(&vert_filepath).with_context(|| {
-            format!("Failed to open file: {}", vert_filepath)
+            format!("Failed to open file: {:#?}", vert_filepath)
         })?;
         vert_file.read_to_end(&mut vert_spv).with_context(|| {
-            format!("Failed to read file: {}", vert_filepath)
+            format!("Failed to read file: {:#?}", vert_filepath)
         })?;
 
         let mut frag_spv = Vec::new();
         let mut frag_file = File::open(&frag_filepath).with_context(|| {
-            format!("Failed to open file: {}", frag_filepath)
+            format!("Failed to open file: {:#?}", frag_filepath)
         })?;
         frag_file.read_to_end(&mut frag_spv).with_context(|| {
-            format!("Failed to read file: {}", frag_filepath)
+            format!("Failed to read file: {:#?}", frag_filepath)
         })?;
 
         let vert_shader_mod = Self::create_shader_module(device, &vert_spv)?;

@@ -67,7 +67,7 @@ impl Resources {
         };
         let models = {
             let monkey_model = Rc::new(Model::load_from_obj(
-                "assets/monkey_smooth.obj",
+                "monkey_smooth.obj",
                 device,
                 allocator,
             )?);
