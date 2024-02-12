@@ -44,7 +44,7 @@ pub struct Renderer {
     object_desc_set_layout: vk::DescriptorSetLayout,
     descriptor_pool: vk::DescriptorPool,
 
-    scene_params_buffer: AllocatedBuffer,
+    scene_camera_buffer: AllocatedBuffer,
 }
 
 impl Renderer {
@@ -62,17 +62,20 @@ impl Renderer {
             &object_desc_set_layout,
         )?;
 
-        let scene_params_buffer = {
-            let size = FRAME_OVERLAP as u64
-                * core.pad_uniform_buffer_size(
-                    std::mem::size_of::<GpuSceneData>() as u64,
-                );
+        let scene_camera_buffer = {
+            let scene_size = core.pad_uniform_buffer_size(
+                std::mem::size_of::<GpuSceneData>() as u64,
+            );
+            let camera_size = core.pad_uniform_buffer_size(
+                std::mem::size_of::<GpuCameraData>() as u64,
+            );
+            let size = FRAME_OVERLAP as u64 * (scene_size + camera_size);
             AllocatedBuffer::new(
                 &core.device,
                 &mut core.allocator,
                 size,
                 vk::BufferUsageFlags::UNIFORM_BUFFER,
-                "Uniform Scene Params Buffer",
+                "Scene-Camera Uniform Buffer",
                 gpu_allocator::MemoryLocation::CpuToGpu,
             )?
         };
@@ -86,7 +89,7 @@ impl Renderer {
                     &descriptor_pool,
                     &global_desc_set_layout,
                     &object_desc_set_layout,
-                    &scene_params_buffer,
+                    &scene_camera_buffer,
                 )?;
 
                 frames.push(Rc::new(RefCell::new(frame)));
@@ -104,7 +107,7 @@ impl Renderer {
             global_desc_set_layout,
             object_desc_set_layout,
             descriptor_pool,
-            scene_params_buffer,
+            scene_camera_buffer,
         })
     }
 
@@ -253,7 +256,7 @@ impl Renderer {
                 self.resources.render_objs.len(),
                 &mut frame,
                 self.frame_number,
-                &mut self.scene_params_buffer,
+                &mut self.scene_camera_buffer,
             )?;
 
             // RENDERING COMMANDS END
@@ -346,7 +349,7 @@ impl Renderer {
         }
 
         // Clean up buffers
-        self.scene_params_buffer.cleanup(device, allocator);
+        self.scene_camera_buffer.cleanup(device, allocator);
 
         self.swapchain.cleanup(device, &mut self.core.allocator);
 
@@ -366,19 +369,19 @@ impl Renderer {
         vk::DescriptorPool,
     )> {
         let global_desc_set_layout = {
-            // Binding 0 for GpuCameraData
-            let camera_bind = vkinit::descriptor_set_layout_binding(
-                vk::DescriptorType::UNIFORM_BUFFER,
-                vk::ShaderStageFlags::VERTEX,
-                0,
-            );
-            // Binding 1 for GpuSceneData
+            // Binding 0 for GpuSceneData
             let scene_bind = vkinit::descriptor_set_layout_binding(
                 vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                0,
+            );
+            // Binding 1 for GpuCameraData
+            let camera_bind = vkinit::descriptor_set_layout_binding(
+                vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
+                vk::ShaderStageFlags::VERTEX,
                 1,
             );
-            let bindings = [camera_bind, scene_bind];
+            let bindings = [scene_bind, camera_bind];
 
             let set_info = vk::DescriptorSetLayoutCreateInfo {
                 binding_count: bindings.len() as u32,

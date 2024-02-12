@@ -152,9 +152,34 @@ impl Resources {
         count: usize,
         frame: &mut Frame,
         frame_number: u32,
-        scene_params_buffer: &mut AllocatedBuffer,
+        scene_camera_buffer: &mut AllocatedBuffer,
     ) -> Result<()> {
-        // Write into camera buffer
+        let frame_index = frame_number % FRAME_OVERLAP;
+        let scene_start_offset = core
+            .pad_uniform_buffer_size(std::mem::size_of::<GpuSceneData>() as u64)
+            * frame_index as u64;
+        let camera_start_offset = core
+            .pad_uniform_buffer_size(std::mem::size_of::<GpuSceneData>() as u64)
+            * FRAME_OVERLAP as u64
+            + core.pad_uniform_buffer_size(
+                std::mem::size_of::<GpuCameraData>() as u64,
+            ) * frame_index as u64;
+
+        // Write into scene section of scene-camera buffer
+        {
+            // Fill a GpuSceneData struct
+            let framed = frame_number as f32 / 120.0;
+            let scene_data = GpuSceneData {
+                ambient_color: Vec4::new(framed.sin(), 0.0, framed.cos(), 1.0),
+                ..Default::default()
+            };
+
+            // Copy GpuSceneData struct to buffer
+            scene_camera_buffer
+                .write(&[scene_data], scene_start_offset as usize)?;
+        }
+
+        // Write into camera section of scene-camera buffer
         {
             // Fill a GpuCameraData struct
             let cam_pos = Vec3::new(0.0, 6.0, 20.0);
@@ -178,31 +203,19 @@ impl Resources {
             };
 
             // Copy GpuCameraData struct to buffer
-            let _ = frame.write_to_camera_buffer(&[cam_data])?;
+            scene_camera_buffer
+                .write(&[cam_data], camera_start_offset as usize)?;
         }
 
         // Write into object storage buffer
-        let object_data = self
-            .render_objs
-            .iter()
-            .map(|obj| obj.transform)
-            .collect::<Vec<_>>();
-        frame.object_buffer.write(&object_data, 0)?;
-
         {
-            // Fill a GpuSceneData struct
-            let framed = frame_number as f32 / 120.0;
-            let scene_data = GpuSceneData {
-                ambient_color: Vec4::new(framed.sin(), 0.0, framed.cos(), 1.0),
-                ..Default::default()
-            };
-
-            // Copy GpuSceneData struct to buffer
-            let frame_index = frame_number % FRAME_OVERLAP;
-            let start_offset = core.pad_uniform_buffer_size(
-                std::mem::size_of::<GpuSceneData>() as u64,
-            ) * frame_index as u64;
-            scene_params_buffer.write(&[scene_data], start_offset as usize)?;
+            let rot = Mat4::from_rotation_y(frame_number as f32 / 120.0);
+            let object_data = self
+                .render_objs
+                .iter()
+                .map(|obj| rot * obj.transform)
+                .collect::<Vec<_>>();
+            frame.object_buffer.write(&object_data, 0)?;
         }
 
         let mut last_pipeline = vk::Pipeline::null();
@@ -242,31 +255,28 @@ impl Resources {
             let last = last_model.take();
             let model = Some(render_obj.model.clone());
             if model != last {
-                // Bind the vertex buffer with offset 0
-                let offset = 0;
                 unsafe {
+                    // Vertex buffer contains the positions of the vertices
+                    // Bind the vertex buffer with offset 0
+                    let vertex_offset = 0;
                     device.cmd_bind_vertex_buffers(
                         *cmd,
                         0,
                         &[render_obj.model.meshes[0].vertex_buffer.buffer],
-                        &[offset],
+                        &[vertex_offset],
                     );
 
                     // Bind global descriptor set
-                    let uniform_offset =
-                        core.pad_uniform_buffer_size(std::mem::size_of::<
-                            GpuSceneData,
-                        >()
-                            as u64) as u32;
                     device.cmd_bind_descriptor_sets(
                         *cmd,
                         vk::PipelineBindPoint::GRAPHICS,
                         render_obj.pipeline.pipeline_layout,
                         0,
                         &[frame.global_desc_set],
-                        // Because binding 0 has no dynamic offset, sending 1 offset will affecting binding 1,
-                        // which should have a dynamic descriptor.
-                        &[uniform_offset],
+                        &[
+                            scene_start_offset as u32,
+                            camera_start_offset as u32,
+                        ],
                     );
 
                     // Bind object descriptor set

@@ -9,7 +9,7 @@ layout (location = 2) in vec3 vColor;
 layout (location = 0) out vec3 outColor;
 
 // Camera uniform buffer block
-layout(set = 0, binding = 0) uniform CameraBuffer {
+layout(set = 0, binding = 1) uniform GpuCameraData {
     mat4 view;
     mat4 proj;
     mat4 viewproj;
@@ -45,7 +45,7 @@ void main() {
 layout (location = 0) in vec3 inColor;
 layout (location = 0) out vec4 outFragColor;
 
-layout (set = 0, binding = 1) uniform SceneData {
+layout (set = 0, binding = 0) uniform GpuSceneData {
     vec4 fogColor; // w is the exponent
     vec4 fogDistances; // x for min, y for max, zw unused
     vec4 ambientColor;
