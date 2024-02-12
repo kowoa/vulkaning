@@ -20,10 +20,18 @@ use super::{
 };
 
 const ENABLE_VALIDATION_LAYERS: bool = cfg!(debug_assertions);
-const REQUIRED_VALIDATION_LAYERS: [&'static str; 1] =
-    ["VK_LAYER_KHRONOS_validation"];
-const REQUIRED_DEVICE_EXTENSIONS: [&'static CStr; 1] =
+const REQUIRED_VALIDATION_LAYERS: [&str; 1] = ["VK_LAYER_KHRONOS_validation"];
+
+#[cfg(not(target_os = "macos"))]
+const REQUIRED_DEVICE_EXTENSIONS: [&CStr; 1] =
     [ash::extensions::khr::Swapchain::name()];
+
+#[cfg(target_os = "macos")]
+const REQUIRED_DEVICE_EXTENSIONS: [&CStr; 2] = [
+    ash::extensions::khr::Swapchain::name(),
+    // VK_KHR_portability_subset required on macOS
+    vk::KhrPortabilitySubsetFn::name(),
+];
 
 pub struct Core {
     _entry: ash::Entry,
@@ -150,7 +158,7 @@ fn create_instance(
         ..Default::default()
     };
 
-    let req_ext_names = get_required_extension_names(event_loop)?;
+    let req_ext_names = get_required_instance_extensions(event_loop)?;
     let req_layer_names_cstring = REQUIRED_VALIDATION_LAYERS
         .iter()
         .map(|&s| CString::new(s))
@@ -251,7 +259,7 @@ fn create_physical_device(
         Some(device) => {
             log_physical_device_info(device, instance)?;
             Ok(**device)
-        },
+        }
         None => Err(eyre!("Failed to find a suitable GPU")),
     }
 }
@@ -351,7 +359,7 @@ fn check_required_validation_layers(entry: &ash::Entry) -> Result<()> {
     }
 }
 
-fn get_required_extension_names(
+fn get_required_instance_extensions(
     event_loop: &EventLoop<()>,
 ) -> Result<Vec<*const i8>> {
     let mut ext_names = Vec::new();
@@ -361,11 +369,8 @@ fn get_required_extension_names(
     if ENABLE_VALIDATION_LAYERS {
         ext_names.push(ash::extensions::ext::DebugUtils::name().as_ptr());
     }
-    // VK_KHR_portability_subset required on macOS
     #[cfg(target_os = "macos")]
-    {
-        ext_names.push(vk::KhrPortabilitySubsetFn::name().as_ptr());
-    }
+    ext_names.push(vk::KhrGetPhysicalDeviceProperties2Fn::name().as_ptr());
     Ok(ext_names)
 }
 
@@ -470,12 +475,14 @@ fn check_required_device_extensions(
     .map(|ext| utils::c_char_to_string(&ext.extension_name))
     .collect::<Result<Vec<_>, _>>()?;
 
-    Ok(REQUIRED_DEVICE_EXTENSIONS
+    let contains_all = REQUIRED_DEVICE_EXTENSIONS
         .iter()
         .map(|ext| ext.to_str())
         .collect::<Result<Vec<_>, _>>()?
         .iter()
-        .all(|ext| available_exts.contains(&ext.to_string())))
+        .all(|ext| available_exts.contains(&ext.to_string()));
+
+    Ok(contains_all)
 }
 
 pub struct QueueFamilyIndices {
