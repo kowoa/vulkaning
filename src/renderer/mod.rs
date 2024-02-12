@@ -31,6 +31,12 @@ use self::{
 const FRAME_OVERLAP: u32 = 2;
 const MAX_OBJECTS: u32 = 10000; // Max objects per frame
 
+pub struct UploadContext {
+    upload_fence: vk::Fence,
+    command_pool: vk::CommandPool,
+    command_buffer: vk::CommandBuffer,
+}
+
 pub struct Renderer {
     window: Option<Window>,
     core: Core,
@@ -45,6 +51,8 @@ pub struct Renderer {
     descriptor_pool: vk::DescriptorPool,
 
     scene_camera_buffer: AllocatedBuffer,
+
+    //upload_context: UploadContext,
 }
 
 impl Renderer {

@@ -359,7 +359,12 @@ fn get_required_extension_names(
         event_loop.raw_display_handle(),
     )?);
     if ENABLE_VALIDATION_LAYERS {
-        ext_names.extend([ash::extensions::ext::DebugUtils::name().as_ptr()]);
+        ext_names.push(ash::extensions::ext::DebugUtils::name().as_ptr());
+    }
+    // VK_KHR_portability_subset required on macOS
+    #[cfg(target_os = "macos")]
+    {
+        ext_names.push(vk::KhrPortabilitySubsetFn::name().as_ptr());
     }
     Ok(ext_names)
 }
