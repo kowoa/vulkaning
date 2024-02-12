@@ -9,7 +9,7 @@ pub struct Swapchain {
     pub swapchain_loader: ash::extensions::khr::Swapchain,
     pub images: Vec<vk::Image>,
     pub image_format: vk::Format,
-    pub extent: vk::Extent2D,
+    pub image_extent: vk::Extent2D,
     pub image_views: Vec<vk::ImageView>,
 
     pub depth_image: AllocatedImage,
@@ -25,7 +25,7 @@ impl Swapchain {
             swapchain_loader,
             images,
             image_format,
-            extent,
+            image_extent,
         ) = create_swapchain(core, window)?;
         let image_views = create_image_views(
             core,
@@ -35,8 +35,8 @@ impl Swapchain {
 
         let depth_image = {
             let extent = vk::Extent3D {
-                width: extent.width,
-                height: extent.height,
+                width: image_extent.width,
+                height: image_extent.height,
                 depth: 1,
             };
             AllocatedImage::new_depth_image(extent, &core.device, &mut core.allocator)?
@@ -47,7 +47,7 @@ impl Swapchain {
             swapchain_loader,
             images,
             image_format,
-            extent,
+            image_extent,
             image_views,
             depth_image,
         };

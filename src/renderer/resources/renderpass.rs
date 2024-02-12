@@ -1,7 +1,7 @@
 use ash::vk;
 use color_eyre::eyre::Result;
 
-use crate::{renderer::swapchain::Swapchain, window::Window};
+use crate::renderer::swapchain::Swapchain;
 
 pub struct Renderpass {
     pub renderpass: vk::RenderPass,
@@ -13,7 +13,7 @@ impl Renderpass {
         device: &ash::Device,
         swapchain: &Swapchain,
     ) -> Result<Self> {
-        let renderpass = create_renderpass(device, &swapchain)?;
+        let renderpass = create_renderpass(device, swapchain)?;
         let framebuffers = create_framebuffers(&renderpass, device, swapchain)?;
 
         Ok(Self {
@@ -136,8 +136,8 @@ fn create_framebuffers(
             let attachments = [*view, swapchain.depth_image.image_view];
             let fb_info = vk::FramebufferCreateInfo {
                 render_pass: *renderpass,
-                width: swapchain.extent.width,
-                height: swapchain.extent.height,
+                width: swapchain.image_extent.width,
+                height: swapchain.image_extent.height,
                 layers: 1,
                 p_attachments: attachments.as_ptr(),
                 attachment_count: attachments.len() as u32,

@@ -64,14 +64,14 @@ impl PipelineBuilder {
         let viewport = vk::Viewport {
             x: 0.0,
             y: 0.0,
-            width: swapchain.extent.width as f32,
-            height: swapchain.extent.height as f32,
+            width: swapchain.image_extent.width as f32,
+            height: swapchain.image_extent.height as f32,
             min_depth: 0.0,
             max_depth: 1.0,
         };
         let scissor = vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
-            extent: swapchain.extent,
+            extent: swapchain.image_extent,
         };
         let rasterizer =
             vkinit::rasterization_state_create_info(vk::PolygonMode::FILL);
