@@ -246,9 +246,12 @@ fn create_physical_device(
         })
         .collect::<Vec<_>>();
 
-    let chosen_device = suitable_devices.get(0);
+    let chosen_device = suitable_devices.first();
     match chosen_device {
-        Some(device) => Ok(**device),
+        Some(device) => {
+            log_physical_device_info(device, instance)?;
+            Ok(**device)
+        },
         None => Err(eyre!("Failed to find a suitable GPU")),
     }
 }
@@ -367,60 +370,6 @@ fn physical_device_is_suitable(
     surface: &vk::SurfaceKHR,
     surface_loader: &ash::extensions::khr::Surface,
 ) -> Result<bool> {
-    #[cfg(debug_assertions)]
-    {
-        let dev_properties = unsafe {
-            instance.get_physical_device_properties(*physical_device)
-        };
-        let dev_features =
-            unsafe { instance.get_physical_device_features(*physical_device) };
-        let dev_queue_families = unsafe {
-            instance
-                .get_physical_device_queue_family_properties(*physical_device)
-        };
-        let dev_type = match dev_properties.device_type {
-            vk::PhysicalDeviceType::CPU => "CPU",
-            vk::PhysicalDeviceType::INTEGRATED_GPU => "Integrated GPU",
-            vk::PhysicalDeviceType::DISCRETE_GPU => "Discrete GPU",
-            vk::PhysicalDeviceType::VIRTUAL_GPU => "Virtual GPU",
-            vk::PhysicalDeviceType::OTHER => "Unknown",
-            _ => panic!("Unknown device type"),
-        };
-        let dev_name = utils::c_char_to_string(&dev_properties.device_name)?;
-        println!(
-            "\tDevice name: {}, ID: {}, Type: {}",
-            dev_name, dev_properties.device_id, dev_type
-        );
-
-        println!(
-            "\tAPI version: {}.{}.{}",
-            vk::api_version_major(dev_properties.api_version),
-            vk::api_version_minor(dev_properties.api_version),
-            vk::api_version_patch(dev_properties.api_version),
-        );
-
-        println!("\tSupported queue families: {}", dev_queue_families.len());
-        println!(
-            "\t\tQueue Count | Graphics, Compute, Transfer, Sparse Binding"
-        );
-        let b2s = |b: bool| if b { "YES" } else { " NO" };
-        for queue_family in dev_queue_families {
-            let flags = queue_family.queue_flags;
-            let graphics = b2s(flags.contains(vk::QueueFlags::GRAPHICS));
-            let compute = b2s(flags.contains(vk::QueueFlags::COMPUTE));
-            let transfer = b2s(flags.contains(vk::QueueFlags::TRANSFER));
-            let sparse = b2s(flags.contains(vk::QueueFlags::SPARSE_BINDING));
-            println!(
-                "\t\t{} | {}, {}, {}, {}",
-                queue_family.queue_count, graphics, compute, transfer, sparse,
-            );
-        }
-        println!(
-            "\tGeometry shader support: {}",
-            b2s(dev_features.geometry_shader == 1)
-        );
-    }
-
     let indices = find_queue_families(
         instance,
         physical_device,
@@ -438,6 +387,71 @@ fn physical_device_is_suitable(
     };
 
     Ok(indices.is_complete() && exts_supported && swapchain_adequate)
+}
+
+fn log_physical_device_info(
+    physical_device: &vk::PhysicalDevice,
+    instance: &ash::Instance,
+) -> Result<()> {
+    let mut message = String::new();
+    message.push_str("\nPhysical Device Info:\n");
+
+    let dev_properties =
+        unsafe { instance.get_physical_device_properties(*physical_device) };
+    let dev_features =
+        unsafe { instance.get_physical_device_features(*physical_device) };
+    let dev_queue_families = unsafe {
+        instance.get_physical_device_queue_family_properties(*physical_device)
+    };
+    let dev_type = match dev_properties.device_type {
+        vk::PhysicalDeviceType::CPU => Ok("CPU"),
+        vk::PhysicalDeviceType::INTEGRATED_GPU => Ok("Integrated GPU"),
+        vk::PhysicalDeviceType::DISCRETE_GPU => Ok("Discrete GPU"),
+        vk::PhysicalDeviceType::VIRTUAL_GPU => Ok("Virtual GPU"),
+        vk::PhysicalDeviceType::OTHER => Ok("Unknown"),
+        _ => Err(eyre!("Unknown device type")),
+    }?;
+    let dev_name = utils::c_char_to_string(&dev_properties.device_name)?;
+    message.push_str(&format!(
+        "\tDevice name: {}, ID: {}, Type: {}\n",
+        dev_name, dev_properties.device_id, dev_type
+    ));
+
+    message.push_str(&format!(
+        "\tSupported API version: {}.{}.{}\n",
+        vk::api_version_major(dev_properties.api_version),
+        vk::api_version_minor(dev_properties.api_version),
+        vk::api_version_patch(dev_properties.api_version),
+    ));
+
+    message.push_str(&format!(
+        "\tSupported queue families: {}\n",
+        dev_queue_families.len()
+    ));
+    message.push_str(
+        "\t\tQueue Count | Graphics, Compute, Transfer, Sparse Binding\n",
+    );
+
+    let b2s = |b: bool| if b { "YES" } else { " NO" };
+    for queue_family in dev_queue_families {
+        let flags = queue_family.queue_flags;
+        let graphics = b2s(flags.contains(vk::QueueFlags::GRAPHICS));
+        let compute = b2s(flags.contains(vk::QueueFlags::COMPUTE));
+        let transfer = b2s(flags.contains(vk::QueueFlags::TRANSFER));
+        let sparse = b2s(flags.contains(vk::QueueFlags::SPARSE_BINDING));
+        message.push_str(&format!(
+            "\t\t{} | {}, {}, {}, {}\n",
+            queue_family.queue_count, graphics, compute, transfer, sparse,
+        ));
+    }
+    message.push_str(&format!(
+        "\tGeometry shader support: {}\n",
+        b2s(dev_features.geometry_shader == 1)
+    ));
+
+    log::info!("{}", message);
+
+    Ok(())
 }
 
 fn check_required_device_extensions(
