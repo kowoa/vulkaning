@@ -30,7 +30,7 @@ use self::{
 
 use super::{
     core::Core, memory::AllocatedBuffer, swapchain::Swapchain, vkinit,
-    FRAME_OVERLAP, UploadContext,
+    UploadContext, FRAME_OVERLAP,
 };
 
 pub struct Resources {
@@ -48,6 +48,7 @@ impl Resources {
         swapchain: &Swapchain,
         global_desc_set_layout: &vk::DescriptorSetLayout,
         object_desc_set_layout: &vk::DescriptorSetLayout,
+        upload_context: &UploadContext,
     ) -> Result<Self> {
         let device = &core.device;
         let allocator = &mut core.allocator;
@@ -65,20 +66,25 @@ impl Resources {
             pipelines.insert("default".into(), pipeline);
             pipelines
         };
+
         let models = {
             let monkey_model = Rc::new(Model::load_from_obj(
                 "monkey_smooth.obj",
                 device,
                 allocator,
             )?);
-            let triangle_model = Rc::new(Model::new(vec![Mesh::new_triangle(
-                device, allocator,
-            )?]));
+            let triangle_model =
+                Rc::new(Model::new(vec![Mesh::new_triangle()]));
             let mut models = HashMap::new();
             models.insert("monkey".into(), monkey_model);
             models.insert("triangle".into(), triangle_model);
             models
         };
+        // Upload models onto GPU
+        for (_name, model) in &models {
+            model.meshes[0].upload(device, allocator, upload_context)?;
+        }
+
         let render_objs = {
             let mut render_objs = Vec::new();
             let monkey = RenderObject::new(
@@ -257,7 +263,6 @@ impl Resources {
             let model = Some(render_obj.model.clone());
             if model != last {
                 unsafe {
-                    /*
                     // Vertex buffer contains the positions of the vertices
                     // Bind the vertex buffer with offset 0
                     let vertex_offset = 0;
@@ -270,13 +275,9 @@ impl Resources {
                                 &[vertex_offset],
                             );
                             Ok(())
-                        },
+                        }
                         None => Err(eyre!("No vertex buffer found")),
                     }?;
-                    */
-
-                    let model = render_obj.model.clone();
-                    (render_obj.model.meshes[0]).upload(device, &mut core.allocator, upload_context)?;
 
                     // Bind global descriptor set
                     device.cmd_bind_descriptor_sets(

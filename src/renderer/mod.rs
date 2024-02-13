@@ -9,7 +9,6 @@ mod swapchain;
 pub mod window;
 
 use color_eyre::eyre::{OptionExt, Result};
-use gpu_allocator::vulkan::Allocator;
 use std::{cell::RefCell, mem::ManuallyDrop, rc::Rc};
 
 use ash::vk;
@@ -25,7 +24,7 @@ use self::{
     core::Core,
     memory::AllocatedBuffer,
     resources::{
-        frame::Frame, mesh::Mesh, scene::GpuSceneData, vertex::Vertex,
+        frame::Frame, scene::GpuSceneData,
         Resources,
     },
     swapchain::Swapchain,
@@ -146,13 +145,20 @@ impl Renderer {
 
         let mut core = Core::new(&window)?;
         let swapchain = Swapchain::new(&mut core, &window)?;
+
         let (global_desc_set_layout, object_desc_set_layout, descriptor_pool) =
             Self::create_descriptors(&core)?;
+        let upload_context = UploadContext::new(
+            &core.device,
+            core.queue_family_indices.get_graphics_family()?,
+        )?;
+
         let resources = Resources::new(
             &mut core,
             &swapchain,
             &global_desc_set_layout,
             &object_desc_set_layout,
+            &upload_context,
         )?;
 
         let scene_camera_buffer = {
@@ -190,11 +196,6 @@ impl Renderer {
             }
             frames
         };
-
-        let upload_context = UploadContext::new(
-            &core.device,
-            core.queue_family_indices.get_graphics_family()?,
-        )?;
 
         Ok(Self {
             window: Some(window),
@@ -464,6 +465,7 @@ impl Renderer {
         self.core.cleanup();
     }
 
+    /// Helper function that creates the descriptor pool and descriptor sets
     fn create_descriptors(
         core: &Core,
     ) -> Result<(

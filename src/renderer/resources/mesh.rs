@@ -22,7 +22,7 @@ static MESH_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 pub struct Mesh {
     pub id: usize,
     pub vertices: Vec<Vertex>,
-    pub vertex_buffer: AllocatedBuffer,
+    pub vertex_buffer: Option<AllocatedBuffer>,
 }
 
 impl PartialEq for Mesh {
@@ -32,27 +32,13 @@ impl PartialEq for Mesh {
 }
 
 impl Mesh {
-    pub fn new(
-        vertices: Vec<Vertex>,
-        gpu_only: 
-        device: &ash::Device,
-        allocator: &mut Allocator,
-    ) -> Result<Self> {
+    pub fn new(vertices: Vec<Vertex>) -> Self {
         let id = MESH_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let vertex_buffer = AllocatedBuffer::new(
-            device,
-            allocator,
-            (vertices.len() * std::mem::size_of::<Vertex>()) as u64,
-            vk::BufferUsageFlags::VERTEX_BUFFER
-                | vk::BufferUsageFlags::TRANSFER_DST,
-            "Mesh Vertex buffer",
-            gpu_allocator::MemoryLocation::CpuToGpu,
-        )?;
-        Ok(Self {
+        Self {
             id,
             vertices,
-            vertex_buffer,
-        })
+            vertex_buffer: None,
+        }
     }
 
     pub fn upload(
@@ -76,18 +62,21 @@ impl Mesh {
         // Copy vertex data into staging buffer
         let _ = staging_buffer.write(&self.vertices[..], 0)?;
 
-        // Create GPU-side vertex buffer
-        let vertex_buffer = AllocatedBuffer::new(
-            device,
-            allocator,
-            buffer_size,
-            // Use this buffer to render meshes and copy data into
-            vk::BufferUsageFlags::VERTEX_BUFFER
-                | vk::BufferUsageFlags::TRANSFER_DST,
-            "Mesh vertex buffer",
-            gpu_allocator::MemoryLocation::GpuOnly,
-        )?;
+        // Create GPU-side vertex buffer if it doesn't already exist
+        if self.vertex_buffer.is_none() {
+            self.vertex_buffer = Some(AllocatedBuffer::new(
+                device,
+                allocator,
+                buffer_size,
+                // Use this buffer to render meshes and copy data into
+                vk::BufferUsageFlags::VERTEX_BUFFER
+                    | vk::BufferUsageFlags::TRANSFER_DST,
+                "Mesh vertex buffer",
+                gpu_allocator::MemoryLocation::GpuOnly,
+            )?);
+        }
 
+        // Execute immediate command to transfer data from staging buffer to vertex buffer
         if let Some(vertex_buffer) = &self.vertex_buffer {
             upload_context.immediate_submit(
                 |cmd: &vk::CommandBuffer, device: &ash::Device| {
@@ -108,7 +97,8 @@ impl Mesh {
                 device,
             )?;
 
-            // Destroy staging buffer right after the immediate submission
+            // At this point, the vertex buffer should be populated with data from the staging buffer
+            // Destroy staging buffer now because the vertex buffer now holds the data
             staging_buffer.cleanup(device, allocator);
 
             Ok(())
@@ -124,10 +114,7 @@ impl Mesh {
         }
     }
 
-    pub fn new_triangle(
-        device: &ash::Device,
-        allocator: &mut Allocator,
-    ) -> Result<Self> {
+    pub fn new_triangle() -> Self {
         let vertices = vec![
             Vertex {
                 position: [-0.5, -0.5, 0.0].into(),
@@ -146,6 +133,6 @@ impl Mesh {
             },
         ];
 
-        Self::new(vertices, device, allocator)
+        Self::new(vertices)
     }
 }

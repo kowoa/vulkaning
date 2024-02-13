@@ -108,7 +108,7 @@ impl Model {
                 // NOTE: no height maps for now
             }
 
-            let mesh = Mesh::new(vertices, device, allocator)?;
+            let mesh = Mesh::new(vertices);
             meshes.push(mesh);
         }
 
