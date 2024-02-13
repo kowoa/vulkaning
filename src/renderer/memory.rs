@@ -5,7 +5,7 @@ use gpu_allocator::{
 };
 use color_eyre::eyre::Result;
 
-use super::{resources::vertex::Vertex, vkinit};
+use super::vkinit;
 
 #[derive(Debug)]
 pub struct AllocatedBuffer {
@@ -64,7 +64,7 @@ impl AllocatedBuffer {
     }
 
     pub fn cleanup(self, device: &ash::Device, allocator: &mut Allocator) {
-        unsafe {
+       unsafe {
             allocator.free(self.allocation).unwrap();
             device.destroy_buffer(self.buffer, None);
         }

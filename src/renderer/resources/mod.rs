@@ -30,7 +30,7 @@ use self::{
 
 use super::{
     core::Core, memory::AllocatedBuffer, swapchain::Swapchain, vkinit,
-    FRAME_OVERLAP,
+    FRAME_OVERLAP, UploadContext,
 };
 
 pub struct Resources {
@@ -153,6 +153,7 @@ impl Resources {
         frame: &mut Frame,
         frame_number: u32,
         scene_camera_buffer: &mut AllocatedBuffer,
+        upload_context: &UploadContext,
     ) -> Result<()> {
         let frame_index = frame_number % FRAME_OVERLAP;
         let scene_start_offset = core
@@ -256,6 +257,7 @@ impl Resources {
             let model = Some(render_obj.model.clone());
             if model != last {
                 unsafe {
+                    /*
                     // Vertex buffer contains the positions of the vertices
                     // Bind the vertex buffer with offset 0
                     let vertex_offset = 0;
@@ -271,6 +273,10 @@ impl Resources {
                         },
                         None => Err(eyre!("No vertex buffer found")),
                     }?;
+                    */
+
+                    let model = render_obj.model.clone();
+                    (render_obj.model.meshes[0]).upload(device, &mut core.allocator, upload_context)?;
 
                     // Bind global descriptor set
                     device.cmd_bind_descriptor_sets(

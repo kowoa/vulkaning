@@ -95,12 +95,12 @@ impl UploadContext {
     {
         let cmd = self.command_buffer;
 
+        // This command buffer will be used exactly once before resetting
+        let cmd_begin_info = vkinit::command_buffer_begin_info(
+            vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
+        );
         // Begin the command buffer recording
         unsafe {
-            // This command buffer will be used exactly once before resetting
-            let cmd_begin_info = vkinit::command_buffer_begin_info(
-                vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
-            );
             device.begin_command_buffer(cmd, &cmd_begin_info)?;
         }
 
@@ -357,6 +357,7 @@ impl Renderer {
                 &mut frame,
                 self.frame_number,
                 &mut self.scene_camera_buffer,
+                &self.upload_context,
             )?;
 
             // RENDERING COMMANDS END
