@@ -37,6 +37,84 @@ pub struct UploadContext {
     command_buffer: vk::CommandBuffer,
 }
 
+impl UploadContext {
+    pub fn new(
+        device: &ash::Device,
+        graphics_family_index: u32,
+    ) -> Result<Self> {
+        let upload_fence_info = vk::FenceCreateInfo::default();
+        let upload_fence =
+            unsafe { device.create_fence(&upload_fence_info, None)? };
+
+        let command_pool_info = vk::CommandPoolCreateInfo {
+            queue_family_index: graphics_family_index,
+            // Allow the pool to reset individual command buffers
+            flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
+            ..Default::default()
+        };
+        let command_pool =
+            unsafe { device.create_command_pool(&command_pool_info, None)? };
+
+        let command_buffer_info = vk::CommandBufferAllocateInfo {
+            command_pool,
+            command_buffer_count: 1,
+            level: vk::CommandBufferLevel::PRIMARY,
+            ..Default::default()
+        };
+        let command_buffer = unsafe {
+            device.allocate_command_buffers(&command_buffer_info)?[0]
+        };
+
+        Ok(Self {
+            upload_fence,
+            command_pool,
+            command_buffer,
+        })
+    }
+
+    pub fn cleanup(self, device: &ash::Device) {
+        unsafe {
+            device.destroy_command_pool(self.command_pool, None);
+            device.destroy_fence(self.upload_fence, None);
+        }
+    }
+
+    // Instantly execute some commands to the GPU without dealing with the render loop and other synchronization
+    // This is great for compute calculations and can be used from a background thread separated from the render loop
+    pub fn immediate_submit(
+        &self,
+        func: fn(&vk::CommandBuffer),
+        device: &ash::Device,
+    ) -> Result<()> {
+        let cmd = self.command_buffer;
+
+        // Begin the command buffer recording
+        unsafe {
+            // This command buffer will be used exactly once before resetting
+            let cmd_begin_info = vkinit::command_buffer_begin_info(
+                vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
+            );
+            device.begin_command_buffer(cmd, &cmd_begin_info)?;
+        }
+
+        func(&cmd);
+
+        unsafe {
+            device.end_command_buffer(cmd)?;
+            // upload_fence will now block until the graphics commands finish execution
+            device.wait_for_fences(&[self.upload_fence], true, 9999999999)?;
+            device.reset_fences(&[self.upload_fence])?;
+            // Reset command buffers inside command pool
+            device.reset_command_pool(
+                self.command_pool,
+                vk::CommandPoolResetFlags::empty(),
+            )?;
+        }
+
+        Ok(())
+    }
+}
+
 pub struct Renderer {
     window: Option<Window>,
     core: Core,
@@ -52,7 +130,7 @@ pub struct Renderer {
 
     scene_camera_buffer: AllocatedBuffer,
 
-    //upload_context: UploadContext,
+    upload_context: UploadContext,
 }
 
 impl Renderer {
@@ -71,9 +149,10 @@ impl Renderer {
         )?;
 
         let scene_camera_buffer = {
-            let scene_size = core.pad_uniform_buffer_size(
-                std::mem::size_of::<GpuSceneData>() as u64,
-            );
+            let scene_size = core
+                .pad_uniform_buffer_size(
+                    std::mem::size_of::<GpuSceneData>() as u64
+                );
             let camera_size = core.pad_uniform_buffer_size(
                 std::mem::size_of::<GpuCameraData>() as u64,
             );
@@ -105,6 +184,11 @@ impl Renderer {
             frames
         };
 
+        let upload_context = UploadContext::new(
+            &core.device,
+            core.queue_family_indices.get_graphics_family()?,
+        )?;
+
         Ok(Self {
             window: Some(window),
             core,
@@ -116,6 +200,7 @@ impl Renderer {
             object_desc_set_layout,
             descriptor_pool,
             scene_camera_buffer,
+            upload_context,
         })
     }
 
@@ -335,6 +420,8 @@ impl Renderer {
 
         let device = &self.core.device;
         let allocator = &mut self.core.allocator;
+
+        self.upload_context.cleanup(device);
 
         unsafe {
             device.destroy_descriptor_pool(self.descriptor_pool, None);

@@ -192,6 +192,30 @@ pub fn write_descriptor_set(
     }
 }
 
+pub fn command_buffer_begin_info(
+    flags: vk::CommandBufferUsageFlags,
+) -> vk::CommandBufferBeginInfo {
+    vk::CommandBufferBeginInfo {
+        flags,
+        ..Default::default()
+    }
+}
+
+pub fn submit_info(
+    cmd: &vk::CommandBuffer,
+) -> vk::SubmitInfo {
+    vk::SubmitInfo {
+        wait_semaphore_count: 0,
+        p_wait_semaphores: std::ptr::null(),
+        p_wait_dst_stage_mask: std::ptr::null(),
+        command_buffer_count: 1,
+        p_command_buffers: cmd, // Make sure cmd lives longer than the returned vk::SubmitInfo
+        signal_semaphore_count: 0,
+        p_signal_semaphores: std::ptr::null(),
+        ..Default::default()
+    }
+}
+
 pub fn debug_utils_messenger_create_info(
 ) -> vk::DebugUtilsMessengerCreateInfoEXT {
     let message_severity = vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE

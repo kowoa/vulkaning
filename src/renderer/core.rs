@@ -1,6 +1,6 @@
 // Engine initialization
 
-use color_eyre::eyre::{eyre, Result};
+use color_eyre::eyre::{eyre, OptionExt, Result};
 use std::{
     collections::HashSet,
     ffi::{c_void, CStr, CString},
@@ -491,6 +491,16 @@ pub struct QueueFamilyIndices {
 }
 
 impl QueueFamilyIndices {
+    pub fn get_graphics_family(&self) -> Result<u32> {
+        self.graphics_family
+            .ok_or_eyre("No graphics family index found")
+    }
+
+    pub fn get_present_family(&self) -> Result<u32> {
+        self.present_family
+            .ok_or_eyre("No present family index found")
+    }
+
     pub fn is_complete(&self) -> bool {
         self.graphics_family.is_some() && self.present_family.is_some()
     }
