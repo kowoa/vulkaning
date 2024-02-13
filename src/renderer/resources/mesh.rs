@@ -42,7 +42,7 @@ impl Mesh {
     }
 
     pub fn upload(
-        &self,
+        &mut self,
         device: &ash::Device,
         allocator: &mut Allocator,
         upload_context: &UploadContext,

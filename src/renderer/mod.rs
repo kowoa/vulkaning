@@ -23,10 +23,7 @@ use crate::renderer::resources::camera::GpuCameraData;
 use self::{
     core::Core,
     memory::AllocatedBuffer,
-    resources::{
-        frame::Frame, scene::GpuSceneData,
-        Resources,
-    },
+    resources::{frame::Frame, scene::GpuSceneData, Resources},
     swapchain::Swapchain,
     window::Window,
 };
@@ -38,19 +35,21 @@ pub struct UploadContext {
     upload_fence: vk::Fence,
     command_pool: vk::CommandPool,
     command_buffer: vk::CommandBuffer,
+    queue: vk::Queue,
 }
 
 impl UploadContext {
     pub fn new(
         device: &ash::Device,
-        graphics_family_index: u32,
+        queue_family_index: u32,
+        queue: vk::Queue,
     ) -> Result<Self> {
         let upload_fence_info = vk::FenceCreateInfo::default();
         let upload_fence =
             unsafe { device.create_fence(&upload_fence_info, None)? };
 
         let command_pool_info = vk::CommandPoolCreateInfo {
-            queue_family_index: graphics_family_index,
+            queue_family_index,
             // Allow the pool to reset individual command buffers
             flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
             ..Default::default()
@@ -72,6 +71,7 @@ impl UploadContext {
             upload_fence,
             command_pool,
             command_buffer,
+            queue,
         })
     }
 
@@ -105,8 +105,18 @@ impl UploadContext {
 
         func(&cmd, device);
 
+        // End the command buffer recording
         unsafe {
             device.end_command_buffer(cmd)?;
+        }
+
+        // Submit command buffer to the queue and execute it
+        let submit = vkinit::submit_info(&cmd);
+        unsafe {
+            device.queue_submit(self.queue, &[submit], self.upload_fence)?;
+        }
+
+        unsafe {
             // upload_fence will now block until the graphics commands finish execution
             device.wait_for_fences(&[self.upload_fence], true, 9999999999)?;
             device.reset_fences(&[self.upload_fence])?;
@@ -151,6 +161,7 @@ impl Renderer {
         let upload_context = UploadContext::new(
             &core.device,
             core.queue_family_indices.get_graphics_family()?,
+            core.graphics_queue,
         )?;
 
         let resources = Resources::new(

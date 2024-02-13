@@ -68,22 +68,21 @@ impl Resources {
         };
 
         let models = {
-            let monkey_model = Rc::new(Model::load_from_obj(
-                "monkey_smooth.obj",
-                device,
-                allocator,
-            )?);
-            let triangle_model =
-                Rc::new(Model::new(vec![Mesh::new_triangle()]));
+            // Create models
+            let mut monkey_model =
+                Model::load_from_obj("monkey_smooth.obj", device, allocator)?;
+            let mut triangle_model = Model::new(vec![Mesh::new_triangle()]);
+
+            // Upload models onto GPU immediately
+            monkey_model.meshes[0].upload(device, allocator, upload_context)?;
+            triangle_model.meshes[0].upload(device, allocator, upload_context)?;
+
+            // Create HashMap with model name as keys and model as values
             let mut models = HashMap::new();
-            models.insert("monkey".into(), monkey_model);
-            models.insert("triangle".into(), triangle_model);
+            models.insert("monkey".into(), Rc::new(monkey_model));
+            models.insert("triangle".into(), Rc::new(triangle_model));
             models
         };
-        // Upload models onto GPU
-        for (_name, model) in &models {
-            model.meshes[0].upload(device, allocator, upload_context)?;
-        }
 
         let render_objs = {
             let mut render_objs = Vec::new();
