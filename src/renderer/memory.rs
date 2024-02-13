@@ -52,25 +52,6 @@ impl AllocatedBuffer {
         Ok(Self { buffer, allocation })
     }
 
-    pub fn new_vertex_buffer(
-        vertices: &[Vertex],
-        device: &ash::Device,
-        allocator: &mut Allocator,
-    ) -> Result<Self> {
-        let mut buffer = Self::new(
-            device,
-            allocator,
-            std::mem::size_of_val(vertices) as u64,
-            vk::BufferUsageFlags::VERTEX_BUFFER,
-            "Vertex Buffer Allocation",
-            MemoryLocation::CpuToGpu,
-        )?;
-
-        let _copy_record = buffer.write(vertices, 0)?;
-
-        Ok(buffer)
-    }
-
     pub fn write<T>(&mut self, data: &[T], start_offset: usize) -> Result<presser::CopyRecord>
     where
         T: Copy,

@@ -9,6 +9,7 @@ mod swapchain;
 pub mod window;
 
 use color_eyre::eyre::{OptionExt, Result};
+use gpu_allocator::vulkan::Allocator;
 use std::{cell::RefCell, mem::ManuallyDrop, rc::Rc};
 
 use ash::vk;
@@ -23,7 +24,10 @@ use crate::renderer::resources::camera::GpuCameraData;
 use self::{
     core::Core,
     memory::AllocatedBuffer,
-    resources::{frame::Frame, scene::GpuSceneData, Resources},
+    resources::{
+        frame::Frame, mesh::Mesh, scene::GpuSceneData, vertex::Vertex,
+        Resources,
+    },
     swapchain::Swapchain,
     window::Window,
 };
@@ -81,11 +85,14 @@ impl UploadContext {
 
     // Instantly execute some commands to the GPU without dealing with the render loop and other synchronization
     // This is great for compute calculations and can be used from a background thread separated from the render loop
-    pub fn immediate_submit(
+    pub fn immediate_submit<F>(
         &self,
-        func: fn(&vk::CommandBuffer),
+        func: F,
         device: &ash::Device,
-    ) -> Result<()> {
+    ) -> Result<()>
+    where
+        F: Fn(&vk::CommandBuffer, &ash::Device),
+    {
         let cmd = self.command_buffer;
 
         // Begin the command buffer recording
@@ -97,7 +104,7 @@ impl UploadContext {
             device.begin_command_buffer(cmd, &cmd_begin_info)?;
         }
 
-        func(&cmd);
+        func(&cmd, device);
 
         unsafe {
             device.end_command_buffer(cmd)?;
@@ -511,7 +518,7 @@ impl Renderer {
             // Create a descriptor pool that will hold 10 uniform buffers
             // and 10 dynamic uniform buffers
             // and 10 storage buffers
-            let sizes = vec![
+            let sizes = [
                 vk::DescriptorPoolSize {
                     // For the camera buffer
                     ty: vk::DescriptorType::UNIFORM_BUFFER,

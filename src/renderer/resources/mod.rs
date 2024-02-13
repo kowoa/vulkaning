@@ -11,7 +11,7 @@ pub mod scene;
 pub mod shader;
 pub mod vertex;
 
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{eyre, Result};
 use std::{collections::HashMap, mem::ManuallyDrop, rc::Rc};
 
 use ash::vk;
@@ -259,12 +259,18 @@ impl Resources {
                     // Vertex buffer contains the positions of the vertices
                     // Bind the vertex buffer with offset 0
                     let vertex_offset = 0;
-                    device.cmd_bind_vertex_buffers(
-                        *cmd,
-                        0,
-                        &[render_obj.model.meshes[0].vertex_buffer.buffer],
-                        &[vertex_offset],
-                    );
+                    match &render_obj.model.meshes[0].vertex_buffer {
+                        Some(vertex_buffer) => {
+                            device.cmd_bind_vertex_buffers(
+                                *cmd,
+                                0,
+                                &[vertex_buffer.buffer],
+                                &[vertex_offset],
+                            );
+                            Ok(())
+                        },
+                        None => Err(eyre!("No vertex buffer found")),
+                    }?;
 
                     // Bind global descriptor set
                     device.cmd_bind_descriptor_sets(
