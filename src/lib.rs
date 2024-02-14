@@ -1,21 +1,52 @@
 mod renderer;
-use renderer::{resources::{shader::SHADERBUILD_DIR, model::ASSETS_DIR}, *};
+use std::{
+    process::ExitCode,
+    sync::{Arc, Mutex},
+};
+
+mod egui_app;
+
+use renderer::{
+    resources::{model::ASSETS_DIR, shader::SHADERBUILD_DIR},
+    *,
+};
 
 use color_eyre::eyre::{eyre, Result};
 
 use crate::window::Window;
 
-pub fn run() -> Result<()> {
+pub fn run() -> Result<ExitCode> {
     color_eyre::install()?;
     env_logger::init();
 
     set_directories()?;
 
+    /*
+    let exit_code = egui_ash::run(
+        "vulkaning",
+        egui_app::EguiAppCreator,
+        egui_ash::RunOption {
+            viewport_builder: Some(
+                egui::ViewportBuilder::default()
+                    .with_title("vulkaning")
+                    .with_resizable(false)
+                    .with_inner_size((800.0, 600.0)),
+
+            ),
+            follow_system_theme: false,
+            default_theme: egui_ash::Theme::Dark,
+            present_mode: ash::vk::PresentModeKHR::FIFO,
+            ..Default::default()
+        },
+    );
+    */
+
     let window = Window::new()?;
     let renderer = Renderer::new(window)?;
     renderer.run_loop()?;
 
-    Ok(())
+    //Ok(exit_code)
+    Ok(ExitCode::SUCCESS)
 }
 
 fn set_directories() -> Result<()> {
@@ -23,7 +54,7 @@ fn set_directories() -> Result<()> {
     if args.len() > 3 {
         return Err(eyre!("Too many args"));
     }
-    
+
     // Set shader build directory from command line args
     if args.len() > 1 {
         unsafe { SHADERBUILD_DIR = Some(args[1].clone()) };
@@ -47,3 +78,4 @@ fn set_directories() -> Result<()> {
 
     Ok(())
 }
+
