@@ -72,8 +72,9 @@ fn set_directories() -> Result<()> {
 
     // Set default assets directory
     } else {
-        let assets_dir = "./assets";
-        unsafe { ASSETS_DIR = Some(assets_dir.into()) };
+        let dir = std::env::var("ASSETS_DIR")
+            .unwrap_or_else(|_| "./assets".to_string());
+        unsafe { ASSETS_DIR = Some(dir) };
     }
 
     Ok(())

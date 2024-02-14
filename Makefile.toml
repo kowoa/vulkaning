@@ -1,7 +1,8 @@
 [env]
 RUST_LOG = "debug"
 RUST_BACKTRACE = "full"
-SHADER_BUILD_DIR = "shaderbuild"
+SHADER_BUILD_DIR = "./shaderbuild"
+ASSETS_DIR = "./assets"
 
 [tasks.run]
 command = "cargo"
