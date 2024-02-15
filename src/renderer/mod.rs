@@ -5,140 +5,72 @@ mod core;
 mod memory;
 pub mod resources;
 mod swapchain;
+mod upload_context;
 
 pub mod window;
 
-use color_eyre::eyre::{OptionExt, Result};
-use std::{cell::RefCell, mem::ManuallyDrop, rc::Rc};
+use color_eyre::eyre::{eyre, Result};
+use egui_ash::EguiCommand;
+use glam::{Mat4, Vec3, Vec4};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use ash::vk;
-
-use winit::{
-    event::{ElementState, Event, KeyEvent, WindowEvent},
-    keyboard::{Key, NamedKey},
-};
 
 use crate::renderer::resources::camera::GpuCameraData;
 
 use self::{
     core::Core,
     memory::AllocatedBuffer,
-    resources::{frame::Frame, scene::GpuSceneData, Resources},
+    resources::{
+        frame::Frame, mesh::MeshPushConstants, scene::GpuSceneData, Resources,
+    },
     swapchain::Swapchain,
+    upload_context::UploadContext,
     window::Window,
 };
 
 const FRAME_OVERLAP: u32 = 2;
 const MAX_OBJECTS: u32 = 10000; // Max objects per frame
 
-pub struct UploadContext {
-    upload_fence: vk::Fence,
-    command_pool: vk::CommandPool,
-    command_buffer: vk::CommandBuffer,
-    queue: vk::Queue,
+#[derive(Clone)]
+pub struct Renderer {
+    inner: Arc<Mutex<RendererInner>>,
 }
 
-impl UploadContext {
-    pub fn new(
-        device: &ash::Device,
-        queue_family_index: u32,
-        queue: vk::Queue,
-    ) -> Result<Self> {
-        let upload_fence_info = vk::FenceCreateInfo::default();
-        let upload_fence =
-            unsafe { device.create_fence(&upload_fence_info, None)? };
-
-        let command_pool_info = vk::CommandPoolCreateInfo {
-            queue_family_index,
-            // Allow the pool to reset individual command buffers
-            flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
-            ..Default::default()
-        };
-        let command_pool =
-            unsafe { device.create_command_pool(&command_pool_info, None)? };
-
-        let command_buffer_info = vk::CommandBufferAllocateInfo {
-            command_pool,
-            command_buffer_count: 1,
-            level: vk::CommandBufferLevel::PRIMARY,
-            ..Default::default()
-        };
-        let command_buffer = unsafe {
-            device.allocate_command_buffers(&command_buffer_info)?[0]
-        };
-
+impl Renderer {
+    pub fn new(window: Window) -> Result<Self> {
         Ok(Self {
-            upload_fence,
-            command_pool,
-            command_buffer,
-            queue,
+            inner: Arc::new(Mutex::new(RendererInner::new(window)?)),
         })
     }
 
-    pub fn cleanup(self, device: &ash::Device) {
-        unsafe {
-            device.destroy_command_pool(self.command_pool, None);
-            device.destroy_fence(self.upload_fence, None);
-        }
+    pub fn draw_frame(
+        &self,
+        width: u32,
+        height: u32,
+        mut egui_cmd: EguiCommand,
+    ) -> Result<u32> {
+        self.inner
+            .lock()
+            .unwrap()
+            .draw_frame(width, height, Some(egui_cmd))
     }
 
-    // Instantly execute some commands to the GPU without dealing with the render loop and other synchronization
-    // This is great for compute calculations and can be used from a background thread separated from the render loop
-    pub fn immediate_submit<F>(
-        &self,
-        func: F,
-        device: &ash::Device,
-    ) -> Result<()>
-    where
-        F: Fn(&vk::CommandBuffer, &ash::Device),
-    {
-        let cmd = self.command_buffer;
-
-        // This command buffer will be used exactly once before resetting
-        let cmd_begin_info = vkinit::command_buffer_begin_info(
-            vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
-        );
-        // Begin the command buffer recording
-        unsafe {
-            device.begin_command_buffer(cmd, &cmd_begin_info)?;
-        }
-
-        func(&cmd, device);
-
-        // End the command buffer recording
-        unsafe {
-            device.end_command_buffer(cmd)?;
-        }
-
-        // Submit command buffer to the queue and execute it
-        let submit = vkinit::submit_info(&cmd);
-        unsafe {
-            device.queue_submit(self.queue, &[submit], self.upload_fence)?;
-        }
-
-        unsafe {
-            // upload_fence will now block until the graphics commands finish execution
-            device.wait_for_fences(&[self.upload_fence], true, 9999999999)?;
-            device.reset_fences(&[self.upload_fence])?;
-            // Reset command buffers inside command pool
-            device.reset_command_pool(
-                self.command_pool,
-                vk::CommandPoolResetFlags::empty(),
-            )?;
-        }
-
-        Ok(())
+    pub fn present_frame(&self, swapchain_image_index: u32) -> Result<()> {
+        self.inner
+            .lock()
+            .unwrap()
+            .present_frame(swapchain_image_index)
     }
 }
 
-pub struct Renderer {
-    window: Option<Window>,
+struct RendererInner {
     core: Core,
     swapchain: Swapchain,
     resources: Resources,
 
     frame_number: u32,
-    frames: Vec<Rc<RefCell<Frame>>>,
+    frames: Vec<Arc<Mutex<Frame>>>,
 
     global_desc_set_layout: vk::DescriptorSetLayout,
     object_desc_set_layout: vk::DescriptorSetLayout,
@@ -149,7 +81,7 @@ pub struct Renderer {
     upload_context: UploadContext,
 }
 
-impl Renderer {
+impl RendererInner {
     pub fn new(window: Window) -> Result<Self> {
         log::info!("Initializing renderer ...");
 
@@ -183,7 +115,7 @@ impl Renderer {
             let size = FRAME_OVERLAP as u64 * (scene_size + camera_size);
             AllocatedBuffer::new(
                 &core.device,
-                &mut core.allocator,
+                &mut core.get_allocator()?,
                 size,
                 vk::BufferUsageFlags::UNIFORM_BUFFER,
                 "Scene-Camera Uniform Buffer",
@@ -203,13 +135,12 @@ impl Renderer {
                     &scene_camera_buffer,
                 )?;
 
-                frames.push(Rc::new(RefCell::new(frame)));
+                frames.push(Arc::new(Mutex::new(frame)));
             }
             frames
         };
 
         Ok(Self {
-            window: Some(window),
             core,
             swapchain,
             resources,
@@ -223,6 +154,7 @@ impl Renderer {
         })
     }
 
+    /*
     pub fn run_loop(mut self) -> Result<()> {
         let window = self
             .window
@@ -254,8 +186,10 @@ impl Renderer {
                     },
                     WindowEvent::RedrawRequested => {
                         if let Some(r) = &mut renderer {
-                            let swapchain_image_index =
-                                r.draw_frame(&window).unwrap();
+                            let size = &window.inner_size();
+                            let swapchain_image_index = r
+                                .draw_frame(size.width, size.height, None)
+                                .unwrap();
                             window.pre_present_notify();
                             r.present_frame(swapchain_image_index).unwrap();
                         }
@@ -274,15 +208,25 @@ impl Renderer {
             _ => (),
         })?)
     }
+    */
 
-    fn get_current_frame(&self) -> Rc<RefCell<Frame>> {
-        self.frames[(self.frame_number % FRAME_OVERLAP) as usize].clone()
+    fn get_current_frame(&self) -> Result<MutexGuard<Frame>> {
+        match self.frames[(self.frame_number % FRAME_OVERLAP) as usize].lock() {
+            Ok(frame) => Ok(frame),
+            Err(err) => Err(eyre!(err.to_string())),
+        }
     }
 
-    fn draw_frame(&mut self, window: &winit::window::Window) -> Result<u32> {
-        let frame = self.get_current_frame();
-        let mut frame = frame.borrow_mut();
+    fn draw_frame(
+        &mut self,
+        width: u32,
+        height: u32,
+        mut egui_cmd: Option<EguiCommand>,
+    ) -> Result<u32> {
+        let mut swapchain_image_index_opt = None;
+
         unsafe {
+            let frame = self.get_current_frame()?;
             let fences = [frame.render_fence];
 
             // Wait until GPU has finished rendering last frame (1 sec timeout)
@@ -299,6 +243,7 @@ impl Renderer {
                     frame.present_semaphore,
                     vk::Fence::null(),
                 )?;
+            swapchain_image_index_opt = Some(swapchain_image_index);
 
             // Reset the command buffer to begin recording
             let cmd = frame.command_buffer;
@@ -343,8 +288,10 @@ impl Renderer {
                 render_area: vk::Rect2D {
                     offset: vk::Offset2D { x: 0, y: 0 },
                     extent: vk::Extent2D {
-                        width: window.inner_size().width,
-                        height: window.inner_size().height,
+                        //width: window.inner_size().width,
+                        //height: window.inner_size().height,
+                        width,
+                        height,
                     },
                 },
                 framebuffer: rp.framebuffers[swapchain_image_index as usize],
@@ -357,23 +304,22 @@ impl Renderer {
                 &rp_begin_info,
                 vk::SubpassContents::INLINE,
             );
+        }
 
-            // RENDERING COMMANDS START
+        // RENDERING COMMANDS START
 
-            self.resources.draw_render_objects(
-                &mut self.core,
-                &cmd,
-                window,
-                0,
-                self.resources.render_objs.len(),
-                &mut frame,
-                self.frame_number,
-                &mut self.scene_camera_buffer,
-                &self.upload_context,
-            )?;
+        self.draw_render_objects(
+            width,
+            height,
+            0,
+            self.resources.render_objs.len(),
+        )?;
 
-            // RENDERING COMMANDS END
+        // RENDERING COMMANDS END
 
+        let frame = self.get_current_frame()?;
+        let cmd = frame.command_buffer;
+        unsafe {
             // Finalize the main renderpass
             self.core.device.cmd_end_render_pass(cmd);
             // Finalize the main command buffer
@@ -396,26 +342,28 @@ impl Renderer {
                 &[submit_info],
                 frame.render_fence,
             )?;
-
-            Ok(swapchain_image_index)
         }
+
+        Ok(swapchain_image_index_opt.unwrap())
     }
 
     fn present_frame(&mut self, swapchain_image_index: u32) -> Result<()> {
-        let frame = self.get_current_frame();
-        let present_info = vk::PresentInfoKHR {
-            p_swapchains: &self.swapchain.swapchain,
-            swapchain_count: 1,
-            p_wait_semaphores: &frame.borrow().render_semaphore,
-            wait_semaphore_count: 1,
-            p_image_indices: &swapchain_image_index,
-            ..Default::default()
-        };
+        {
+            let frame = self.get_current_frame()?;
+            let present_info = vk::PresentInfoKHR {
+                p_swapchains: &self.swapchain.swapchain,
+                swapchain_count: 1,
+                p_wait_semaphores: &frame.render_semaphore,
+                wait_semaphore_count: 1,
+                p_image_indices: &swapchain_image_index,
+                ..Default::default()
+            };
 
-        unsafe {
-            self.swapchain
-                .swapchain_loader
-                .queue_present(self.core.graphics_queue, &present_info)?;
+            unsafe {
+                self.swapchain
+                    .swapchain_loader
+                    .queue_present(self.core.graphics_queue, &present_info)?;
+            }
         }
 
         self.frame_number += 1;
@@ -423,56 +371,225 @@ impl Renderer {
         Ok(())
     }
 
+    pub fn draw_render_objects(
+        &mut self,
+        width: u32,
+        height: u32,
+        first_index: usize,
+        count: usize,
+    ) -> Result<()> {
+        let core = &self.core;
+        let frame_index = self.frame_number % FRAME_OVERLAP;
+        let scene_start_offset = core
+            .pad_uniform_buffer_size(std::mem::size_of::<GpuSceneData>() as u64)
+            * frame_index as u64;
+        let camera_start_offset = core
+            .pad_uniform_buffer_size(std::mem::size_of::<GpuSceneData>() as u64)
+            * FRAME_OVERLAP as u64
+            + core.pad_uniform_buffer_size(
+                std::mem::size_of::<GpuCameraData>() as u64,
+            ) * frame_index as u64;
+
+        // Write into scene section of scene-camera buffer
+        {
+            // Fill a GpuSceneData struct
+            let framed = self.frame_number as f32 / 120.0;
+            let scene_data = GpuSceneData {
+                ambient_color: Vec4::new(framed.sin(), 0.0, framed.cos(), 1.0),
+                ..Default::default()
+            };
+
+            // Copy GpuSceneData struct to buffer
+            self.scene_camera_buffer
+                .write(&[scene_data], scene_start_offset as usize)?;
+        }
+
+        // Write into camera section of scene-camera buffer
+        {
+            // Fill a GpuCameraData struct
+            let cam_pos = Vec3::new(0.0, 6.0, 20.0);
+            let view = Mat4::look_to_rh(
+                cam_pos,
+                Vec3::new(0.0, 0.0, -1.0),
+                Vec3::new(0.0, 1.0, 0.0),
+            );
+            let mut proj = Mat4::perspective_rh(
+                70.0,
+                width as f32 / height as f32,
+                0.1,
+                200.0,
+            );
+            proj.y_axis.y *= -1.0;
+            let cam_data = GpuCameraData {
+                proj,
+                view,
+                viewproj: proj * view,
+            };
+
+            // Copy GpuCameraData struct to buffer
+            self.scene_camera_buffer
+                .write(&[cam_data], camera_start_offset as usize)?;
+        }
+
+        // Write into object storage buffer
+        {
+            let rot = Mat4::from_rotation_y(self.frame_number as f32 / 120.0);
+            let object_data = self
+                .resources
+                .render_objs
+                .iter()
+                .map(|obj| rot * obj.transform)
+                .collect::<Vec<_>>();
+            let mut frame = self.get_current_frame()?;
+            frame.object_buffer.write(&object_data, 0)?;
+        }
+
+        let mut last_pipeline = vk::Pipeline::null();
+        let mut last_model = None;
+        for i in first_index..(first_index + count) {
+            let device = &core.device;
+            let render_obj = &self.resources.render_objs[i];
+
+            // Only bind the pipeline if it doesn't match the already bound one
+            if render_obj.pipeline.pipeline != last_pipeline {
+                let frame = self.get_current_frame()?;
+                let cmd = frame.command_buffer;
+                unsafe {
+                    device.cmd_bind_pipeline(
+                        cmd,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        render_obj.pipeline.pipeline,
+                    );
+                }
+                last_pipeline = render_obj.pipeline.pipeline;
+            }
+
+            let constants = MeshPushConstants {
+                data: Vec4::new(0.0, 0.0, 0.0, 0.0),
+                render_matrix: render_obj.transform,
+            };
+
+            let frame = self.get_current_frame()?;
+            let cmd = frame.command_buffer;
+            unsafe {
+                device.cmd_push_constants(
+                    cmd,
+                    render_obj.pipeline.pipeline_layout,
+                    vk::ShaderStageFlags::VERTEX,
+                    0,
+                    bytemuck::bytes_of(&constants),
+                );
+            }
+
+            // Only bind the mesh if it's a different one from last bind
+            let last = last_model.take();
+            let model = Some(render_obj.model.clone());
+            if model != last {
+                unsafe {
+                    // Vertex buffer contains the positions of the vertices
+                    // Bind the vertex buffer with offset 0
+                    let vertex_offset = 0;
+                    match &render_obj.model.meshes[0].vertex_buffer {
+                        Some(vertex_buffer) => {
+                            device.cmd_bind_vertex_buffers(
+                                cmd,
+                                0,
+                                &[vertex_buffer.buffer],
+                                &[vertex_offset],
+                            );
+                            Ok(())
+                        }
+                        None => Err(eyre!("No vertex buffer found")),
+                    }?;
+
+                    // Bind global descriptor set
+                    device.cmd_bind_descriptor_sets(
+                        cmd,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        render_obj.pipeline.pipeline_layout,
+                        0,
+                        &[frame.global_desc_set],
+                        &[
+                            scene_start_offset as u32,
+                            camera_start_offset as u32,
+                        ],
+                    );
+
+                    // Bind object descriptor set
+                    device.cmd_bind_descriptor_sets(
+                        cmd,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        render_obj.pipeline.pipeline_layout,
+                        1,
+                        &[frame.object_desc_set],
+                        &[],
+                    );
+                }
+                last_model = model;
+            } else {
+                last_model = last;
+            }
+
+            unsafe {
+                device.cmd_draw(
+                    cmd,
+                    render_obj.model.meshes[0].vertices.len() as u32,
+                    1,
+                    0,
+                    i as u32,
+                );
+            }
+        }
+
+        Ok(())
+    }
     fn cleanup(mut self) {
         // Wait until all frames have finished rendering
         for frame in &self.frames {
+            let frame = frame.lock().unwrap();
             unsafe {
                 self.core
                     .device
-                    .wait_for_fences(
-                        &[frame.borrow().render_fence],
-                        true,
-                        1000000000,
-                    )
+                    .wait_for_fences(&[frame.render_fence], true, 1000000000)
                     .unwrap();
             }
         }
 
-        let device = &self.core.device;
-        let allocator = &mut self.core.allocator;
+        {
+            let device = &self.core.device;
+            let mut allocator = self.core.get_allocator().unwrap();
 
-        self.upload_context.cleanup(device);
+            self.upload_context.cleanup(device);
 
-        unsafe {
-            device.destroy_descriptor_pool(self.descriptor_pool, None);
-            device.destroy_descriptor_set_layout(
-                self.object_desc_set_layout,
-                None,
-            );
-            device.destroy_descriptor_set_layout(
-                self.global_desc_set_layout,
-                None,
-            );
+            unsafe {
+                device.destroy_descriptor_pool(self.descriptor_pool, None);
+                device.destroy_descriptor_set_layout(
+                    self.object_desc_set_layout,
+                    None,
+                );
+                device.destroy_descriptor_set_layout(
+                    self.global_desc_set_layout,
+                    None,
+                );
+            }
+            self.resources.cleanup(device, &mut allocator);
+
+            // Clean up all frames
+            for _ in 0..self.frames.len() {
+                let frame = self.frames.pop().unwrap();
+                let frame = Arc::try_unwrap(frame).unwrap();
+                let frame = frame.into_inner().unwrap();
+                frame.cleanup(device, &mut allocator);
+            }
+
+            // Clean up buffers
+            self.scene_camera_buffer.cleanup(device, &mut allocator);
+
+            // Clean up swapchain
+            self.swapchain.cleanup(device, &mut allocator);
         }
-        self.resources.cleanup(device, allocator);
 
-        // Clean up all frames
-        for frame in self.frames {
-            let frame = Rc::try_unwrap(frame);
-            let frame = frame.expect("Failed to cleanup frame");
-            frame.into_inner().cleanup(device, allocator);
-        }
-
-        // Clean up buffers
-        self.scene_camera_buffer.cleanup(device, allocator);
-
-        self.swapchain.cleanup(device, &mut self.core.allocator);
-
-        // We need to do this because the allocator doesn't destroy all
-        // memory blocks (VkDeviceMemory) until it is dropped.
-        unsafe {
-            ManuallyDrop::drop(&mut self.core.allocator);
-        }
+        // Clean up core Vulkan objects
         self.core.cleanup();
     }
 

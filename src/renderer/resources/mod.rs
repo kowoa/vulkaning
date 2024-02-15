@@ -12,7 +12,7 @@ pub mod shader;
 pub mod vertex;
 
 use color_eyre::eyre::{eyre, Result};
-use std::{collections::HashMap, mem::ManuallyDrop, rc::Rc};
+use std::{collections::HashMap, mem::ManuallyDrop, sync::Arc};
 
 use ash::vk;
 use glam::{Mat4, Vec3, Vec4};
@@ -24,8 +24,8 @@ use shader::Shader;
 
 use self::{
     camera::GpuCameraData, frame::Frame, mesh::MeshPushConstants, model::Model,
-    object::GpuObjectData, pipeline::Pipeline, render_object::RenderObject,
-    scene::GpuSceneData, vertex::Vertex,
+    pipeline::Pipeline, render_object::RenderObject, scene::GpuSceneData,
+    vertex::Vertex,
 };
 
 use super::{
@@ -36,8 +36,8 @@ use super::{
 pub struct Resources {
     pub renderpasses: Vec<Renderpass>,
 
-    pub pipelines: HashMap<String, Rc<Pipeline>>,
-    pub models: HashMap<String, Rc<Model>>,
+    pub pipelines: HashMap<String, Arc<Pipeline>>,
+    pub models: HashMap<String, Arc<Model>>,
 
     pub render_objs: ManuallyDrop<Vec<RenderObject>>,
 }
@@ -51,11 +51,11 @@ impl Resources {
         upload_context: &UploadContext,
     ) -> Result<Self> {
         let device = &core.device;
-        let allocator = &mut core.allocator;
+        let mut allocator = core.get_allocator()?;
         let renderpass = Renderpass::new(device, swapchain)?;
 
         let pipelines = {
-            let pipeline = Rc::new(create_default_pipeline(
+            let pipeline = Arc::new(create_default_pipeline(
                 device,
                 swapchain,
                 &renderpass,
@@ -69,26 +69,37 @@ impl Resources {
 
         let models = {
             // Create models
-            let mut monkey_model =
-                Model::load_from_obj("monkey_smooth.obj", device, allocator)?;
+            let mut monkey_model = Model::load_from_obj(
+                "monkey_smooth.obj",
+                device,
+                &mut allocator,
+            )?;
             let mut triangle_model = Model::new(vec![Mesh::new_triangle()]);
 
             // Upload models onto GPU immediately
-            monkey_model.meshes[0].upload(device, allocator, upload_context)?;
-            triangle_model.meshes[0].upload(device, allocator, upload_context)?;
+            monkey_model.meshes[0].upload(
+                device,
+                &mut allocator,
+                upload_context,
+            )?;
+            triangle_model.meshes[0].upload(
+                device,
+                &mut allocator,
+                upload_context,
+            )?;
 
             // Create HashMap with model name as keys and model as values
             let mut models = HashMap::new();
-            models.insert("monkey".into(), Rc::new(monkey_model));
-            models.insert("triangle".into(), Rc::new(triangle_model));
+            models.insert("monkey".into(), Arc::new(monkey_model));
+            models.insert("triangle".into(), Arc::new(triangle_model));
             models
         };
 
         let render_objs = {
             let mut render_objs = Vec::new();
             let monkey = RenderObject::new(
-                Rc::clone(&models["monkey"]),
-                Rc::clone(&pipelines["default"]),
+                Arc::clone(&models["monkey"]),
+                Arc::clone(&pipelines["default"]),
                 Mat4::IDENTITY,
             );
             render_objs.push(monkey);
@@ -101,8 +112,8 @@ impl Resources {
                     let scale = Mat4::from_scale(Vec3::new(0.2, 0.2, 0.2));
                     let transform = translation * scale;
                     let triangle = RenderObject::new(
-                        Rc::clone(&models["triangle"]),
-                        Rc::clone(&pipelines["default"]),
+                        Arc::clone(&models["triangle"]),
+                        Arc::clone(&pipelines["default"]),
                         transform,
                     );
                     render_objs.push(triangle);
@@ -128,7 +139,7 @@ impl Resources {
         }
 
         for (_, model) in self.models {
-            if let Ok(model) = Rc::try_unwrap(model) {
+            if let Ok(model) = Arc::try_unwrap(model) {
                 model.cleanup(device, allocator);
             } else {
                 panic!("Failed to cleanup model because there are still multiple references");
@@ -136,7 +147,7 @@ impl Resources {
         }
 
         for (_, pipeline) in self.pipelines {
-            if let Ok(pipeline) = Rc::try_unwrap(pipeline) {
+            if let Ok(pipeline) = Arc::try_unwrap(pipeline) {
                 pipeline.cleanup(device);
             } else {
                 panic!("Failed to cleanup pipeline because there are still multiple references");
@@ -146,178 +157,6 @@ impl Resources {
         for renderpass in self.renderpasses {
             renderpass.cleanup(device);
         }
-    }
-
-    pub fn draw_render_objects(
-        &self,
-        core: &mut Core,
-        cmd: &vk::CommandBuffer,
-        window: &winit::window::Window,
-        first_index: usize,
-        count: usize,
-        frame: &mut Frame,
-        frame_number: u32,
-        scene_camera_buffer: &mut AllocatedBuffer,
-        upload_context: &UploadContext,
-    ) -> Result<()> {
-        let frame_index = frame_number % FRAME_OVERLAP;
-        let scene_start_offset = core
-            .pad_uniform_buffer_size(std::mem::size_of::<GpuSceneData>() as u64)
-            * frame_index as u64;
-        let camera_start_offset = core
-            .pad_uniform_buffer_size(std::mem::size_of::<GpuSceneData>() as u64)
-            * FRAME_OVERLAP as u64
-            + core.pad_uniform_buffer_size(
-                std::mem::size_of::<GpuCameraData>() as u64,
-            ) * frame_index as u64;
-
-        // Write into scene section of scene-camera buffer
-        {
-            // Fill a GpuSceneData struct
-            let framed = frame_number as f32 / 120.0;
-            let scene_data = GpuSceneData {
-                ambient_color: Vec4::new(framed.sin(), 0.0, framed.cos(), 1.0),
-                ..Default::default()
-            };
-
-            // Copy GpuSceneData struct to buffer
-            scene_camera_buffer
-                .write(&[scene_data], scene_start_offset as usize)?;
-        }
-
-        // Write into camera section of scene-camera buffer
-        {
-            // Fill a GpuCameraData struct
-            let cam_pos = Vec3::new(0.0, 6.0, 20.0);
-            let view = Mat4::look_to_rh(
-                cam_pos,
-                Vec3::new(0.0, 0.0, -1.0),
-                Vec3::new(0.0, 1.0, 0.0),
-            );
-            let mut proj = Mat4::perspective_rh(
-                70.0,
-                window.inner_size().width as f32
-                    / window.inner_size().height as f32,
-                0.1,
-                200.0,
-            );
-            proj.y_axis.y *= -1.0;
-            let cam_data = GpuCameraData {
-                proj,
-                view,
-                viewproj: proj * view,
-            };
-
-            // Copy GpuCameraData struct to buffer
-            scene_camera_buffer
-                .write(&[cam_data], camera_start_offset as usize)?;
-        }
-
-        // Write into object storage buffer
-        {
-            let rot = Mat4::from_rotation_y(frame_number as f32 / 120.0);
-            let object_data = self
-                .render_objs
-                .iter()
-                .map(|obj| rot * obj.transform)
-                .collect::<Vec<_>>();
-            frame.object_buffer.write(&object_data, 0)?;
-        }
-
-        let mut last_pipeline = vk::Pipeline::null();
-        let mut last_model = None;
-        for i in first_index..(first_index + count) {
-            let device = &core.device;
-            let render_obj = &self.render_objs[i];
-
-            // Only bind the pipeline if it doesn't match the already bound one
-            if render_obj.pipeline.pipeline != last_pipeline {
-                unsafe {
-                    device.cmd_bind_pipeline(
-                        *cmd,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        render_obj.pipeline.pipeline,
-                    );
-                }
-                last_pipeline = render_obj.pipeline.pipeline;
-            }
-
-            let constants = MeshPushConstants {
-                data: Vec4::new(0.0, 0.0, 0.0, 0.0),
-                render_matrix: render_obj.transform,
-            };
-
-            unsafe {
-                device.cmd_push_constants(
-                    *cmd,
-                    render_obj.pipeline.pipeline_layout,
-                    vk::ShaderStageFlags::VERTEX,
-                    0,
-                    bytemuck::bytes_of(&constants),
-                );
-            }
-
-            // Only bind the mesh if it's a different one from last bind
-            let last = last_model.take();
-            let model = Some(render_obj.model.clone());
-            if model != last {
-                unsafe {
-                    // Vertex buffer contains the positions of the vertices
-                    // Bind the vertex buffer with offset 0
-                    let vertex_offset = 0;
-                    match &render_obj.model.meshes[0].vertex_buffer {
-                        Some(vertex_buffer) => {
-                            device.cmd_bind_vertex_buffers(
-                                *cmd,
-                                0,
-                                &[vertex_buffer.buffer],
-                                &[vertex_offset],
-                            );
-                            Ok(())
-                        }
-                        None => Err(eyre!("No vertex buffer found")),
-                    }?;
-
-                    // Bind global descriptor set
-                    device.cmd_bind_descriptor_sets(
-                        *cmd,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        render_obj.pipeline.pipeline_layout,
-                        0,
-                        &[frame.global_desc_set],
-                        &[
-                            scene_start_offset as u32,
-                            camera_start_offset as u32,
-                        ],
-                    );
-
-                    // Bind object descriptor set
-                    device.cmd_bind_descriptor_sets(
-                        *cmd,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        render_obj.pipeline.pipeline_layout,
-                        1,
-                        &[frame.object_desc_set],
-                        &[],
-                    );
-                }
-                last_model = model;
-            } else {
-                last_model = last;
-            }
-
-            unsafe {
-                device.cmd_draw(
-                    *cmd,
-                    render_obj.model.meshes[0].vertices.len() as u32,
-                    1,
-                    0,
-                    i as u32,
-                );
-            }
-        }
-
-        Ok(())
     }
 }
 

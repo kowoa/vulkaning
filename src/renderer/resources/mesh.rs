@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{atomic::{AtomicUsize, Ordering}, MutexGuard};
 
 use ash::vk;
 use bytemuck::{Pod, Zeroable};
@@ -44,7 +44,7 @@ impl Mesh {
     pub fn upload(
         &mut self,
         device: &ash::Device,
-        allocator: &mut Allocator,
+        allocator: &mut MutexGuard<Allocator>,
         upload_context: &UploadContext,
     ) -> Result<()> {
         let buffer_size =

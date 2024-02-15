@@ -4,7 +4,7 @@ use color_eyre::eyre::{eyre, OptionExt, Result};
 use std::{
     collections::HashSet,
     ffi::{c_void, CStr, CString},
-    mem::ManuallyDrop,
+    mem::ManuallyDrop, sync::{Mutex, Arc, MutexGuard},
 };
 
 use ash::vk;
@@ -52,7 +52,7 @@ pub struct Core {
     pub present_queue: vk::Queue,
     pub queue_family_indices: QueueFamilyIndices,
 
-    pub allocator: ManuallyDrop<Allocator>,
+    allocator: ManuallyDrop<Arc<Mutex<Allocator>>>,
 }
 
 impl Core {
@@ -112,8 +112,15 @@ impl Core {
             graphics_queue,
             present_queue,
             queue_family_indices,
-            allocator: ManuallyDrop::new(allocator),
+            allocator: ManuallyDrop::new(Arc::new(Mutex::new(allocator))),
         })
+    }
+
+    pub fn get_allocator(&self) -> Result<MutexGuard<Allocator>> {
+        match self.allocator.lock() {
+            Ok(allocator) => Ok(allocator),
+            Err(err) => Err(eyre!(err.to_string())),
+        }
     }
 
     pub fn min_uniform_buffer_offset_alignment(&self) -> u64 {
@@ -130,9 +137,13 @@ impl Core {
         )
     }
 
-    pub fn cleanup(self) {
+    pub fn cleanup(mut self) {
         log::info!("Cleaning up core ...");
         unsafe {
+            // We need to do this because the allocator doesn't destroy all
+            // memory blocks (VkDeviceMemory) until it is dropped.
+            ManuallyDrop::drop(&mut self.allocator);
+
             self.device.destroy_device(None);
             // Segfault occurs here if window gets destroyed before surface
             self.surface_loader.destroy_surface(self.surface, None);

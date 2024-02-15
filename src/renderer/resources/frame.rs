@@ -1,11 +1,9 @@
-use std::rc::Rc;
-
 use ash::vk;
 use color_eyre::eyre::{OptionExt, Result};
 use gpu_allocator::vulkan::Allocator;
 
 use crate::renderer::{
-    core::Core, memory::AllocatedBuffer, utils, vkinit, MAX_OBJECTS,
+    core::Core, memory::AllocatedBuffer, vkinit, MAX_OBJECTS,
 };
 
 use super::{
@@ -74,7 +72,7 @@ impl Frame {
         // Create object buffer
         let object_buffer = AllocatedBuffer::new(
             &core.device,
-            &mut core.allocator,
+            &mut core.get_allocator()?,
             std::mem::size_of::<GpuObjectData>() as u64 * MAX_OBJECTS as u64,
             vk::BufferUsageFlags::STORAGE_BUFFER,
             "Object Storage Buffer",

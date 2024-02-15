@@ -1,19 +1,19 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use glam::Mat4;
 
 use super::{model::Model, pipeline::Pipeline};
 
 pub struct RenderObject {
-    pub model: Rc<Model>,
-    pub pipeline: Rc<Pipeline>,
+    pub model: Arc<Model>,
+    pub pipeline: Arc<Pipeline>,
     pub transform: Mat4,
 }
 
 impl RenderObject {
     pub fn new(
-        model: Rc<Model>,
-        pipeline: Rc<Pipeline>,
+        model: Arc<Model>,
+        pipeline: Arc<Pipeline>,
         transform: Mat4,
     ) -> Self {
         Self {

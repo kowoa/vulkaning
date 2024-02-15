@@ -2,7 +2,6 @@ use std::sync::{Arc, Mutex};
 
 use crate::renderer::Renderer;
 
-
 pub struct EguiApp {
     renderer: Renderer,
 
@@ -13,7 +12,7 @@ pub struct EguiApp {
 
 impl egui_ash::App for EguiApp {
     fn ui(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("my_side_panel").show(&ctx, |ui| {
+        egui::SidePanel::left("my_side_panel").show(ctx, |ui| {
             ui.heading("Hello");
             ui.label("Hello egui!");
             ui.separator();
@@ -22,8 +21,91 @@ impl egui_ash::App for EguiApp {
                 let id = ui.make_persistent_id("theme_combo_box_side");
                 egui::ComboBox::from_id_source(id)
                     .selected_text(format!("{:?}", self.theme))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut self.theme,
+                            egui_ash::Theme::Dark,
+                            "Dark",
+                        );
+                        ui.selectable_value(
+                            &mut self.theme,
+                            egui_ash::Theme::Light,
+                            "Light",
+                        );
+                    });
             });
+            ui.separator();
+            ui.hyperlink("https://github.com/emilk/egui");
+            ui.separator();
+            ui.text_edit_singleline(&mut self.text);
+            ui.separator();
+            ui.label("Rotate");
+            ui.add(egui::widgets::Slider::new(
+                &mut self.rotate_y,
+                -180.0..=180.0,
+            ));
         });
+        egui::Window::new("My Window")
+            .id(egui::Id::new("my_window"))
+            .resizable(true)
+            .scroll2([true, true])
+            .show(ctx, |ui| {
+                ui.heading("Hello");
+                ui.label("Hello egui!");
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label("Theme");
+                    let id = ui.make_persistent_id("theme_combo_box_window");
+                    egui::ComboBox::from_id_source(id)
+                        .selected_text(format!("{:?}", self.theme))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.theme,
+                                egui_ash::Theme::Dark,
+                                "Dark",
+                            );
+                            ui.selectable_value(
+                                &mut self.theme,
+                                egui_ash::Theme::Light,
+                                "Light",
+                            );
+                        });
+                });
+                ui.separator();
+                ui.hyperlink("https://github.com/emilk/egui");
+                ui.separator();
+                ui.text_edit_singleline(&mut self.text);
+                ui.separator();
+                ui.label("Rotate");
+                ui.add(egui::widgets::Slider::new(
+                    &mut self.rotate_y,
+                    -180.0..=180.0,
+                ));
+            });
+
+        match self.theme {
+            egui_ash::Theme::Dark => {
+                ctx.set_visuals(egui::style::Visuals::dark())
+            }
+            egui_ash::Theme::Light => {
+                ctx.set_visuals(egui::style::Visuals::light())
+            }
+        }
+    }
+
+    fn request_redraw(
+        &mut self,
+        _viewport_id: egui::ViewportId,
+    ) -> egui_ash::HandleRedraw {
+        egui_ash::HandleRedraw::Handle(Box::new({
+            let renderer = self.renderer.clone();
+            move |size, egui_cmd| {
+                let swapchain_image_index = renderer
+                    .draw_frame(size.width, size.height, egui_cmd)
+                    .unwrap();
+                renderer.present_frame(swapchain_image_index).unwrap();
+            }
+        }))
     }
 }
 
@@ -40,6 +122,11 @@ impl egui_ash::AppCreator<Arc<Mutex<gpu_allocator::vulkan::Allocator>>>
         Self::App,
         egui_ash::AshRenderState<Arc<Mutex<gpu_allocator::vulkan::Allocator>>>,
     ) {
-        todo!()
+        let app = Self::App {
+            renderer: todo!(),
+            theme: todo!(),
+            text: todo!(),
+            rotate_y: todo!(),
+        };
     }
 }

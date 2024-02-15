@@ -21,7 +21,6 @@ pub fn run() -> Result<ExitCode> {
 
     set_directories()?;
 
-    /*
     let exit_code = egui_ash::run(
         "vulkaning",
         egui_app::EguiAppCreator,
@@ -39,11 +38,12 @@ pub fn run() -> Result<ExitCode> {
             ..Default::default()
         },
     );
-    */
 
+    /*
     let window = Window::new()?;
     let renderer = Renderer::new(window)?;
     renderer.run_loop()?;
+    */
 
     //Ok(exit_code)
     Ok(ExitCode::SUCCESS)

@@ -1,5 +1,5 @@
-use color_eyre::eyre::Result;
 use ash::vk;
+use color_eyre::eyre::Result;
 use gpu_allocator::vulkan::Allocator;
 
 use super::{core::Core, memory::AllocatedImage, window::Window};
@@ -16,22 +16,10 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new(
-        core: &mut Core,
-        window: &Window,
-    ) -> Result<Self> {
-        let (
-            swapchain,
-            swapchain_loader,
-            images,
-            image_format,
-            image_extent,
-        ) = create_swapchain(core, window)?;
-        let image_views = create_image_views(
-            core,
-            &image_format,
-            &images,
-        )?;
+    pub fn new(core: &mut Core, window: &Window) -> Result<Self> {
+        let (swapchain, swapchain_loader, images, image_format, image_extent) =
+            create_swapchain(core, window)?;
+        let image_views = create_image_views(core, &image_format, &images)?;
 
         let depth_image = {
             let extent = vk::Extent3D {
@@ -39,7 +27,11 @@ impl Swapchain {
                 height: image_extent.height,
                 depth: 1,
             };
-            AllocatedImage::new_depth_image(extent, &core.device, &mut core.allocator)?
+            AllocatedImage::new_depth_image(
+                extent,
+                &core.device,
+                core.get_allocator()?,
+            )?
         };
 
         let objs = Self {
@@ -51,7 +43,7 @@ impl Swapchain {
             image_views,
             depth_image,
         };
-        
+
         Ok(objs)
     }
 
@@ -90,8 +82,10 @@ fn create_swapchain(
     let present_mode =
         choose_swapchain_present_mode(&swapchain_support.present_modes);
 
-    let extent =
-        choose_swapchain_extent(&swapchain_support.capabilities, &window.window);
+    let extent = choose_swapchain_extent(
+        &swapchain_support.capabilities,
+        &window.window,
+    );
 
     let min_image_count = {
         let min = swapchain_support.capabilities.min_image_count;
@@ -145,10 +139,8 @@ fn create_swapchain(
         ..Default::default()
     };
 
-    let swapchain_loader = ash::extensions::khr::Swapchain::new(
-        &core.instance,
-        &core.device,
-    );
+    let swapchain_loader =
+        ash::extensions::khr::Swapchain::new(&core.instance, &core.device);
     let swapchain = unsafe { swapchain_loader.create_swapchain(&info, None)? };
     let swapchain_images =
         unsafe { swapchain_loader.get_swapchain_images(swapchain)? };

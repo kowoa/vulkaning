@@ -1,3 +1,5 @@
+use std::sync::MutexGuard;
+
 use ash::vk;
 use gpu_allocator::{
     vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator},
@@ -16,7 +18,7 @@ pub struct AllocatedBuffer {
 impl AllocatedBuffer {
     pub fn new(
         device: &ash::Device,
-        allocator: &mut Allocator,
+        allocator: &mut MutexGuard<Allocator>,
         buffer_size: u64,
         buffer_usage: vk::BufferUsageFlags,
         alloc_name: &str,
@@ -82,7 +84,7 @@ impl AllocatedImage {
     pub fn new_depth_image(
         extent: vk::Extent3D,
         device: &ash::Device,
-        allocator: &mut Allocator,
+        mut allocator: MutexGuard<Allocator>,
     ) -> Result<Self> {
         let format = vk::Format::D32_SFLOAT;
 
