@@ -57,16 +57,16 @@ impl Window {
         }
     }
 
-    pub fn required_instance_extensions(&self) -> Result<Vec<CString>> {
+    pub fn required_instance_extensions(&self) -> Result<Vec<*const i8>> {
         if let Some(event_loop) = &self.event_loop {
-            Ok(ash_window::enumerate_required_extensions(
-                    event_loop.raw_display_handle(),
-                )?
-                .iter()
-                .map(|ext| unsafe { CString::from_raw(*ext as *mut i8) })
-                .collect::<Vec<_>>())
+            let exts = ash_window::enumerate_required_extensions(
+                event_loop.raw_display_handle(),
+            )?;
+            Ok(exts.to_vec())
         } else if let Some(exts) = &self.required_instance_extensions {
-            Ok(exts.clone())
+            let exts = exts.iter().map(|ext| ext.as_ptr()).collect::<Vec<_>>();
+            // Make sure self.required_instance_extensions lives longer than this returned Vec
+            Ok(exts)
         } else {
             Err(eyre!("No required instance extensions found"))
         }

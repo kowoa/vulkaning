@@ -46,21 +46,17 @@ impl Core {
 
     pub fn new(window: &Window) -> Result<Self> {
         let entry = ash::Entry::linked();
-        dbg!("before instance");
         let instance = Self::create_instance(&entry, window)?;
-        dbg!("before debug messenger");
         let (debug_messenger, debug_messenger_loader) =
             Self::create_debug_messenger(&entry, &instance)?;
         let (surface, surface_loader) =
             Self::create_surface(&entry, &instance, window)?;
-        dbg!("before physical device");
         let physical_device = Self::create_physical_device(
             &instance,
             &surface,
             &surface_loader,
             window,
         )?;
-        dbg!("after physical device");
 
         let physical_device_props =
             unsafe { instance.get_physical_device_properties(physical_device) };
@@ -154,13 +150,13 @@ impl Core {
 
     fn get_required_instance_extensions(
         window: &Window,
-    ) -> Result<Vec<CString>> {
+    ) -> Result<Vec<*const i8>> {
         let mut exts = window.required_instance_extensions()?;
         if Self::ENABLE_VALIDATION_LAYERS {
-            exts.push(ash::extensions::ext::DebugUtils::name().to_owned());
+            exts.push(ash::extensions::ext::DebugUtils::name().as_ptr());
         }
         #[cfg(target_os = "macos")]
-        exts.push(vk::KhrGetPhysicalDeviceProperties2Fn::name().to_owned());
+        exts.push(vk::KhrGetPhysicalDeviceProperties2Fn::name().as_ptr());
         Ok(exts)
     }
 
@@ -185,17 +181,13 @@ impl Core {
         };
 
         let req_inst_exts = Self::get_required_instance_extensions(window)?;
-        let req_inst_exts_cstr = req_inst_exts
-            .iter()
-            .map(|ext| ext.as_c_str())
-            .collect::<Vec<_>>();
 
         let req_layers = Self::REQUIRED_VALIDATION_LAYERS
             .iter()
             .map(|&s| CString::new(s))
             .collect::<Result<Vec<_>, _>>()?;
-        let req_layers_cstr =
-            req_layers.iter().map(|s| s.as_c_str()).collect::<Vec<_>>();
+        let req_layers_ptr =
+            req_layers.iter().map(|s| s.as_ptr()).collect::<Vec<_>>();
 
         let debug_info = vkinit::debug_utils_messenger_create_info();
         let instance_info = vk::InstanceCreateInfo {
@@ -212,13 +204,12 @@ impl Core {
                 0
             },
             pp_enabled_layer_names: if Self::ENABLE_VALIDATION_LAYERS {
-                req_layers_cstr.as_ptr() as *const *const i8
+                req_layers_ptr.as_ptr()
             } else {
                 std::ptr::null()
             },
             enabled_extension_count: req_inst_exts.len() as u32,
-            pp_enabled_extension_names: req_inst_exts_cstr.as_ptr()
-                as *const *const i8,
+            pp_enabled_extension_names: req_inst_exts.as_ptr(),
             ..Default::default()
         };
 
@@ -320,6 +311,10 @@ impl Core {
 
         let physical_device_features = vk::PhysicalDeviceFeatures::default();
         let req_ext_names = Self::get_required_device_extensions(window);
+        let req_ext_names_ptr = req_ext_names
+            .iter()
+            .map(|ext| ext.as_ptr())
+            .collect::<Vec<_>>();
         let mut buffer_device_address_features =
             vk::PhysicalDeviceBufferDeviceAddressFeatures::builder()
                 .buffer_device_address(true)
@@ -337,11 +332,7 @@ impl Core {
             p_enabled_features: &physical_device_features,
             queue_create_info_count: queue_infos.len() as u32,
             enabled_extension_count: req_ext_names.len() as u32,
-            pp_enabled_extension_names: req_ext_names
-                .iter()
-                .map(|ext| ext.as_ptr() as *const i8)
-                .collect::<Vec<_>>()
-                .as_ptr(),
+            pp_enabled_extension_names: req_ext_names_ptr.as_ptr(),
             p_next: &shader_draw_params_features
                 as *const vk::PhysicalDeviceShaderDrawParametersFeatures
                 as *const c_void,
@@ -488,20 +479,17 @@ impl Core {
         instance: &ash::Instance,
         window: &Window,
     ) -> Result<bool> {
-        let mut available_ext_props = unsafe {
+        let available_exts = unsafe {
             instance.enumerate_device_extension_properties(*physical_device)?
-        };
-
-        dbg!("before converting available device exts to Vec<CString>");
-        let available_exts = available_ext_props
-            .iter_mut()
-            .map(|ext| unsafe {
-                CString::from_raw(ext.extension_name.as_mut_ptr())
-            })
-            .collect::<Vec<_>>();
-        dbg!("after converting available device exts to Vec<CString>");
+        }
+        .iter()
+        .map(|ext| utils::c_char_to_string(&ext.extension_name))
+        .collect::<Result<Vec<_>, _>>()?;
 
         let contains_all = Self::get_required_device_extensions(window)
+            .iter()
+            .map(|ext| ext.clone().into_string())
+            .collect::<Result<Vec<_>, _>>()?
             .iter()
             .all(|ext| available_exts.contains(ext));
 

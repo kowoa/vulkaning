@@ -100,10 +100,8 @@ impl RendererInner {
     pub fn new(window: &Window) -> Result<Self> {
         log::info!("Initializing renderer ...");
 
-        dbg!("before core");
-        let mut core = Core::new(&window)?;
-        dbg!("after core");
-        let swapchain = Swapchain::new(&mut core, &window)?;
+        let mut core = Core::new(window)?;
+        let swapchain = Swapchain::new(&mut core, window)?;
 
         let (global_desc_set_layout, object_desc_set_layout, descriptor_pool) =
             Self::create_descriptors(&core)?;
