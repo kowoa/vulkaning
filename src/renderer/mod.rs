@@ -13,6 +13,10 @@ use color_eyre::eyre::{eyre, Result};
 use egui_ash::EguiCommand;
 use glam::{Mat4, Vec3, Vec4};
 use std::sync::{Arc, Mutex, MutexGuard};
+use winit::{
+    event::{ElementState, Event, KeyEvent, WindowEvent},
+    keyboard::{Key, NamedKey},
+};
 
 use ash::vk;
 
@@ -38,7 +42,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(window: Window) -> Result<Self> {
+    pub fn new(window: &Window) -> Result<Self> {
         Ok(Self {
             inner: Arc::new(Mutex::new(RendererInner::new(window)?)),
         })
@@ -62,6 +66,17 @@ impl Renderer {
             .unwrap()
             .present_frame(swapchain_image_index)
     }
+
+    /// Does not work with egui
+    pub fn run_loop(self, window: Window) -> Result<()> {
+        match Arc::try_unwrap(self.inner) {
+            Ok(inner) => {
+                let inner = inner.into_inner()?;
+                inner.run_loop(window)
+            }
+            Err(_) => Err(eyre!("Failed to unwrap Arc<Mutex<RendererInner>>")),
+        }
+    }
 }
 
 struct RendererInner {
@@ -82,7 +97,7 @@ struct RendererInner {
 }
 
 impl RendererInner {
-    pub fn new(window: Window) -> Result<Self> {
+    pub fn new(window: &Window) -> Result<Self> {
         log::info!("Initializing renderer ...");
 
         let mut core = Core::new(&window)?;
@@ -154,12 +169,8 @@ impl RendererInner {
         })
     }
 
-    /*
-    pub fn run_loop(mut self) -> Result<()> {
-        let window = self
-            .window
-            .take()
-            .ok_or_eyre("Renderer does not own a Window")?;
+    /// Does not work with egui
+    pub fn run_loop(self, window: Window) -> Result<()> {
         let event_loop = window.event_loop;
         let window = window.window;
         let mut renderer = Some(self);
@@ -208,7 +219,6 @@ impl RendererInner {
             _ => (),
         })?)
     }
-    */
 
     fn get_current_frame(&self) -> Result<MutexGuard<Frame>> {
         match self.frames[(self.frame_number % FRAME_OVERLAP) as usize].lock() {
