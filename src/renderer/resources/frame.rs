@@ -15,7 +15,6 @@ pub struct Frame {
     pub present_semaphore: vk::Semaphore,
     pub render_semaphore: vk::Semaphore,
     pub render_fence: vk::Fence,
-    pub command_pool: vk::CommandPool,
     pub command_buffer: vk::CommandBuffer,
 
     pub global_desc_set: vk::DescriptorSet,
@@ -31,15 +30,12 @@ impl Frame {
         global_desc_set_layout: &vk::DescriptorSetLayout,
         object_desc_set_layout: &vk::DescriptorSetLayout,
         scene_camera_buffer: &AllocatedBuffer,
+        command_pool: &vk::CommandPool,
     ) -> Result<Self> {
         let device = &core.device;
 
-        // Create command pool and command buffer
-        let (command_pool, command_buffer) = {
-            let graphics_family_index =
-                core.queue_family_indices.get_graphics_family()?;
-            Self::create_commands(device, graphics_family_index)?
-        };
+        // Create command buffer
+        let command_buffer = Self::create_command_buffer(device, command_pool)?;
 
         // Create semaphores and fences
         let (present_semaphore, render_semaphore, render_fence) =
@@ -70,7 +66,7 @@ impl Frame {
         // Create object buffer
         let object_buffer = AllocatedBuffer::new(
             &core.device,
-            &mut core.get_allocator()?,
+            &mut core.get_allocator_mut()?,
             std::mem::size_of::<GpuObjectData>() as u64 * MAX_OBJECTS as u64,
             vk::BufferUsageFlags::STORAGE_BUFFER,
             "Object Storage Buffer",
@@ -127,7 +123,6 @@ impl Frame {
             present_semaphore,
             render_semaphore,
             render_fence,
-            command_pool,
             command_buffer,
             global_desc_set,
             object_desc_set,
@@ -141,25 +136,15 @@ impl Frame {
             device.destroy_semaphore(self.render_semaphore, None);
             device.destroy_semaphore(self.present_semaphore, None);
             device.destroy_fence(self.render_fence, None);
-            device.destroy_command_pool(self.command_pool, None);
         }
     }
 
-    fn create_commands(
+    fn create_command_buffer(
         device: &ash::Device,
-        graphics_family_index: u32,
-    ) -> Result<(vk::CommandPool, vk::CommandBuffer)> {
-        let pool_info = vk::CommandPoolCreateInfo {
-            queue_family_index: graphics_family_index,
-            // Allow the pool to reset individual command buffers
-            flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
-            ..Default::default()
-        };
-        let command_pool =
-            unsafe { device.create_command_pool(&pool_info, None)? };
-
+        command_pool: &vk::CommandPool,
+    ) -> Result<vk::CommandBuffer> {
         let buffer_info = vk::CommandBufferAllocateInfo {
-            command_pool,
+            command_pool: *command_pool,
             command_buffer_count: 1,
             level: vk::CommandBufferLevel::PRIMARY,
             ..Default::default()
@@ -167,7 +152,7 @@ impl Frame {
         let command_buffer =
             unsafe { device.allocate_command_buffers(&buffer_info)?[0] };
 
-        Ok((command_pool, command_buffer))
+        Ok(command_buffer)
     }
 
     fn create_sync_objs(

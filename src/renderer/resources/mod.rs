@@ -51,7 +51,7 @@ impl Resources {
         upload_context: &UploadContext,
     ) -> Result<Self> {
         let device = &core.device;
-        let mut allocator = core.get_allocator()?;
+        let mut allocator = core.get_allocator_mut()?;
         let renderpass = Renderpass::new(device, swapchain)?;
 
         let pipelines = {

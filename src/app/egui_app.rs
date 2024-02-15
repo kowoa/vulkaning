@@ -170,6 +170,7 @@ impl egui_ash::AppCreator<Arc<Mutex<gpu_allocator::vulkan::Allocator>>>
         };
         let window: Window = Window::new_with_egui(&cc);
         let renderer = Renderer::new(&window, Some(&cc.main_window)).unwrap();
+        let ash_render_state = renderer.ash_render_state();
         let inner = EguiApp {
             renderer,
             window,
@@ -179,19 +180,6 @@ impl egui_ash::AppCreator<Arc<Mutex<gpu_allocator::vulkan::Allocator>>>
         };
         let mut app = Self::App::new();
         app.inner = Some(inner);
-
-        let ash_render_state = egui_ash::AshRenderState {
-            entry: todo!(),
-            instance: todo!(),
-            physical_device: todo!(),
-            device: todo!(),
-            surface_loader: todo!(),
-            swapchain_loader: todo!(),
-            queue: todo!(),
-            queue_family_index: todo!(),
-            command_pool: todo!(),
-            allocator: todo!(),
-        };
 
         (app, ash_render_state)
     }

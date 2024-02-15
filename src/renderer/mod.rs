@@ -11,8 +11,9 @@ mod upload_context;
 pub mod window;
 
 use color_eyre::eyre::{eyre, OptionExt, Result};
-use egui_ash::EguiCommand;
+use egui_ash::{AshRenderState, EguiCommand};
 use glam::{Mat4, Vec3, Vec4};
+use gpu_allocator::vulkan::Allocator;
 use std::sync::{Arc, Mutex, MutexGuard};
 use winit::{
     event::{ElementState, Event, KeyEvent, WindowEvent},
@@ -83,6 +84,26 @@ impl Renderer {
             Err(_) => Err(eyre!("Failed to unwrap Arc<Mutex<RendererInner>>")),
         }
     }
+
+    pub fn ash_render_state(&self) -> AshRenderState<Arc<Mutex<Allocator>>> {
+        let inner = self.inner.lock().unwrap();
+        AshRenderState {
+            entry: inner.core.entry.clone(),
+            instance: inner.core.instance.clone(),
+            physical_device: inner.core.physical_device,
+            device: inner.core.device.clone(),
+            surface_loader: inner.core.surface_loader.clone(),
+            swapchain_loader: inner.swapchain.swapchain_loader.clone(),
+            queue: inner.core.graphics_queue,
+            queue_family_index: inner
+                .core
+                .queue_family_indices
+                .get_graphics_family()
+                .unwrap(),
+            command_pool: inner.command_pool,
+            allocator: inner.core.get_allocator(),
+        }
+    }
 }
 
 struct RendererInner {
@@ -92,6 +113,7 @@ struct RendererInner {
 
     frame_number: u32,
     frames: Vec<Arc<Mutex<Frame>>>,
+    command_pool: vk::CommandPool,
 
     global_desc_set_layout: vk::DescriptorSetLayout,
     object_desc_set_layout: vk::DescriptorSetLayout,
@@ -145,13 +167,18 @@ impl RendererInner {
             let size = FRAME_OVERLAP as u64 * (scene_size + camera_size);
             AllocatedBuffer::new(
                 &core.device,
-                &mut core.get_allocator()?,
+                &mut core.get_allocator_mut()?,
                 size,
                 vk::BufferUsageFlags::UNIFORM_BUFFER,
                 "Scene-Camera Uniform Buffer",
                 gpu_allocator::MemoryLocation::CpuToGpu,
             )?
         };
+
+        let command_pool = Self::create_command_pool(
+            &core.device,
+            core.queue_family_indices.get_graphics_family()?,
+        )?;
 
         let frames = {
             let mut frames = Vec::with_capacity(FRAME_OVERLAP as usize);
@@ -163,6 +190,7 @@ impl RendererInner {
                     &global_desc_set_layout,
                     &object_desc_set_layout,
                     &scene_camera_buffer,
+                    &command_pool,
                 )?;
 
                 frames.push(Arc::new(Mutex::new(frame)));
@@ -176,6 +204,7 @@ impl RendererInner {
             resources,
             frame_number: 0,
             frames,
+            command_pool,
             global_desc_set_layout,
             object_desc_set_layout,
             descriptor_pool,
@@ -581,7 +610,7 @@ impl RendererInner {
 
         {
             let device = &self.core.device;
-            let mut allocator = self.core.get_allocator().unwrap();
+            let mut allocator = self.core.get_allocator_mut().unwrap();
 
             self.upload_context.cleanup(device);
 
@@ -597,6 +626,11 @@ impl RendererInner {
                 );
             }
             self.resources.cleanup(device, &mut allocator);
+
+            // Destroy command pool
+            unsafe {
+                device.destroy_command_pool(self.command_pool, None);
+            }
 
             // Clean up all frames
             for _ in 0..self.frames.len() {
@@ -615,6 +649,22 @@ impl RendererInner {
 
         // Clean up core Vulkan objects
         self.core.cleanup();
+    }
+
+    /// Helper function that creates a command pool
+    fn create_command_pool(
+        device: &ash::Device,
+        graphics_family_index: u32,
+    ) -> Result<vk::CommandPool> {
+        let pool_info = vk::CommandPoolCreateInfo {
+            queue_family_index: graphics_family_index,
+            // Allow the pool to reset individual command buffers
+            flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
+            ..Default::default()
+        };
+        let command_pool =
+            unsafe { device.create_command_pool(&pool_info, None)? };
+        Ok(command_pool)
     }
 
     /// Helper function that creates the descriptor pool and descriptor sets

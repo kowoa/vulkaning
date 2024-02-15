@@ -18,7 +18,7 @@ use super::{
 };
 
 pub struct Core {
-    _entry: ash::Entry,
+    pub entry: ash::Entry,
 
     pub instance: ash::Instance,
 
@@ -93,7 +93,7 @@ impl Core {
         })?;
 
         Ok(Self {
-            _entry: entry,
+            entry,
             instance,
             debug_messenger,
             debug_messenger_loader,
@@ -127,7 +127,11 @@ impl Core {
         }
     }
 
-    pub fn get_allocator(&self) -> Result<MutexGuard<Allocator>> {
+    pub fn get_allocator(&self) -> Arc<Mutex<Allocator>> {
+        Arc::clone(&self.allocator)
+    }
+
+    pub fn get_allocator_mut(&self) -> Result<MutexGuard<Allocator>> {
         match self.allocator.lock() {
             Ok(allocator) => Ok(allocator),
             Err(err) => Err(eyre!(err.to_string())),
