@@ -41,9 +41,9 @@ pub fn run() -> Result<ExitCode> {
     );
     */
 
-    let window = Window::new()?;
+    let window = Window::new_without_egui()?;
     let renderer = Renderer::new(&window)?;
-    renderer.run_loop(window)?;
+    renderer.run_loop_without_egui(window)?;
 
     //Ok(exit_code)
     Ok(ExitCode::SUCCESS)

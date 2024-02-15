@@ -1,5 +1,5 @@
 use ash::vk;
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{OptionExt, Result};
 use gpu_allocator::vulkan::Allocator;
 
 use super::{core::Core, memory::AllocatedImage, window::Window};
@@ -84,7 +84,7 @@ fn create_swapchain(
 
     let extent = choose_swapchain_extent(
         &swapchain_support.capabilities,
-        &window.window,
+        window.window.as_ref().ok_or_eyre("No window found")?,
     );
 
     let min_image_count = {
@@ -102,16 +102,15 @@ fn create_swapchain(
 
     let (image_sharing_mode, queue_family_index_count, queue_family_indices) = {
         let indices = &core.queue_family_indices;
-        if indices.graphics_family != indices.present_family {
+        let graphics_family = indices.get_graphics_family()?;
+        let present_family = indices.get_present_family()?;
+        if graphics_family != present_family {
             (
                 // CONCURRENT means images can be used across multiple queue families
                 // without explicit ownership transfers
                 vk::SharingMode::CONCURRENT,
                 2,
-                vec![
-                    indices.graphics_family.unwrap(),
-                    indices.present_family.unwrap(),
-                ],
+                vec![graphics_family, present_family],
             )
         } else {
             // EXCLUSIVE means image is owned by one queue family at a time

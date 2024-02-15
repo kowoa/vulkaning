@@ -36,10 +36,8 @@ impl Frame {
 
         // Create command pool and command buffer
         let (command_pool, command_buffer) = {
-            let graphics_family_index = core
-                .queue_family_indices
-                .graphics_family
-                .ok_or_eyre("Graphics family index not found")?;
+            let graphics_family_index =
+                core.queue_family_indices.get_graphics_family()?;
             Self::create_commands(device, graphics_family_index)?
         };
 

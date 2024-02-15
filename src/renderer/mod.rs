@@ -3,13 +3,14 @@ mod vkinit;
 
 mod core;
 mod memory;
+pub mod queue_family_indices;
 pub mod resources;
 mod swapchain;
 mod upload_context;
 
 pub mod window;
 
-use color_eyre::eyre::{eyre, Result};
+use color_eyre::eyre::{eyre, OptionExt, Result};
 use egui_ash::EguiCommand;
 use glam::{Mat4, Vec3, Vec4};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -67,12 +68,11 @@ impl Renderer {
             .present_frame(swapchain_image_index)
     }
 
-    /// Does not work with egui
-    pub fn run_loop(self, window: Window) -> Result<()> {
+    pub fn run_loop_without_egui(self, window: Window) -> Result<()> {
         match Arc::try_unwrap(self.inner) {
             Ok(inner) => {
                 let inner = inner.into_inner()?;
-                inner.run_loop(window)
+                inner.run_loop_without_egui(window)
             }
             Err(_) => Err(eyre!("Failed to unwrap Arc<Mutex<RendererInner>>")),
         }
@@ -100,7 +100,9 @@ impl RendererInner {
     pub fn new(window: &Window) -> Result<Self> {
         log::info!("Initializing renderer ...");
 
+        dbg!("before core");
         let mut core = Core::new(&window)?;
+        dbg!("after core");
         let swapchain = Swapchain::new(&mut core, &window)?;
 
         let (global_desc_set_layout, object_desc_set_layout, descriptor_pool) =
@@ -169,10 +171,9 @@ impl RendererInner {
         })
     }
 
-    /// Does not work with egui
-    pub fn run_loop(self, window: Window) -> Result<()> {
-        let event_loop = window.event_loop;
-        let window = window.window;
+    fn run_loop_without_egui(self, window: Window) -> Result<()> {
+        let event_loop = window.event_loop.ok_or_eyre("No event loop found")?;
+        let window = window.window.ok_or_eyre("No window found")?;
         let mut renderer = Some(self);
         let mut close_requested = false;
 

@@ -1,9 +1,10 @@
 use std::sync::{Arc, Mutex};
 
-use crate::renderer::Renderer;
+use crate::renderer::{window::Window, Renderer};
 
 pub struct EguiApp {
     renderer: Renderer,
+    window: Window,
 
     theme: egui_ash::Theme,
     text: String,
@@ -110,7 +111,7 @@ impl egui_ash::App for EguiApp {
 }
 
 pub struct EguiAppCreator;
-impl egui_ash::AppCreator<Arc<Mutex<gpu_allocator::vulkan::Allocator>>>
+impl<'a> egui_ash::AppCreator<Arc<Mutex<gpu_allocator::vulkan::Allocator>>>
     for EguiAppCreator
 {
     type App = EguiApp;
@@ -122,11 +123,34 @@ impl egui_ash::AppCreator<Arc<Mutex<gpu_allocator::vulkan::Allocator>>>
         Self::App,
         egui_ash::AshRenderState<Arc<Mutex<gpu_allocator::vulkan::Allocator>>>,
     ) {
-        let app = Self::App {
-            renderer: todo!(),
-            theme: todo!(),
-            text: todo!(),
-            rotate_y: todo!(),
+        let theme = if cc.context.style().visuals.dark_mode {
+            egui_ash::Theme::Dark
+        } else {
+            egui_ash::Theme::Light
         };
+        let window: Window = Window::new_with_egui(&cc);
+        let renderer = Renderer::new(&window).unwrap();
+        let app = Self::App {
+            renderer,
+            window,
+            theme,
+            text: "Hello text!".into(),
+            rotate_y: 0.0,
+        };
+
+        let ash_render_state = egui_ash::AshRenderState {
+            entry: todo!(),
+            instance: todo!(),
+            physical_device: todo!(),
+            device: todo!(),
+            surface_loader: todo!(),
+            swapchain_loader: todo!(),
+            queue: todo!(),
+            queue_family_index: todo!(),
+            command_pool: todo!(),
+            allocator: todo!(),
+        };
+
+        (app, ash_render_state)
     }
 }
