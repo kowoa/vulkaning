@@ -16,7 +16,10 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new(core: &mut Core, window: &winit::window::Window) -> Result<Self> {
+    pub fn new(
+        core: &mut Core,
+        window: &winit::window::Window,
+    ) -> Result<Self> {
         let (swapchain, swapchain_loader, images, image_format, image_extent) =
             create_swapchain(core, window)?;
         let image_views = create_image_views(core, &image_format, &images)?;
@@ -82,10 +85,8 @@ fn create_swapchain(
     let present_mode =
         choose_swapchain_present_mode(&swapchain_support.present_modes);
 
-    let extent = choose_swapchain_extent(
-        &swapchain_support.capabilities,
-        window,
-    );
+    let extent =
+        choose_swapchain_extent(&swapchain_support.capabilities, window);
 
     let min_image_count = {
         let min = swapchain_support.capabilities.min_image_count;

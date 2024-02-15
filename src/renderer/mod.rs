@@ -60,12 +60,12 @@ impl Renderer {
         &self,
         width: u32,
         height: u32,
-        mut egui_cmd: EguiCommand,
+        egui_cmd: Option<EguiCommand>,
     ) -> Result<u32> {
         self.inner
             .lock()
             .unwrap()
-            .draw_frame(width, height, Some(egui_cmd))
+            .draw_frame(width, height, egui_cmd)
     }
 
     pub fn present_frame(&self, swapchain_image_index: u32) -> Result<()> {
@@ -122,6 +122,8 @@ struct RendererInner {
     scene_camera_buffer: AllocatedBuffer,
 
     upload_context: UploadContext,
+
+    first_draw: bool,
 }
 
 impl RendererInner {
@@ -210,6 +212,7 @@ impl RendererInner {
             descriptor_pool,
             scene_camera_buffer,
             upload_context,
+            first_draw: true,
         })
     }
 
@@ -276,9 +279,22 @@ impl RendererInner {
         height: u32,
         mut egui_cmd: Option<EguiCommand>,
     ) -> Result<u32> {
-        let mut swapchain_image_index_opt = None;
+        if self.first_draw {
+            self.first_draw = false;
+            // Update swapchain if it needs to be recreated
+            let egui_cmd_take = egui_cmd.take();
+            if let Some(mut cmd) = egui_cmd_take {
+                cmd.update_swapchain(egui_ash::SwapchainUpdateInfo {
+                    width,
+                    height,
+                    swapchain_images: self.swapchain.images.clone(),
+                    surface_format: self.swapchain.image_format,
+                });
+                egui_cmd = Some(cmd);
+            }
+        }
 
-        unsafe {
+        let swapchain_image_index = unsafe {
             let frame = self.get_current_frame()?;
             let fences = [frame.render_fence];
 
@@ -296,7 +312,6 @@ impl RendererInner {
                     frame.present_semaphore,
                     vk::Fence::null(),
                 )?;
-            swapchain_image_index_opt = Some(swapchain_image_index);
 
             // Reset the command buffer to begin recording
             let cmd = frame.command_buffer;
@@ -340,12 +355,7 @@ impl RendererInner {
                 render_pass: rp.renderpass,
                 render_area: vk::Rect2D {
                     offset: vk::Offset2D { x: 0, y: 0 },
-                    extent: vk::Extent2D {
-                        //width: window.inner_size().width,
-                        //height: window.inner_size().height,
-                        width,
-                        height,
-                    },
+                    extent: vk::Extent2D { width, height },
                 },
                 framebuffer: rp.framebuffers[swapchain_image_index as usize],
                 clear_value_count: clear_values.len() as u32,
@@ -357,7 +367,9 @@ impl RendererInner {
                 &rp_begin_info,
                 vk::SubpassContents::INLINE,
             );
-        }
+
+            swapchain_image_index
+        };
 
         // RENDERING COMMANDS START
 
@@ -375,6 +387,14 @@ impl RendererInner {
         unsafe {
             // Finalize the main renderpass
             self.core.device.cmd_end_render_pass(cmd);
+        }
+
+        // Record egui commands
+        if let Some(egui_cmd) = egui_cmd {
+            egui_cmd.record(cmd, swapchain_image_index as usize);
+        }
+
+        unsafe {
             // Finalize the main command buffer
             self.core.device.end_command_buffer(cmd)?;
 
@@ -397,7 +417,7 @@ impl RendererInner {
             )?;
         }
 
-        Ok(swapchain_image_index_opt.unwrap())
+        Ok(swapchain_image_index)
     }
 
     fn present_frame(&mut self, swapchain_image_index: u32) -> Result<()> {
