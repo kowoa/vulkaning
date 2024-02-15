@@ -2,16 +2,18 @@ use std::sync::{Arc, Mutex};
 
 use crate::renderer::{window::Window, Renderer};
 
-pub struct EguiApp {
-    renderer: Renderer,
-    window: Window,
+use super::{AppType, App};
 
+// Declare EguiApp as a AppType state in the typestate pattern
+impl AppType for EguiApp {}
+
+pub struct EguiApp {
     theme: egui_ash::Theme,
     text: String,
     rotate_y: f32,
 }
 
-impl egui_ash::App for EguiApp {
+impl egui_ash::App for App<EguiApp> {
     fn ui(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("my_side_panel").show(ctx, |ui| {
             ui.heading("Hello");
@@ -21,15 +23,15 @@ impl egui_ash::App for EguiApp {
                 ui.label("Theme");
                 let id = ui.make_persistent_id("theme_combo_box_side");
                 egui::ComboBox::from_id_source(id)
-                    .selected_text(format!("{:?}", self.theme))
+                    .selected_text(format!("{:?}", self.extra.theme))
                     .show_ui(ui, |ui| {
                         ui.selectable_value(
-                            &mut self.theme,
+                            &mut self.extra.theme,
                             egui_ash::Theme::Dark,
                             "Dark",
                         );
                         ui.selectable_value(
-                            &mut self.theme,
+                            &mut self.extra.theme,
                             egui_ash::Theme::Light,
                             "Light",
                         );
@@ -38,11 +40,11 @@ impl egui_ash::App for EguiApp {
             ui.separator();
             ui.hyperlink("https://github.com/emilk/egui");
             ui.separator();
-            ui.text_edit_singleline(&mut self.text);
+            ui.text_edit_singleline(&mut self.extra.text);
             ui.separator();
             ui.label("Rotate");
             ui.add(egui::widgets::Slider::new(
-                &mut self.rotate_y,
+                &mut self.extra.rotate_y,
                 -180.0..=180.0,
             ));
         });
@@ -58,15 +60,15 @@ impl egui_ash::App for EguiApp {
                     ui.label("Theme");
                     let id = ui.make_persistent_id("theme_combo_box_window");
                     egui::ComboBox::from_id_source(id)
-                        .selected_text(format!("{:?}", self.theme))
+                        .selected_text(format!("{:?}", self.extra.theme))
                         .show_ui(ui, |ui| {
                             ui.selectable_value(
-                                &mut self.theme,
+                                &mut self.extra.theme,
                                 egui_ash::Theme::Dark,
                                 "Dark",
                             );
                             ui.selectable_value(
-                                &mut self.theme,
+                                &mut self.extra.theme,
                                 egui_ash::Theme::Light,
                                 "Light",
                             );
@@ -75,16 +77,16 @@ impl egui_ash::App for EguiApp {
                 ui.separator();
                 ui.hyperlink("https://github.com/emilk/egui");
                 ui.separator();
-                ui.text_edit_singleline(&mut self.text);
+                ui.text_edit_singleline(&mut self.extra.text);
                 ui.separator();
                 ui.label("Rotate");
                 ui.add(egui::widgets::Slider::new(
-                    &mut self.rotate_y,
+                    &mut self.extra.rotate_y,
                     -180.0..=180.0,
                 ));
             });
 
-        match self.theme {
+        match self.extra.theme {
             egui_ash::Theme::Dark => {
                 ctx.set_visuals(egui::style::Visuals::dark())
             }
@@ -111,10 +113,10 @@ impl egui_ash::App for EguiApp {
 }
 
 pub struct EguiAppCreator;
-impl<'a> egui_ash::AppCreator<Arc<Mutex<gpu_allocator::vulkan::Allocator>>>
+impl egui_ash::AppCreator<Arc<Mutex<gpu_allocator::vulkan::Allocator>>>
     for EguiAppCreator
 {
-    type App = EguiApp;
+    type App = App<EguiApp>;
 
     fn create(
         &self,
@@ -130,12 +132,15 @@ impl<'a> egui_ash::AppCreator<Arc<Mutex<gpu_allocator::vulkan::Allocator>>>
         };
         let window: Window = Window::new_with_egui(&cc);
         let renderer = Renderer::new(&window).unwrap();
-        let app = Self::App {
-            renderer,
-            window,
+        let extra = EguiApp {
             theme,
             text: "Hello text!".into(),
             rotate_y: 0.0,
+        };
+        let app = Self::App {
+            renderer,
+            window,
+            extra,
         };
 
         let ash_render_state = egui_ash::AshRenderState {

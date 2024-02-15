@@ -4,8 +4,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-mod egui_app;
+mod app;
 
+use app::{App, winit_app::WinitApp};
 use renderer::{
     resources::{model::ASSETS_DIR, shader::SHADERBUILD_DIR},
     *,
@@ -41,12 +42,10 @@ pub fn run() -> Result<ExitCode> {
     );
     */
 
-    let window = Window::new_without_egui()?;
-    let renderer = Renderer::new(&window)?;
-    renderer.run_loop_without_egui(window)?;
+    let app = App::<WinitApp>::new()?;
+    let exit_code = app.run()?;
 
-    //Ok(exit_code)
-    Ok(ExitCode::SUCCESS)
+    Ok(exit_code)
 }
 
 fn set_directories() -> Result<()> {
