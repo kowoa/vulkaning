@@ -85,9 +85,15 @@ impl Window {
         &self,
         entry: &ash::Entry,
         instance: &ash::Instance,
+        winit_window: Option<&winit::window::Window>, // Should be Some if using egui
     ) -> Result<(vk::SurfaceKHR, ash::extensions::khr::Surface)> {
+        let window = if let Some(window) = winit_window {
+            window
+        } else {
+            self.window.as_ref().ok_or_eyre("No window found")?
+        };
+
         let surface = unsafe {
-            let window = self.window.as_ref().ok_or_eyre("No window found")?;
             ash_window::create_surface(
                 entry,
                 instance,

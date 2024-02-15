@@ -14,7 +14,7 @@ pub struct WinitApp {
 impl App<WinitApp> {
     pub fn new() -> Result<Self> {
         let window = Window::new_without_egui()?;
-        let renderer = Renderer::new(&window)?;
+        let renderer = Renderer::new(&window, None)?;
         let inner = WinitApp { renderer, window };
         Ok(Self { inner: Some(inner) })
     }

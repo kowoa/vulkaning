@@ -14,7 +14,8 @@ pub fn run() -> Result<ExitCode> {
 
     set_directories()?;
 
-    let app = App::<WinitApp>::new()?;
+    //let app = App::<WinitApp>::new()?;
+    let app = App::<EguiApp>::new();
     let exit_code = app.run()?;
 
     Ok(exit_code)

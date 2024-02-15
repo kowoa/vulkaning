@@ -168,9 +168,8 @@ impl egui_ash::AppCreator<Arc<Mutex<gpu_allocator::vulkan::Allocator>>>
         } else {
             egui_ash::Theme::Light
         };
-        log::debug!("before");
         let window: Window = Window::new_with_egui(&cc);
-        let renderer = Renderer::new(&window).unwrap();
+        let renderer = Renderer::new(&window, Some(&cc.main_window)).unwrap();
         let inner = EguiApp {
             renderer,
             window,
@@ -180,8 +179,6 @@ impl egui_ash::AppCreator<Arc<Mutex<gpu_allocator::vulkan::Allocator>>>
         };
         let mut app = Self::App::new();
         app.inner = Some(inner);
-
-        log::debug!("after");
 
         let ash_render_state = egui_ash::AshRenderState {
             entry: todo!(),

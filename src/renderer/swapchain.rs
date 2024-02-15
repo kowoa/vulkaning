@@ -16,7 +16,7 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new(core: &mut Core, window: &Window) -> Result<Self> {
+    pub fn new(core: &mut Core, window: &winit::window::Window) -> Result<Self> {
         let (swapchain, swapchain_loader, images, image_format, image_extent) =
             create_swapchain(core, window)?;
         let image_views = create_image_views(core, &image_format, &images)?;
@@ -62,7 +62,7 @@ impl Swapchain {
 
 fn create_swapchain(
     core: &Core,
-    window: &Window,
+    window: &winit::window::Window,
 ) -> Result<(
     vk::SwapchainKHR,
     ash::extensions::khr::Swapchain,
@@ -84,7 +84,7 @@ fn create_swapchain(
 
     let extent = choose_swapchain_extent(
         &swapchain_support.capabilities,
-        window.window.as_ref().ok_or_eyre("No window found")?,
+        window,
     );
 
     let min_image_count = {

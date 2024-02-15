@@ -43,9 +43,15 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(window: &Window) -> Result<Self> {
+    pub fn new(
+        window: &Window,
+        winit_window: Option<&winit::window::Window>,
+    ) -> Result<Self> {
         Ok(Self {
-            inner: Arc::new(Mutex::new(RendererInner::new(window)?)),
+            inner: Arc::new(Mutex::new(RendererInner::new(
+                window,
+                winit_window,
+            )?)),
         })
     }
 
@@ -97,11 +103,20 @@ struct RendererInner {
 }
 
 impl RendererInner {
-    pub fn new(window: &Window) -> Result<Self> {
+    pub fn new(
+        window: &Window,
+        winit_window: Option<&winit::window::Window>,
+    ) -> Result<Self> {
         log::info!("Initializing renderer ...");
 
-        let mut core = Core::new(window)?;
-        let swapchain = Swapchain::new(&mut core, window)?;
+        let mut core = Core::new(window, winit_window)?;
+        let swapchain = if let Some(window) = winit_window {
+            Swapchain::new(&mut core, window)?
+        } else {
+            let window =
+                window.window.as_ref().ok_or_eyre("No window_found")?;
+            Swapchain::new(&mut core, window)?
+        };
 
         let (global_desc_set_layout, object_desc_set_layout, descriptor_pool) =
             Self::create_descriptors(&core)?;

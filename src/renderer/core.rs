@@ -44,13 +44,13 @@ impl Core {
     const REQUIRED_VALIDATION_LAYERS: [&'static str; 1] =
         ["VK_LAYER_KHRONOS_validation"];
 
-    pub fn new(window: &Window) -> Result<Self> {
+    pub fn new(window: &Window, winit_window: Option<&winit::window::Window>) -> Result<Self> {
         let entry = ash::Entry::linked();
         let instance = Self::create_instance(&entry, window)?;
         let (debug_messenger, debug_messenger_loader) =
             Self::create_debug_messenger(&entry, &instance)?;
         let (surface, surface_loader) =
-            Self::create_surface(&entry, &instance, window)?;
+            Self::create_surface(&entry, &instance, window, winit_window)?;
         let physical_device = Self::create_physical_device(
             &instance,
             &surface,
@@ -240,8 +240,9 @@ impl Core {
         entry: &ash::Entry,
         instance: &ash::Instance,
         window: &Window,
+        winit_window: Option<&winit::window::Window>, // Only Some when using egui
     ) -> Result<(vk::SurfaceKHR, ash::extensions::khr::Surface)> {
-        window.create_surface(entry, instance)
+        window.create_surface(entry, instance, winit_window)
     }
 
     fn create_physical_device(
