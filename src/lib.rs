@@ -1,46 +1,18 @@
 mod renderer;
-use std::{
-    process::ExitCode,
-    sync::{Arc, Mutex},
-};
+use std::process::ExitCode;
 
 mod app;
 
-use app::{App, winit_app::WinitApp};
-use renderer::{
-    resources::{model::ASSETS_DIR, shader::SHADERBUILD_DIR},
-    *,
-};
+use app::{App, winit_app::WinitApp, egui_app::EguiApp};
+use renderer::resources::{model::ASSETS_DIR, shader::SHADERBUILD_DIR};
 
 use color_eyre::eyre::{eyre, Result};
-
-use crate::window::Window;
 
 pub fn run() -> Result<ExitCode> {
     color_eyre::install()?;
     env_logger::init();
 
     set_directories()?;
-
-    /*
-    let exit_code = egui_ash::run(
-        "vulkaning",
-        egui_app::EguiAppCreator,
-        egui_ash::RunOption {
-            viewport_builder: Some(
-                egui::ViewportBuilder::default()
-                    .with_title("vulkaning")
-                    .with_resizable(false)
-                    .with_inner_size((800.0, 600.0)),
-
-            ),
-            follow_system_theme: false,
-            default_theme: egui_ash::Theme::Dark,
-            present_mode: ash::vk::PresentModeKHR::FIFO,
-            ..Default::default()
-        },
-    );
-    */
 
     let app = App::<WinitApp>::new()?;
     let exit_code = app.run()?;

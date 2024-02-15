@@ -1,4 +1,4 @@
-use crate::renderer::{Renderer, window::Window};
+use crate::renderer::{window::Window, Renderer};
 use color_eyre::eyre::Result;
 
 pub mod egui_app;
@@ -8,8 +8,5 @@ pub mod winit_app;
 pub trait AppType {}
 
 pub struct App<T: AppType> {
-    renderer: Renderer,
-    window: Window,
-    extra: T,
+    inner: Option<T>,
 }
-
