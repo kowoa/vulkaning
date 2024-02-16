@@ -9,7 +9,7 @@ use std::{
 use color_eyre::eyre::{eyre, OptionExt, Result};
 use shaderc::CompilationArtifact;
 
-const SHADER_EXT: &'static str = "glsl";
+const SHADER_EXT: &str = "glsl";
 
 fn main() -> Result<()> {
     println!("cargo:rerun-if-changed=shaders/*");
@@ -107,19 +107,19 @@ fn compile_shaders(
     filename: &str,
 ) -> Result<(CompilationArtifact, CompilationArtifact)> {
     let vert_spirv = compiler.compile_into_spirv(
-        &vert_glsl,
+        vert_glsl,
         shaderc::ShaderKind::Vertex,
-        &filename,
+        filename,
         "main",
-        Some(&options),
+        Some(options),
     )?;
 
     let frag_spirv = compiler.compile_into_spirv(
-        &frag_glsl,
+        frag_glsl,
         shaderc::ShaderKind::Fragment,
-        &filename,
+        filename,
         "main",
-        Some(&options),
+        Some(options),
     )?;
 
     Ok((vert_spirv, frag_spirv))
