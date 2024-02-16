@@ -6,11 +6,13 @@ use color_eyre::eyre::Result;
 use super::{App, AppType};
 
 impl AppType for WinitApp {}
+#[allow(dead_code)]
 pub struct WinitApp {
     renderer: Renderer,
     window: Window,
 }
 
+#[allow(dead_code)]
 impl App<WinitApp> {
     pub fn new() -> Result<Self> {
         let window = Window::new_without_egui()?;

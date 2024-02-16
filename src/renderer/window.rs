@@ -1,4 +1,4 @@
-use std::{ffi::CString, sync::Arc};
+use std::ffi::CString;
 
 use ash::vk;
 use color_eyre::eyre::{eyre, OptionExt, Result};

@@ -168,6 +168,7 @@ impl Core {
     }
 
     fn get_required_device_extensions(window: &Window) -> Vec<CString> {
+        #[allow(unused_mut)]
         let mut exts = window.required_device_extensions();
         #[cfg(target_os = "macos")]
         exts.push(vk::KhrPortabilitySubsetFn::name().to_owned());

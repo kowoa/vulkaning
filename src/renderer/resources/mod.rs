@@ -11,11 +11,11 @@ pub mod scene;
 pub mod shader;
 pub mod vertex;
 
-use color_eyre::eyre::{eyre, Result};
+use color_eyre::eyre::Result;
 use std::{collections::HashMap, mem::ManuallyDrop, sync::Arc};
 
 use ash::vk;
-use glam::{Mat4, Vec3, Vec4};
+use glam::{Mat4, Vec3};
 use gpu_allocator::vulkan::Allocator;
 use mesh::Mesh;
 use pipeline::PipelineBuilder;
@@ -23,15 +23,11 @@ use renderpass::Renderpass;
 use shader::Shader;
 
 use self::{
-    camera::GpuCameraData, frame::Frame, mesh::MeshPushConstants, model::Model,
-    pipeline::Pipeline, render_object::RenderObject, scene::GpuSceneData,
-    vertex::Vertex,
+    mesh::MeshPushConstants, model::Model, pipeline::Pipeline,
+    render_object::RenderObject, vertex::Vertex,
 };
 
-use super::{
-    core::Core, memory::AllocatedBuffer, swapchain::Swapchain, vkinit,
-    UploadContext, FRAME_OVERLAP,
-};
+use super::{core::Core, swapchain::Swapchain, vkinit, UploadContext};
 
 pub struct Resources {
     pub renderpasses: Vec<Renderpass>,

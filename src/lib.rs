@@ -1,12 +1,11 @@
-mod renderer;
+#[allow(unused_imports)]
+use app::{egui_app::EguiApp, winit_app::WinitApp, App};
+use color_eyre::eyre::{eyre, Result};
+use renderer::resources::{model::ASSETS_DIR, shader::SHADERBUILD_DIR};
 use std::process::ExitCode;
 
 mod app;
-
-use app::{egui_app::EguiApp, winit_app::WinitApp, App};
-use renderer::resources::{model::ASSETS_DIR, shader::SHADERBUILD_DIR};
-
-use color_eyre::eyre::{eyre, Result};
+mod renderer;
 
 pub fn run() -> Result<ExitCode> {
     color_eyre::install()?;
