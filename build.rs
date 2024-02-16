@@ -16,7 +16,8 @@ fn main() -> Result<()> {
 
     color_eyre::install()?;
 
-    let shaderbuild_dirpath = std::env::var("SHADER_BUILD_DIR").unwrap_or_else(|_| "./shaderbuild".to_string());
+    let shaderbuild_dirpath = std::env::var("SHADER_BUILD_DIR")
+        .unwrap_or_else(|_| "./shaderbuild".to_string());
     fs::create_dir_all(shaderbuild_dirpath.clone())?;
 
     let compiler = shaderc::Compiler::new()

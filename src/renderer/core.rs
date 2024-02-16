@@ -44,7 +44,10 @@ impl Core {
     const REQUIRED_VALIDATION_LAYERS: [&'static str; 1] =
         ["VK_LAYER_KHRONOS_validation"];
 
-    pub fn new(window: &Window, winit_window: Option<&winit::window::Window>) -> Result<Self> {
+    pub fn new(
+        window: &Window,
+        winit_window: Option<&winit::window::Window>,
+    ) -> Result<Self> {
         let entry = ash::Entry::linked();
         let instance = Self::create_instance(&entry, window)?;
         let (debug_messenger, debug_messenger_loader) =

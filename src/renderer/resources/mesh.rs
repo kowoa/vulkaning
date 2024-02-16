@@ -1,4 +1,7 @@
-use std::sync::{atomic::{AtomicUsize, Ordering}, MutexGuard};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    MutexGuard,
+};
 
 use ash::vk;
 use bytemuck::{Pod, Zeroable};

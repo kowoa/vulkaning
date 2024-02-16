@@ -1,6 +1,10 @@
 use ash::vk;
 use color_eyre::eyre::{Context, OptionExt, Result};
-use std::{fs::File, io::Read, path::{Path, PathBuf}};
+use std::{
+    fs::File,
+    io::Read,
+    path::{Path, PathBuf},
+};
 
 pub static mut SHADERBUILD_DIR: Option<String> = None;
 

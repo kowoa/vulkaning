@@ -1,5 +1,5 @@
-use std::ffi::CString;
 use color_eyre::eyre::{eyre, Result};
+use std::ffi::CString;
 
 use ash::vk;
 
@@ -192,9 +192,7 @@ impl PipelineBuilder {
     }
 }
 
-fn default_pipeline_layout(
-    device: &ash::Device,
-) -> Result<vk::PipelineLayout> {
+fn default_pipeline_layout(device: &ash::Device) -> Result<vk::PipelineLayout> {
     // Build the pipeline layout that controls the inputs/outputs of the shader
     let layout_info = vkinit::pipeline_layout_create_info();
     Ok(unsafe { device.create_pipeline_layout(&layout_info, None)? })

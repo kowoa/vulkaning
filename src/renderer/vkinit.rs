@@ -201,9 +201,7 @@ pub fn command_buffer_begin_info(
     }
 }
 
-pub fn submit_info(
-    cmd: &vk::CommandBuffer,
-) -> vk::SubmitInfo {
+pub fn submit_info(cmd: &vk::CommandBuffer) -> vk::SubmitInfo {
     vk::SubmitInfo {
         wait_semaphore_count: 0,
         p_wait_semaphores: std::ptr::null(),

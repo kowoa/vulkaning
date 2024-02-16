@@ -21,9 +21,7 @@ pub struct EguiApp {
 
 impl App<EguiApp> {
     pub fn new() -> Self {
-        Self {
-            inner: None,
-        }
+        Self { inner: None }
     }
 
     pub fn run(self) -> Result<ExitCode> {

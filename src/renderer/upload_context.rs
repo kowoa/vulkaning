@@ -3,7 +3,6 @@ use color_eyre::eyre::Result;
 
 use super::vkinit;
 
-
 pub struct UploadContext {
     upload_fence: vk::Fence,
     command_pool: vk::CommandPool,
@@ -103,4 +102,3 @@ impl UploadContext {
         Ok(())
     }
 }
-

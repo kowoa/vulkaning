@@ -1,11 +1,11 @@
 use std::sync::MutexGuard;
 
 use ash::vk;
+use color_eyre::eyre::Result;
 use gpu_allocator::{
     vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator},
     MemoryLocation,
 };
-use color_eyre::eyre::Result;
 
 use super::vkinit;
 
@@ -54,19 +54,23 @@ impl AllocatedBuffer {
         Ok(Self { buffer, allocation })
     }
 
-    pub fn write<T>(&mut self, data: &[T], start_offset: usize) -> Result<presser::CopyRecord>
+    pub fn write<T>(
+        &mut self,
+        data: &[T],
+        start_offset: usize,
+    ) -> Result<presser::CopyRecord>
     where
         T: Copy,
     {
         Ok(presser::copy_from_slice_to_offset(
             data,
             &mut self.allocation,
-            start_offset
+            start_offset,
         )?)
     }
 
     pub fn cleanup(self, device: &ash::Device, allocator: &mut Allocator) {
-       unsafe {
+        unsafe {
             allocator.free(self.allocation).unwrap();
             device.destroy_buffer(self.buffer, None);
         }
@@ -90,8 +94,7 @@ impl AllocatedImage {
 
         let image = {
             let usage_flags = vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
-            let info =
-                vkinit::image_create_info(format, usage_flags, extent);
+            let info = vkinit::image_create_info(format, usage_flags, extent);
             unsafe { device.create_image(&info, None)? }
         };
 

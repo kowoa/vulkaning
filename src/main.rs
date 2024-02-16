@@ -6,4 +6,3 @@ use vulkaning::run;
 fn main() -> Result<ExitCode> {
     run()
 }
-

@@ -3,7 +3,7 @@ use std::process::ExitCode;
 
 mod app;
 
-use app::{App, winit_app::WinitApp, egui_app::EguiApp};
+use app::{egui_app::EguiApp, winit_app::WinitApp, App};
 use renderer::resources::{model::ASSETS_DIR, shader::SHADERBUILD_DIR};
 
 use color_eyre::eyre::{eyre, Result};
@@ -51,4 +51,3 @@ fn set_directories() -> Result<()> {
 
     Ok(())
 }
-

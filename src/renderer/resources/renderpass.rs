@@ -9,10 +9,7 @@ pub struct Renderpass {
 }
 
 impl Renderpass {
-    pub fn new(
-        device: &ash::Device,
-        swapchain: &Swapchain,
-    ) -> Result<Self> {
+    pub fn new(device: &ash::Device, swapchain: &Swapchain) -> Result<Self> {
         let renderpass = create_renderpass(device, swapchain)?;
         let framebuffers = create_framebuffers(&renderpass, device, swapchain)?;
 
@@ -67,9 +64,9 @@ fn create_renderpass(
             stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
             initial_layout: vk::ImageLayout::UNDEFINED,
             final_layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        }
+        },
     ];
-    
+
     let color_attachment_ref = vk::AttachmentReference {
         attachment: 0,
         layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,

@@ -1,5 +1,5 @@
 use ash::vk;
-use color_eyre::eyre::{Result, OptionExt};
+use color_eyre::eyre::{OptionExt, Result};
 
 pub struct QueueFamilyIndices {
     graphics_family: Option<u32>,
@@ -14,7 +14,8 @@ impl QueueFamilyIndices {
         surface_loader: &ash::extensions::khr::Surface,
     ) -> Result<Self> {
         let queue_families = unsafe {
-            instance.get_physical_device_queue_family_properties(*physical_device)
+            instance
+                .get_physical_device_queue_family_properties(*physical_device)
         };
 
         let mut indices = QueueFamilyIndices {
@@ -47,7 +48,7 @@ impl QueueFamilyIndices {
 
         Ok(indices)
     }
-    
+
     pub fn get_graphics_family(&self) -> Result<u32> {
         self.graphics_family
             .ok_or_eyre("No graphics family index found")
