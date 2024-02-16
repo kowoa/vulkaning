@@ -35,7 +35,7 @@ impl App<EguiApp> {
                     egui::ViewportBuilder::default()
                         .with_title("vulkaning")
                         .with_resizable(false)
-                        .with_inner_size((800.0, 600.0)),
+                        .with_inner_size((1600.0, 900.0)),
                 ),
                 follow_system_theme: false,
                 default_theme: egui_ash::Theme::Dark,

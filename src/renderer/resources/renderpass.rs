@@ -37,39 +37,42 @@ fn create_renderpass(
     device: &ash::Device,
     swapchain: &Swapchain,
 ) -> Result<vk::RenderPass> {
-    // Description of the image we will be writing into with rendering commands
-    let color_attachment = vk::AttachmentDescription {
-        format: swapchain.image_format,
-        samples: vk::SampleCountFlags::TYPE_1,
-        // Clear when this attachment is loaded
-        load_op: vk::AttachmentLoadOp::CLEAR,
-        // Keep attachment stored when renderpass ends
-        store_op: vk::AttachmentStoreOp::STORE,
-        // We don't care about stencil
-        stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
-        stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
-        // We don't know or care about the starting layout of attachment
-        initial_layout: vk::ImageLayout::UNDEFINED,
-        // After the renderpass ends, the image has to be in a layout ready for display
-        final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
-        ..Default::default()
-    };
-
+    let attachments = [
+        // Color attachment (where rendering commands will be written into)
+        vk::AttachmentDescription {
+            format: swapchain.image_format,
+            samples: vk::SampleCountFlags::TYPE_1,
+            // Clear when this attachment is loaded
+            load_op: vk::AttachmentLoadOp::CLEAR,
+            // Keep attachment stored when renderpass ends
+            store_op: vk::AttachmentStoreOp::STORE,
+            // We don't care about stencil
+            stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
+            stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
+            // We don't know or care about the starting layout of attachment
+            initial_layout: vk::ImageLayout::UNDEFINED,
+            // After the renderpass ends, the image has to be in a layout ready for display
+            //final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+            final_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            ..Default::default()
+        },
+        // Depth attachment
+        vk::AttachmentDescription {
+            flags: vk::AttachmentDescriptionFlags::empty(),
+            format: swapchain.depth_image.image_format,
+            samples: vk::SampleCountFlags::TYPE_1,
+            load_op: vk::AttachmentLoadOp::CLEAR,
+            store_op: vk::AttachmentStoreOp::STORE,
+            stencil_load_op: vk::AttachmentLoadOp::CLEAR,
+            stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
+            initial_layout: vk::ImageLayout::UNDEFINED,
+            final_layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        }
+    ];
+    
     let color_attachment_ref = vk::AttachmentReference {
         attachment: 0,
         layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-    };
-
-    let depth_attachment = vk::AttachmentDescription {
-        flags: vk::AttachmentDescriptionFlags::empty(),
-        format: swapchain.depth_image.image_format,
-        samples: vk::SampleCountFlags::TYPE_1,
-        load_op: vk::AttachmentLoadOp::CLEAR,
-        store_op: vk::AttachmentStoreOp::STORE,
-        stencil_load_op: vk::AttachmentLoadOp::CLEAR,
-        stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
-        initial_layout: vk::ImageLayout::UNDEFINED,
-        final_layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
     };
 
     let depth_attachment_ref = vk::AttachmentReference {
@@ -84,8 +87,6 @@ fn create_renderpass(
         p_depth_stencil_attachment: &depth_attachment_ref,
         ..Default::default()
     };
-
-    let attachments = [color_attachment, depth_attachment];
 
     let color_dependency = vk::SubpassDependency {
         src_subpass: vk::SUBPASS_EXTERNAL,
