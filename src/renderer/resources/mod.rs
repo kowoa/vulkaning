@@ -27,7 +27,7 @@ use self::{
     render_object::RenderObject, vertex::Vertex,
 };
 
-use super::{core::Core, swapchain::Swapchain, vkinit, UploadContext};
+use super::{core::Core, swapchain::Swapchain, vkinit, UploadContext, window::Window};
 
 pub struct Resources {
     pub renderpasses: Vec<Renderpass>,
@@ -45,10 +45,11 @@ impl Resources {
         global_desc_set_layout: &vk::DescriptorSetLayout,
         object_desc_set_layout: &vk::DescriptorSetLayout,
         upload_context: &UploadContext,
+        window: &Window,
     ) -> Result<Self> {
         let device = &core.device;
         let mut allocator = core.get_allocator_mut()?;
-        let renderpass = Renderpass::new(device, swapchain)?;
+        let renderpass = Renderpass::new(device, swapchain, window)?;
 
         let pipelines = {
             let pipeline = Arc::new(create_default_pipeline(

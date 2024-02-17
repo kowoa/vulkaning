@@ -156,6 +156,7 @@ impl RendererInner {
             &global_desc_set_layout,
             &object_desc_set_layout,
             &upload_context,
+            window,
         )?;
 
         let scene_camera_buffer = {
