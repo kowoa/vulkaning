@@ -28,7 +28,7 @@ use self::{
     core::Core,
     memory::AllocatedBuffer,
     resources::{
-        frame::Frame, mesh::MeshPushConstants, scene::GpuSceneData, Resources,
+        frame::Frame, scene::GpuSceneData, Resources,
     },
     swapchain::Swapchain,
     upload_context::UploadContext,
