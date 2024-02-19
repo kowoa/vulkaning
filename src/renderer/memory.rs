@@ -13,6 +13,8 @@ use super::vkinit;
 pub struct AllocatedBuffer {
     pub buffer: vk::Buffer,
     pub allocation: Allocation,
+    pub size: u64,
+    pub offsets: Option<Vec<u32>>,
 }
 
 impl AllocatedBuffer {
@@ -51,7 +53,16 @@ impl AllocatedBuffer {
             )?;
         }
 
-        Ok(Self { buffer, allocation })
+        Ok(Self {
+            buffer,
+            allocation,
+            size: buffer_size,
+            offsets: None,
+        })
+    }
+
+    pub fn set_offsets(&mut self, offsets: Vec<u32>) {
+        self.offsets = Some(offsets);
     }
 
     pub fn write<T>(

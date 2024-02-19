@@ -1,5 +1,5 @@
-mod vkutils;
 mod vkinit;
+mod vkutils;
 
 mod core;
 mod memory;
@@ -163,19 +163,25 @@ impl RendererInner {
             let scene_size = core
                 .pad_uniform_buffer_size(
                     std::mem::size_of::<GpuSceneData>() as u64
-                );
-            let camera_size = core.pad_uniform_buffer_size(
-                std::mem::size_of::<GpuCameraData>() as u64,
-            );
-            let size = FRAME_OVERLAP as u64 * (scene_size + camera_size);
-            AllocatedBuffer::new(
+                ) as u32;
+            let camera_size = core
+                .pad_uniform_buffer_size(
+                    std::mem::size_of::<GpuCameraData>() as u64
+                ) as u32;
+            let size = FRAME_OVERLAP * (scene_size + camera_size);
+            let offsets =
+                [0, scene_size, 2 * scene_size, 2 * scene_size + camera_size];
+
+            let mut buffer = AllocatedBuffer::new(
                 &core.device,
                 &mut core.get_allocator_mut()?,
-                size,
+                size as u64,
                 vk::BufferUsageFlags::UNIFORM_BUFFER,
                 "Scene-Camera Uniform Buffer",
                 gpu_allocator::MemoryLocation::CpuToGpu,
-            )?
+            )?;
+            buffer.set_offsets(offsets.to_vec());
+            buffer
         };
 
         let command_pool = Self::create_command_pool(
@@ -464,7 +470,7 @@ impl RendererInner {
                 std::mem::size_of::<GpuCameraData>() as u64,
             ) * frame_index as u64;
 
-        // Write into scene section of scene-camera buffer
+        // Write into scene section of scene-camera uniform buffer
         {
             // Fill a GpuSceneData struct
             let framed = self.frame_number as f32 / 120.0;
@@ -478,7 +484,7 @@ impl RendererInner {
                 .write(&[scene_data], scene_start_offset as usize)?;
         }
 
-        // Write into camera section of scene-camera buffer
+        // Write into camera section of scene-camera uniform buffer
         {
             // Fill a GpuCameraData struct
             let cam_pos = Vec3::new(0.0, 6.0, 20.0);
@@ -519,14 +525,14 @@ impl RendererInner {
         }
 
         let mut last_pipeline = vk::Pipeline::null();
-        let mut last_model = None;
-        for i in first_index..(first_index + count) {
+        let mut last_model_drawn = None;
+        for instance_index in first_index..(first_index + count) {
             let device = &core.device;
-            let render_obj = &self.resources.render_objs[i];
+            let render_obj = &self.resources.render_objs[instance_index];
+            let frame = self.get_current_frame()?;
 
             // Only bind the pipeline if it doesn't match the already bound one
             if render_obj.pipeline.pipeline != last_pipeline {
-                let frame = self.get_current_frame()?;
                 let cmd = frame.command_buffer;
                 unsafe {
                     device.cmd_bind_pipeline(
@@ -538,81 +544,14 @@ impl RendererInner {
                 last_pipeline = render_obj.pipeline.pipeline;
             }
 
-            let constants = MeshPushConstants {
-                data: Vec4::new(0.0, 0.0, 0.0, 0.0),
-                render_matrix: render_obj.transform,
-            };
-
-            let frame = self.get_current_frame()?;
-            let cmd = frame.command_buffer;
-            unsafe {
-                device.cmd_push_constants(
-                    cmd,
-                    render_obj.pipeline.pipeline_layout,
-                    vk::ShaderStageFlags::VERTEX,
-                    0,
-                    bytemuck::bytes_of(&constants),
-                );
-            }
-
-            // Only bind the mesh if it's a different one from last bind
-            let last = last_model.take();
-            let model = Some(render_obj.model.clone());
-            if model != last {
-                unsafe {
-                    // Vertex buffer contains the positions of the vertices
-                    // Bind the vertex buffer with offset 0
-                    let vertex_offset = 0;
-                    match &render_obj.model.meshes[0].vertex_buffer {
-                        Some(vertex_buffer) => {
-                            device.cmd_bind_vertex_buffers(
-                                cmd,
-                                0,
-                                &[vertex_buffer.buffer],
-                                &[vertex_offset],
-                            );
-                            Ok(())
-                        }
-                        None => Err(eyre!("No vertex buffer found")),
-                    }?;
-
-                    // Bind global descriptor set
-                    device.cmd_bind_descriptor_sets(
-                        cmd,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        render_obj.pipeline.pipeline_layout,
-                        0,
-                        &[frame.global_desc_set],
-                        &[
-                            scene_start_offset as u32,
-                            camera_start_offset as u32,
-                        ],
-                    );
-
-                    // Bind object descriptor set
-                    device.cmd_bind_descriptor_sets(
-                        cmd,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        render_obj.pipeline.pipeline_layout,
-                        1,
-                        &[frame.object_desc_set],
-                        &[],
-                    );
-                }
-                last_model = model;
-            } else {
-                last_model = last;
-            }
-
-            unsafe {
-                device.cmd_draw(
-                    cmd,
-                    render_obj.model.meshes[0].vertices.len() as u32,
-                    1,
-                    0,
-                    i as u32,
-                );
-            }
+            render_obj.draw(
+                device,
+                &frame,
+                frame_index,
+                &mut last_model_drawn,
+                &self.scene_camera_buffer,
+                instance_index as u32,
+            )?;
         }
 
         Ok(())
