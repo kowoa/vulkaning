@@ -30,10 +30,11 @@ impl Swapchain {
                 height: image_extent.height,
                 depth: 1,
             };
+            let mut allocator = core.get_allocator_mut()?;
             AllocatedImage::new_depth_image(
                 extent,
                 &core.device,
-                core.get_allocator_mut()?,
+                &mut allocator,
             )?
         };
 

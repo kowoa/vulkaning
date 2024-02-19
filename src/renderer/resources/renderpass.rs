@@ -63,7 +63,7 @@ fn create_renderpass(
         // Depth attachment
         vk::AttachmentDescription {
             flags: vk::AttachmentDescriptionFlags::empty(),
-            format: swapchain.depth_image.image_format,
+            format: swapchain.depth_image.format,
             samples: vk::SampleCountFlags::TYPE_1,
             load_op: vk::AttachmentLoadOp::CLEAR,
             store_op: vk::AttachmentStoreOp::STORE,
@@ -138,7 +138,7 @@ fn create_framebuffers(
         .image_views
         .iter()
         .map(|view| {
-            let attachments = [*view, swapchain.depth_image.image_view];
+            let attachments = [*view, swapchain.depth_image.view];
             let fb_info = vk::FramebufferCreateInfo {
                 render_pass: *renderpass,
                 width: swapchain.image_extent.width,

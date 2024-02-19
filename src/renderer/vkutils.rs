@@ -21,7 +21,7 @@ pub fn pad_uniform_buffer_size(
 
 #[cfg(test)]
 mod tests {
-    use crate::renderer::utils::pad_uniform_buffer_size;
+    use crate::renderer::vkutils::pad_uniform_buffer_size;
 
     #[test]
     fn test_pad_uniform_buffer_32_size_0_alignment() {

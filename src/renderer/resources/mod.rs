@@ -9,6 +9,7 @@ pub mod render_object;
 pub mod renderpass;
 pub mod scene;
 pub mod shader;
+pub mod texture;
 pub mod vertex;
 
 use color_eyre::eyre::Result;
@@ -24,16 +25,20 @@ use shader::Shader;
 
 use self::{
     mesh::MeshPushConstants, model::Model, pipeline::Pipeline,
-    render_object::RenderObject, vertex::Vertex,
+    render_object::RenderObject, texture::Texture, vertex::Vertex,
 };
 
-use super::{core::Core, swapchain::Swapchain, vkinit, UploadContext, window::Window};
+use super::{
+    core::Core, memory::AllocatedImage, swapchain::Swapchain, vkinit,
+    window::Window, UploadContext,
+};
 
 pub struct Resources {
     pub renderpasses: Vec<Renderpass>,
 
     pub pipelines: HashMap<String, Arc<Pipeline>>,
     pub models: HashMap<String, Arc<Model>>,
+    pub textures: HashMap<String, Arc<Texture>>,
 
     pub render_objs: ManuallyDrop<Vec<RenderObject>>,
 }
@@ -92,6 +97,22 @@ impl Resources {
             models
         };
 
+        let textures = {
+            let image = AllocatedImage::load_from_file(
+                "lost_empire-RGBA.png",
+                device,
+                &mut allocator,
+                upload_context,
+            )?;
+
+            let mut textures = HashMap::new();
+            textures.insert(
+                "empire_diffuse".to_string(),
+                Arc::new(Texture { image }),
+            );
+            textures
+        };
+
         let render_objs = {
             let mut render_objs = Vec::new();
             let monkey = RenderObject::new(
@@ -124,6 +145,7 @@ impl Resources {
             renderpasses: vec![renderpass],
             pipelines,
             models,
+            textures,
             render_objs: ManuallyDrop::new(render_objs),
         })
     }
