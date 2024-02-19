@@ -1,4 +1,4 @@
-mod utils;
+mod vkutils;
 mod vkinit;
 
 mod core;

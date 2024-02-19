@@ -14,7 +14,7 @@ use gpu_allocator::{
 
 use super::{
     queue_family_indices::QueueFamilyIndices,
-    swapchain::query_swapchain_support, utils, vkinit, window::Window,
+    swapchain::query_swapchain_support, vkutils, vkinit, window::Window,
 };
 
 pub struct Core {
@@ -149,7 +149,7 @@ impl Core {
 
     /// Returns the padded size of the buffer according to the min alignment
     pub fn pad_uniform_buffer_size(&self, original_size: u64) -> u64 {
-        utils::pad_uniform_buffer_size(
+        vkutils::pad_uniform_buffer_size(
             original_size,
             self.min_uniform_buffer_offset_alignment(),
         )
@@ -368,7 +368,7 @@ impl Core {
         let available_layers = entry
             .enumerate_instance_layer_properties()?
             .iter()
-            .map(|props| utils::c_char_to_string(&props.layer_name))
+            .map(|props| vkutils::c_char_to_string(&props.layer_name))
             .collect::<Result<HashSet<_>, _>>()?;
 
         let all_layers_found = Self::REQUIRED_VALIDATION_LAYERS
@@ -439,7 +439,7 @@ impl Core {
             vk::PhysicalDeviceType::OTHER => Ok("Unknown"),
             _ => Err(eyre!("Unknown device type")),
         }?;
-        let dev_name = utils::c_char_to_string(&dev_properties.device_name)?;
+        let dev_name = vkutils::c_char_to_string(&dev_properties.device_name)?;
         message.push_str(&format!(
             "\tDevice name: {}, ID: {}, Type: {}\n",
             dev_name, dev_properties.device_id, dev_type
@@ -492,7 +492,7 @@ impl Core {
             instance.enumerate_device_extension_properties(*physical_device)?
         }
         .iter()
-        .map(|ext| utils::c_char_to_string(&ext.extension_name))
+        .map(|ext| vkutils::c_char_to_string(&ext.extension_name))
         .collect::<Result<Vec<_>, _>>()?;
 
         let contains_all = Self::get_required_device_extensions(window)

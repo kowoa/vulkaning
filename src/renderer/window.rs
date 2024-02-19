@@ -1,4 +1,4 @@
-use std::ffi::CString;
+use std::{ffi::CString, process::ExitCode};
 
 use ash::vk;
 use color_eyre::eyre::{eyre, OptionExt, Result};
@@ -55,6 +55,15 @@ impl Window {
             image_registry: Some(cc.image_registry.clone()),
             exit_signal: Some(cc.exit_signal.clone()),
         }
+    }
+
+    pub fn request_close(&self) -> Result<()> {
+        self.exit_signal
+            .as_ref()
+            .ok_or_eyre("No exit signal found")?
+            .send(ExitCode::SUCCESS);
+
+        Ok(())
     }
 
     pub fn required_instance_extensions(&self) -> Result<Vec<*const i8>> {

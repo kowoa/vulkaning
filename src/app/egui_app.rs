@@ -50,6 +50,11 @@ impl egui_ash::App for App<EguiApp> {
     fn ui(&mut self, ctx: &egui::Context) {
         let inner = self.inner.as_mut().unwrap();
 
+        let esc_press = ctx.input(|i| i.key_down(egui::Key::Escape));
+        if esc_press {
+            inner.window.request_close().unwrap();
+        }
+
         egui::SidePanel::left("my_side_panel").show(ctx, |ui| {
             ui.heading("Hello");
             ui.label("Hello egui!");
