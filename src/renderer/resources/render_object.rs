@@ -1,5 +1,5 @@
 use ash::vk;
-use color_eyre::eyre::{eyre, Result};
+use color_eyre::eyre::{eyre, OptionExt, Result};
 use std::sync::Arc;
 
 use glam::{Mat4, Vec4};
@@ -66,20 +66,15 @@ impl RenderObject {
         };
 
         if should_update_model {
-            let buffers = self
+            let buffer = self
                 .model
-                .meshes
-                .iter()
-                .map(|mesh| match &mesh.vertex_buffer {
-                    Some(vertex_buffer) => Ok(vertex_buffer.buffer),
-                    None => Err(eyre!("No vertex buffer found")),
-                })
-                .collect::<Result<Vec<vk::Buffer>>>()?;
-            let offsets = vec![0; buffers.len()];
+                .vertex_buffer
+                .as_ref()
+                .ok_or_eyre("No vertex buffer found")?;
 
             // Bind vertex buffer
             unsafe {
-                device.cmd_bind_vertex_buffers(cmd, 0, &buffers, &offsets);
+                device.cmd_bind_vertex_buffers(cmd, 0, &[buffer.buffer], &[0]);
             }
 
             let scene_start_offset =
@@ -120,7 +115,6 @@ impl RenderObject {
             .map(|mesh| mesh.vertices.len() as u32)
             .sum();
         unsafe {
-            //device.cmd_draw(cmd, vertex_count, 1, 0, instance_index);
             device.cmd_draw(cmd, vertex_count, 1, 0, instance_index);
         }
 

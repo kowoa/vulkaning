@@ -9,7 +9,7 @@ pub struct VertexInputDescription {
     pub flags: vk::PipelineVertexInputStateCreateFlags,
 }
 
-#[derive(Copy, Clone, Pod, Zeroable, Default)]
+#[derive(Copy, Clone, Pod, Zeroable, Default, Debug)]
 #[repr(C)]
 pub struct Vertex {
     pub position: Vec3,

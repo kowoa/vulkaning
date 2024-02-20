@@ -1,29 +1,44 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::MutexGuard};
 
-use color_eyre::eyre::{OptionExt, Result};
+use ash::vk;
+use color_eyre::eyre::{eyre, OptionExt, Result};
 use glam::{Vec2, Vec3};
 use gpu_allocator::vulkan::Allocator;
 
-use crate::renderer::resources::vertex::Vertex;
+use crate::renderer::{
+    memory::AllocatedBuffer, resources::vertex::Vertex,
+    upload_context::UploadContext,
+};
 
 use super::mesh::Mesh;
 
 pub static mut ASSETS_DIR: Option<String> = None;
 
-#[derive(Default, PartialEq)]
+#[derive(Default)]
 pub struct Model {
     pub meshes: Vec<Mesh>,
+    pub vertex_buffer: Option<AllocatedBuffer>,
+}
+
+impl PartialEq for Model {
+    fn eq(&self, other: &Self) -> bool {
+        self.meshes
+            .iter()
+            .zip(other.meshes.iter())
+            .all(|(mesh, other)| mesh == other)
+    }
 }
 
 impl Model {
     pub fn new(meshes: Vec<Mesh>) -> Self {
-        Self { meshes }
+        Self {
+            meshes,
+            vertex_buffer: None,
+        }
     }
 
     pub fn load_from_obj(
         filename: &str,
-        device: &ash::Device,
-        allocator: &mut Allocator,
     ) -> Result<Self> {
         let filepath = unsafe {
             let mut path = PathBuf::from(
@@ -113,12 +128,85 @@ impl Model {
             meshes.push(mesh);
         }
 
-        Ok(Self { meshes })
+        Ok(Self::new(meshes))
+    }
+
+    pub fn upload(
+        &mut self,
+        device: &ash::Device,
+        allocator: &mut MutexGuard<Allocator>,
+        upload_context: &UploadContext,
+    ) -> Result<()> {
+        let vertices = self
+            .meshes
+            .iter()
+            .flat_map(|mesh| mesh.vertices.iter())
+            .collect::<Vec<&Vertex>>();
+
+        let buffer_size =
+            (vertices.len() * std::mem::size_of::<Vertex>()) as u64;
+        // Create CPU-side staging buffer
+        let mut staging_buffer = AllocatedBuffer::new(
+            device,
+            allocator,
+            buffer_size,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            "Model staging buffer",
+            gpu_allocator::MemoryLocation::CpuToGpu,
+        )?;
+
+        // Copy vertex data into staging buffer
+        let _ = staging_buffer.write(&vertices[..], 0)?;
+
+        // Create GPU-side vertex buffer if it doesn't already exist
+        if self.vertex_buffer.is_none() {
+            self.vertex_buffer = Some(AllocatedBuffer::new(
+                device,
+                allocator,
+                buffer_size,
+                // Use this buffer to render meshes and copy data into
+                vk::BufferUsageFlags::VERTEX_BUFFER
+                    | vk::BufferUsageFlags::TRANSFER_DST,
+                "Model vertex buffer",
+                gpu_allocator::MemoryLocation::GpuOnly,
+            )?);
+        }
+
+        // Execute immediate command to transfer data from staging buffer to vertex buffer
+        if let Some(vertex_buffer) = &self.vertex_buffer {
+            upload_context.immediate_submit(
+                |cmd: &vk::CommandBuffer, device: &ash::Device| {
+                    let copy = vk::BufferCopy {
+                        src_offset: 0,
+                        dst_offset: 0,
+                        size: buffer_size,
+                    };
+                    unsafe {
+                        device.cmd_copy_buffer(
+                            *cmd,
+                            staging_buffer.buffer,
+                            vertex_buffer.buffer,
+                            &[copy],
+                        );
+                    }
+                },
+                device,
+            )?;
+
+            // At this point, the vertex buffer should be populated with data from the staging buffer
+            // Destroy staging buffer now because the vertex buffer now holds the data
+            staging_buffer.cleanup(device, allocator);
+
+            Ok(())
+        } else {
+            staging_buffer.cleanup(device, allocator);
+            Err(eyre!("Vertex buffer not created"))
+        }
     }
 
     pub fn cleanup(self, device: &ash::Device, allocator: &mut Allocator) {
-        for mesh in self.meshes {
-            mesh.cleanup(device, allocator);
+        if let Some(vertex_buffer) = self.vertex_buffer {
+            vertex_buffer.cleanup(device, allocator);
         }
     }
 }

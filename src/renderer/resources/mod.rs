@@ -66,41 +66,24 @@ impl Resources {
 
         let models = {
             // Create models
-            let mut monkey_model = Model::load_from_obj(
-                "monkey_smooth.obj",
-                device,
-                &mut allocator,
-            )?;
+            //let mut monkey_model = Model::load_from_obj("monkey_smooth.obj")?;
             let mut triangle_model = Model::new(vec![Mesh::new_triangle()]);
-            let mut empire_model = Model::load_from_obj(
-                "lost_empire.obj",
-                device,
-                &mut allocator,
-            )?;
+            //let mut empire_model = Model::load_from_obj("lost_empire.obj")?;
 
             // Upload models onto GPU immediately
-            monkey_model.meshes[0].upload(
-                device,
-                &mut allocator,
-                upload_context,
-            )?;
-            triangle_model.meshes[0].upload(
-                device,
-                &mut allocator,
-                upload_context,
-            )?;
-            for mesh in &mut empire_model.meshes {
-                mesh.upload(device, &mut allocator, upload_context)?;
-            }
+            //monkey_model.upload(device, &mut allocator, upload_context)?;
+            triangle_model.upload(device, &mut allocator, upload_context)?;
+            //empire_model.upload(device, &mut allocator, upload_context)?;
 
             // Create HashMap with model name as keys and model as values
             let mut models = HashMap::new();
-            models.insert("monkey".into(), Arc::new(monkey_model));
+            //models.insert("monkey".into(), Arc::new(monkey_model));
             models.insert("triangle".into(), Arc::new(triangle_model));
-            models.insert("empire".into(), Arc::new(empire_model));
+            //models.insert("empire".into(), Arc::new(empire_model));
             models
         };
 
+        /*
         let textures = {
             let image = AllocatedImage::load_from_file(
                 "lost_empire-RGBA.png",
@@ -116,16 +99,21 @@ impl Resources {
             );
             textures
         };
+        */
+        let textures = HashMap::new();
 
         let render_objs = {
             let mut render_objs = Vec::new();
+            /*
             let monkey = RenderObject::new(
                 Arc::clone(&models["monkey"]),
                 Arc::clone(&pipelines["default-lit"]),
                 Mat4::IDENTITY,
             );
             render_objs.push(monkey);
+            */
 
+            /*
             for x in -20..=20 {
                 for y in -20..=20 {
                     let translation = Mat4::from_translation(Vec3::new(
@@ -141,13 +129,22 @@ impl Resources {
                     render_objs.push(triangle);
                 }
             }
+            */
 
+            render_objs.push(RenderObject::new(
+                models["triangle"].clone(),
+                pipelines["default-lit"].clone(),
+                Mat4::IDENTITY,
+            ));
+
+            /*
             let empire = RenderObject::new(
                 models["empire"].clone(),
                 pipelines["default-lit"].clone(),
                 Mat4::IDENTITY,
             );
-            render_objs.push(empire);
+            */
+            //render_objs.push(empire);
 
             render_objs
         };
