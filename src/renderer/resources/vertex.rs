@@ -1,6 +1,6 @@
 use ash::vk;
 use bytemuck::{offset_of, Pod, Zeroable};
-use glam::Vec3;
+use glam::{Vec3, Vec2};
 
 #[derive(Debug)]
 pub struct VertexInputDescription {
@@ -15,6 +15,7 @@ pub struct Vertex {
     pub position: Vec3,
     pub normal: Vec3,
     pub color: Vec3,
+    pub texcoord: Vec2,
 }
 
 impl Vertex {
@@ -46,6 +47,13 @@ impl Vertex {
                 location: 2,
                 format: vk::Format::R32G32B32_SFLOAT,
                 offset: offset_of!(Vertex, color) as u32,
+            },
+            // Texcoord (UV)
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 3,
+                format: vk::Format::R32G32_SFLOAT,
+                offset: offset_of!(Vertex, texcoord) as u32,
             },
         ];
 

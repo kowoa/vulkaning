@@ -12,7 +12,7 @@ pub mod shader;
 pub mod texture;
 pub mod vertex;
 
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{OptionExt, Result};
 use std::{collections::HashMap, mem::ManuallyDrop, sync::Arc};
 
 use ash::vk;
@@ -56,18 +56,13 @@ impl Resources {
         let mut allocator = core.get_allocator_mut()?;
         let renderpass = Renderpass::new(device, swapchain, window)?;
 
-        let pipelines = {
-            let pipeline = Arc::new(create_default_pipeline(
-                device,
-                swapchain,
-                &renderpass,
-                global_desc_set_layout,
-                object_desc_set_layout,
-            )?);
-            let mut pipelines = HashMap::new();
-            pipelines.insert("default".into(), pipeline);
-            pipelines
-        };
+        let pipelines = Self::create_pipelines(
+            device,
+            swapchain,
+            &renderpass,
+            global_desc_set_layout,
+            object_desc_set_layout,
+        )?;
 
         let models = {
             // Create models
@@ -77,6 +72,11 @@ impl Resources {
                 &mut allocator,
             )?;
             let mut triangle_model = Model::new(vec![Mesh::new_triangle()]);
+            let mut empire_model = Model::load_from_obj(
+                "lost_empire.obj",
+                device,
+                &mut allocator,
+            )?;
 
             // Upload models onto GPU immediately
             monkey_model.meshes[0].upload(
@@ -89,11 +89,15 @@ impl Resources {
                 &mut allocator,
                 upload_context,
             )?;
+            for mesh in &mut empire_model.meshes {
+                mesh.upload(device, &mut allocator, upload_context)?;
+            }
 
             // Create HashMap with model name as keys and model as values
             let mut models = HashMap::new();
             models.insert("monkey".into(), Arc::new(monkey_model));
             models.insert("triangle".into(), Arc::new(triangle_model));
+            models.insert("empire".into(), Arc::new(empire_model));
             models
         };
 
@@ -117,7 +121,7 @@ impl Resources {
             let mut render_objs = Vec::new();
             let monkey = RenderObject::new(
                 Arc::clone(&models["monkey"]),
-                Arc::clone(&pipelines["default"]),
+                Arc::clone(&pipelines["default-lit"]),
                 Mat4::IDENTITY,
             );
             render_objs.push(monkey);
@@ -131,12 +135,19 @@ impl Resources {
                     let transform = translation * scale;
                     let triangle = RenderObject::new(
                         Arc::clone(&models["triangle"]),
-                        Arc::clone(&pipelines["default"]),
+                        Arc::clone(&pipelines["default-lit"]),
                         transform,
                     );
                     render_objs.push(triangle);
                 }
             }
+
+            let empire = RenderObject::new(
+                models["empire"].clone(),
+                pipelines["default-lit"].clone(),
+                Mat4::IDENTITY,
+            );
+            render_objs.push(empire);
 
             render_objs
         };
@@ -177,46 +188,100 @@ impl Resources {
             renderpass.cleanup(device);
         }
     }
-}
 
-fn create_default_pipeline(
-    device: &ash::Device,
-    swapchain: &Swapchain,
-    renderpass: &Renderpass,
-    global_desc_set_layout: &vk::DescriptorSetLayout,
-    object_desc_set_layout: &vk::DescriptorSetLayout,
-) -> Result<Pipeline> {
-    let mut layout_info = vkinit::pipeline_layout_create_info();
+    /*
+    fn create_scene(
+        &self,
+        device: &ash::Device,
+        pipelines: &HashMap<String, Arc<Pipeline>>,
+        descriptor_pool: &vk::DescriptorPool,
+    ) -> Result<()> {
+        // Create sampler for the texture
+        let sampler_info = vkinit::sampler_create_info(
+            vk::Filter::NEAREST,
+            vk::SamplerAddressMode::REPEAT,
+        );
+        let blocky_sampler =
+            unsafe { device.create_sampler(&sampler_info, None)? };
 
-    // Push constants setup
-    let push_constant = vk::PushConstantRange {
-        offset: 0,
-        size: std::mem::size_of::<MeshPushConstants>() as u32,
-        stage_flags: vk::ShaderStageFlags::VERTEX,
-    };
-    layout_info.p_push_constant_ranges = &push_constant;
-    layout_info.push_constant_range_count = 1;
+        let textured_lit_pipeline = self
+            .pipelines
+            .get("textured-lit")
+            .ok_or_eyre("textured-lit pipeline not found")?;
 
-    // Descriptor set layout setup
-    let set_layouts = [*global_desc_set_layout, *object_desc_set_layout];
-    layout_info.set_layout_count = set_layouts.len() as u32;
-    layout_info.p_set_layouts = set_layouts.as_ptr();
+        // Allocate the descriptor set for the single-texture to use on the material
+        let alloc_info = vk::DescriptorSetAllocateInfo {
+            descriptor_pool: *descriptor_pool,
+            descriptor_set_count: 1,
+            p_set_layouts: &
+        };
 
-    let layout = unsafe { device.create_pipeline_layout(&layout_info, None)? };
+        Ok(())
+    }
+    */
 
-    let shader = Shader::new("default-lit", device)?;
+    fn create_pipelines(
+        device: &ash::Device,
+        swapchain: &Swapchain,
+        renderpass: &Renderpass,
+        global_desc_set_layout: &vk::DescriptorSetLayout,
+        object_desc_set_layout: &vk::DescriptorSetLayout,
+    ) -> Result<HashMap<String, Arc<Pipeline>>> {
+        let pipeline_layout = {
+            let mut layout_info = vkinit::pipeline_layout_create_info();
 
-    let pipeline = PipelineBuilder::new(
-        &shader.vert_shader_mod,
-        &shader.frag_shader_mod,
-        device,
-        swapchain,
-    )?
-    .pipeline_layout(layout, device)
-    .vertex_input(Vertex::get_vertex_desc())
-    .build(device, renderpass.renderpass)?;
+            // Push constants setup
+            let push_constant = vk::PushConstantRange {
+                offset: 0,
+                size: std::mem::size_of::<MeshPushConstants>() as u32,
+                stage_flags: vk::ShaderStageFlags::VERTEX,
+            };
+            layout_info.p_push_constant_ranges = &push_constant;
+            layout_info.push_constant_range_count = 1;
 
-    shader.destroy(device);
+            // Descriptor set layout setup
+            let set_layouts =
+                [*global_desc_set_layout, *object_desc_set_layout];
+            layout_info.set_layout_count = set_layouts.len() as u32;
+            layout_info.p_set_layouts = set_layouts.as_ptr();
 
-    Ok(pipeline)
+            // Create pipeline layout
+            unsafe { device.create_pipeline_layout(&layout_info, None)? }
+        };
+
+        let default_lit_pipeline = {
+            let default_lit_shader = Shader::new("default-lit", device)?;
+            let default_lit_pipeline = PipelineBuilder::new(
+                &default_lit_shader.vert_shader_mod,
+                &default_lit_shader.frag_shader_mod,
+                device,
+                swapchain,
+            )?
+            .pipeline_layout(pipeline_layout)
+            .vertex_input(Vertex::get_vertex_desc())
+            .build(device, renderpass.renderpass)?;
+            default_lit_shader.cleanup(device);
+            default_lit_pipeline
+        };
+
+        let textured_lit_pipeline = {
+            let textured_lit_shader = Shader::new("textured-lit", device)?;
+            let textured_lit_pipeline = PipelineBuilder::new(
+                &textured_lit_shader.vert_shader_mod,
+                &textured_lit_shader.frag_shader_mod,
+                device,
+                swapchain,
+            )?
+            .pipeline_layout(pipeline_layout)
+            .vertex_input(Vertex::get_vertex_desc())
+            .build(device, renderpass.renderpass)?;
+            textured_lit_shader.cleanup(device);
+            textured_lit_pipeline
+        };
+
+        let mut map = HashMap::new();
+        map.insert("default-lit".into(), Arc::new(default_lit_pipeline));
+        map.insert("textured-lit".into(), Arc::new(textured_lit_pipeline));
+        Ok(map)
+    }
 }

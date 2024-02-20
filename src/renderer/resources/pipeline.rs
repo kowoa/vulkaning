@@ -103,11 +103,7 @@ impl PipelineBuilder {
     pub fn pipeline_layout(
         mut self,
         layout: vk::PipelineLayout,
-        device: &ash::Device,
     ) -> Self {
-        unsafe {
-            device.destroy_pipeline_layout(self.pipeline_layout, None);
-        }
         self.pipeline_layout = layout;
         self
     }

@@ -214,6 +214,36 @@ pub fn submit_info(cmd: &vk::CommandBuffer) -> vk::SubmitInfo {
     }
 }
 
+pub fn sampler_create_info(
+    filter: vk::Filter,
+    sampler_address_mode: vk::SamplerAddressMode,
+) -> vk::SamplerCreateInfo {
+    vk::SamplerCreateInfo {
+        mag_filter: filter,
+        min_filter: filter,
+        address_mode_u: sampler_address_mode,
+        address_mode_v: sampler_address_mode,
+        address_mode_w: sampler_address_mode,
+        ..Default::default()
+    }
+}
+
+pub fn write_descriptor_image(
+    desc_type: vk::DescriptorType,
+    dst_set: vk::DescriptorSet,
+    p_image_info: *const vk::DescriptorImageInfo,
+    dst_binding: u32,
+) -> vk::WriteDescriptorSet {
+    vk::WriteDescriptorSet {
+        dst_binding,
+        dst_set,
+        descriptor_count: 1,
+        descriptor_type: desc_type,
+        p_image_info,
+        ..Default::default()
+    }
+}
+
 pub fn debug_utils_messenger_create_info(
 ) -> vk::DebugUtilsMessengerCreateInfoEXT {
     let message_severity = vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE

@@ -83,6 +83,7 @@ impl Model {
                     position: p,
                     normal: n,
                     color: n,
+                    texcoord: t,
                 });
             }
 

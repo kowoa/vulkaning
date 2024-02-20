@@ -67,7 +67,7 @@ impl Shader {
         Ok(shader_module)
     }
 
-    pub fn destroy(self, device: &ash::Device) {
+    pub fn cleanup(self, device: &ash::Device) {
         log::info!("Cleaning up shader ...");
         unsafe {
             device.destroy_shader_module(self.vert_shader_mod, None);

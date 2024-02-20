@@ -117,6 +117,7 @@ struct RendererInner {
 
     global_desc_set_layout: vk::DescriptorSetLayout,
     object_desc_set_layout: vk::DescriptorSetLayout,
+    //single_texture_desc_set_layout: vk::DescriptorSetLayout,
     descriptor_pool: vk::DescriptorPool,
 
     scene_camera_buffer: AllocatedBuffer,
@@ -633,6 +634,7 @@ impl RendererInner {
     ) -> Result<(
         vk::DescriptorSetLayout,
         vk::DescriptorSetLayout,
+        //vk::DescriptorSetLayout,
         vk::DescriptorPool,
     )> {
         let global_desc_set_layout = {
@@ -678,6 +680,12 @@ impl RendererInner {
                 core.device.create_descriptor_set_layout(&set_info, None)?
             }
         };
+
+        /*
+        let single_texture_desc_set_layout = {
+            let 
+        };
+        */
 
         let descriptor_pool = {
             // Create a descriptor pool that will hold 10 uniform buffers
