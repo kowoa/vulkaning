@@ -26,6 +26,7 @@ static MESH_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 pub struct Mesh {
     pub id: usize,
     pub vertices: Vec<Vertex>,
+    pub vertex_buffer: Option<AllocatedBuffer>,
 }
 
 impl PartialEq for Mesh {
@@ -40,6 +41,7 @@ impl Mesh {
         Self {
             id,
             vertices,
+            vertex_buffer: None,
         }
     }
 
@@ -66,5 +68,79 @@ impl Mesh {
         ];
 
         Self::new(vertices)
+    }
+    pub fn upload(
+        &mut self,
+        device: &ash::Device,
+        allocator: &mut MutexGuard<Allocator>,
+        upload_context: &UploadContext,
+    ) -> Result<()> {
+        let vertices = &self.vertices;
+
+        let buffer_size =
+            (vertices.len() * std::mem::size_of::<Vertex>()) as u64;
+        // Create CPU-side staging buffer
+        let mut staging_buffer = AllocatedBuffer::new(
+            device,
+            allocator,
+            buffer_size,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            "Model staging buffer",
+            gpu_allocator::MemoryLocation::CpuToGpu,
+        )?;
+
+        // Copy vertex data into staging buffer
+        let _ = staging_buffer.write(&vertices[..], 0)?;
+
+        // Create GPU-side vertex buffer if it doesn't already exist
+        if self.vertex_buffer.is_none() {
+            self.vertex_buffer = Some(AllocatedBuffer::new(
+                device,
+                allocator,
+                buffer_size,
+                // Use this buffer to render meshes and copy data into
+                vk::BufferUsageFlags::VERTEX_BUFFER
+                    | vk::BufferUsageFlags::TRANSFER_DST,
+                "Model vertex buffer",
+                gpu_allocator::MemoryLocation::GpuOnly,
+            )?);
+        }
+
+        // Execute immediate command to transfer data from staging buffer to vertex buffer
+        if let Some(vertex_buffer) = &self.vertex_buffer {
+            upload_context.immediate_submit(
+                |cmd: &vk::CommandBuffer, device: &ash::Device| {
+                    let copy = vk::BufferCopy {
+                        src_offset: 0,
+                        dst_offset: 0,
+                        size: buffer_size,
+                    };
+                    unsafe {
+                        device.cmd_copy_buffer(
+                            *cmd,
+                            staging_buffer.buffer,
+                            vertex_buffer.buffer,
+                            &[copy],
+                        );
+                    }
+                },
+                device,
+            )?;
+
+            // At this point, the vertex buffer should be populated with data from the staging buffer
+            // Destroy staging buffer now because the vertex buffer now holds the data
+            staging_buffer.cleanup(device, allocator);
+
+            Ok(())
+        } else {
+            staging_buffer.cleanup(device, allocator);
+            Err(eyre!("Vertex buffer not created"))
+        }
+    }
+
+    pub fn cleanup(self, device: &ash::Device, allocator: &mut Allocator) {
+        if let Some(vertex_buffer) = self.vertex_buffer {
+            vertex_buffer.cleanup(device, allocator);
+        }
     }
 }

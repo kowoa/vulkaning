@@ -69,17 +69,20 @@ impl Resources {
             let mut monkey_model = Model::load_from_obj("monkey_smooth.obj")?;
             let mut triangle_model = Model::new(vec![Mesh::new_triangle()]);
             let mut empire_model = Model::load_from_obj("lost_empire.obj")?;
+            let mut backpack_model = Model::load_from_obj("backpack.obj")?;
 
             // Upload models onto GPU immediately
             monkey_model.upload(device, &mut allocator, upload_context)?;
             triangle_model.upload(device, &mut allocator, upload_context)?;
             empire_model.upload(device, &mut allocator, upload_context)?;
+            backpack_model.upload(device, &mut allocator, &upload_context)?;
 
             // Create HashMap with model name as keys and model as values
             let mut models = HashMap::new();
             models.insert("monkey".into(), Arc::new(monkey_model));
             models.insert("triangle".into(), Arc::new(triangle_model));
             models.insert("empire".into(), Arc::new(empire_model));
+            models.insert("backpack".into(), Arc::new(backpack_model));
             models
         };
 
@@ -101,14 +104,12 @@ impl Resources {
 
         let render_objs = {
             let mut render_objs = Vec::new();
-            /*
             let monkey = RenderObject::new(
                 Arc::clone(&models["monkey"]),
                 Arc::clone(&pipelines["default-lit"]),
                 Mat4::IDENTITY,
             );
             render_objs.push(monkey);
-            */
 
             /*
             for x in -20..=20 {
@@ -133,7 +134,14 @@ impl Resources {
                 pipelines["default-lit"].clone(),
                 Mat4::IDENTITY,
             );
-            render_objs.push(empire);
+            //render_objs.push(empire);
+
+            let backpack = RenderObject::new(
+                models["backpack"].clone(),
+                pipelines["default-lit"].clone(),
+                Mat4::IDENTITY,
+            );
+            render_objs.push(backpack);
 
             render_objs
         };
