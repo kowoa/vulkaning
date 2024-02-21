@@ -140,8 +140,8 @@ impl Model {
         let vertices = self
             .meshes
             .iter()
-            .flat_map(|mesh| mesh.vertices.iter())
-            .collect::<Vec<&Vertex>>();
+            .flat_map(|mesh| mesh.vertices.iter().cloned())
+            .collect::<Vec<Vertex>>();
 
         let buffer_size =
             (vertices.len() * std::mem::size_of::<Vertex>()) as u64;
