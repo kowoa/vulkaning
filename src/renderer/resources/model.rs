@@ -49,6 +49,7 @@ impl Model {
             filepath,
             &tobj::LoadOptions {
                 single_index: true,
+                triangulate: true,
                 ..Default::default()
             },
         )?;

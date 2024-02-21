@@ -488,7 +488,8 @@ impl RendererInner {
         // Write into camera section of scene-camera uniform buffer
         {
             // Fill a GpuCameraData struct
-            let cam_pos = Vec3::new(0.0, 6.0, 20.0);
+            //let cam_pos = Vec3::new(0.0, 6.0, 20.0);
+            let cam_pos = Vec3::new(0.0, 20.0, 20.0);
             let view = Mat4::look_to_rh(
                 cam_pos,
                 Vec3::new(0.0, 0.0, -1.0),

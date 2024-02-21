@@ -109,7 +109,7 @@ impl Resources {
                 Arc::clone(&pipelines["default-lit"]),
                 Mat4::IDENTITY,
             );
-            render_objs.push(monkey);
+            //render_objs.push(monkey);
 
             /*
             for x in -20..=20 {
@@ -134,14 +134,14 @@ impl Resources {
                 pipelines["default-lit"].clone(),
                 Mat4::IDENTITY,
             );
-            //render_objs.push(empire);
+            render_objs.push(empire);
 
             let backpack = RenderObject::new(
                 models["backpack"].clone(),
                 pipelines["default-lit"].clone(),
                 Mat4::IDENTITY,
             );
-            render_objs.push(backpack);
+            //render_objs.push(backpack);
 
             render_objs
         };
