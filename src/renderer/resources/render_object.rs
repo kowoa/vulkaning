@@ -66,52 +66,68 @@ impl RenderObject {
         };
 
         if should_update_model {
-            let scene_start_offset =
-                scene_camera_buffer.offsets.as_ref().unwrap()
-                    [frame_index as usize];
-            let camera_start_offset =
-                scene_camera_buffer.offsets.as_ref().unwrap()
-                    [frame_index as usize + 2];
-            unsafe {
-                // Bind global descriptor set
-                device.cmd_bind_descriptor_sets(
-                    cmd,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    self.pipeline.pipeline_layout,
-                    0,
-                    &[frame.global_desc_set],
-                    &[scene_start_offset, camera_start_offset],
-                );
+            // Update descriptor sets to use this model's pipeline
+            {
+                let scene_start_offset =
+                    scene_camera_buffer.offsets.as_ref().unwrap()
+                        [frame_index as usize];
+                let camera_start_offset =
+                    scene_camera_buffer.offsets.as_ref().unwrap()
+                        [frame_index as usize + 2];
+                unsafe {
+                    // Bind global descriptor set
+                    device.cmd_bind_descriptor_sets(
+                        cmd,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        self.pipeline.pipeline_layout,
+                        0,
+                        &[frame.global_desc_set],
+                        &[scene_start_offset, camera_start_offset],
+                    );
 
-                // Bind object descriptor set
-                device.cmd_bind_descriptor_sets(
-                    cmd,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    self.pipeline.pipeline_layout,
-                    1,
-                    &[frame.object_desc_set],
-                    &[],
-                );
+                    // Bind object descriptor set
+                    device.cmd_bind_descriptor_sets(
+                        cmd,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        self.pipeline.pipeline_layout,
+                        1,
+                        &[frame.object_desc_set],
+                        &[],
+                    );
+                }
+            }
+
+            // Update vertex buffer
+            {
+                let buffer = self
+                    .model
+                    .vertex_buffer
+                    .as_ref()
+                    .ok_or_eyre("No vertex buffer found")?;
+
+                // Bind vertex buffer
+                unsafe {
+                    device.cmd_bind_vertex_buffers(
+                        cmd,
+                        0,
+                        &[buffer.buffer],
+                        &[0],
+                    );
+                }
             }
 
             let _ = last_model_drawn.insert(Arc::clone(&self.model));
         }
 
-        for mesh in &self.model.meshes {
-            let buffer = mesh
-                .vertex_buffer
-                .as_ref()
-                .ok_or_eyre("No vertex buffer found")?;
-
-            // Bind vertex buffer
-            unsafe {
-                device.cmd_bind_vertex_buffers(cmd, 0, &[buffer.buffer], &[0]);
-            }
-
-            let vertex_count = mesh.vertices.len() as u32;
-            unsafe {
-                device.cmd_draw(cmd, vertex_count, 1, 0, instance_index);
-            }
+        // Draw this render object's model
+        let vertex_count = self
+            .model
+            .meshes
+            .iter()
+            .map(|mesh| mesh.vertices.len() as u32)
+            .sum();
+        unsafe {
+            device.cmd_draw(cmd, vertex_count, 1, 0, instance_index);
         }
 
         Ok(())
