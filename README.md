@@ -2,7 +2,7 @@
 
 The beginning of a Vulkan engine ...
 
-![triangle.png](triangle.png)
+![Textures GIF](textures.gif)
 
 ## Tools
 

@@ -494,8 +494,8 @@ impl RendererInner {
         // Write into camera section of scene-camera uniform buffer
         {
             // Fill a GpuCameraData struct
-            //let cam_pos = Vec3::new(0.0, 6.0, 20.0);
-            let cam_pos = Vec3::new(0.0, 40.0, 0.0);
+            let cam_pos = Vec3::new(0.0, 20.0, 0.0);
+            //let cam_pos = Vec3::new(0.0, 40.0, 0.0);
             let view = Mat4::look_to_rh(
                 cam_pos,
                 Vec3::new(0.0, 0.0, -1.0),
@@ -521,7 +521,7 @@ impl RendererInner {
 
         // Write into object storage buffer
         {
-            let rot = Mat4::from_rotation_y(self.frame_number as f32 / 120.0);
+            let rot = Mat4::from_rotation_y(self.frame_number as f32 / 240.0);
             let object_data = self
                 .resources
                 .render_objs
