@@ -64,9 +64,10 @@ impl Frame {
         };
 
         // Create object buffer
+        let mut allocator = core.get_allocator_mut()?;
         let object_buffer = AllocatedBuffer::new(
             &core.device,
-            &mut core.get_allocator_mut()?,
+            &mut allocator,
             std::mem::size_of::<GpuObjectData>() as u64 * MAX_OBJECTS as u64,
             vk::BufferUsageFlags::STORAGE_BUFFER,
             "Object Storage Buffer",
@@ -95,20 +96,20 @@ impl Frame {
             };
 
             // Scene data is in binding 0
-            let scene_write = vkinit::write_descriptor_set(
+            let scene_write = vkinit::write_descriptor_buffer(
                 vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
                 global_desc_set,
                 0,
                 &scene_info,
             );
             // Camera data is in binding 1
-            let camera_write = vkinit::write_descriptor_set(
+            let camera_write = vkinit::write_descriptor_buffer(
                 vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
                 global_desc_set,
                 1,
                 &camera_info,
             );
-            let object_write = vkinit::write_descriptor_set(
+            let object_write = vkinit::write_descriptor_buffer(
                 vk::DescriptorType::STORAGE_BUFFER,
                 object_desc_set,
                 0,

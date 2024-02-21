@@ -7,12 +7,13 @@ use crate::renderer::{swapchain::Swapchain, vkinit};
 
 use super::vertex::VertexInputDescription;
 
-pub struct Pipeline {
+#[derive(PartialEq)]
+pub struct Material {
     pub pipeline: vk::Pipeline,
     pub pipeline_layout: vk::PipelineLayout,
 }
 
-impl Pipeline {
+impl Material {
     pub fn cleanup(self, device: &ash::Device) {
         log::info!("Cleaning up pipeline ...");
         unsafe {
@@ -22,7 +23,7 @@ impl Pipeline {
     }
 }
 
-pub struct PipelineBuilder {
+pub struct MaterialBuilder {
     _shader_main_fn_name: CString,
     shader_stages: Vec<vk::PipelineShaderStageCreateInfo>,
     vertex_input: vk::PipelineVertexInputStateCreateInfo,
@@ -37,7 +38,7 @@ pub struct PipelineBuilder {
     depth_stencil: vk::PipelineDepthStencilStateCreateInfo,
 }
 
-impl PipelineBuilder {
+impl MaterialBuilder {
     pub fn new(
         vert_shader_mod: &vk::ShaderModule,
         frag_shader_mod: &vk::ShaderModule,
@@ -100,10 +101,7 @@ impl PipelineBuilder {
         })
     }
 
-    pub fn pipeline_layout(
-        mut self,
-        layout: vk::PipelineLayout,
-    ) -> Self {
+    pub fn pipeline_layout(mut self, layout: vk::PipelineLayout) -> Self {
         self.pipeline_layout = layout;
         self
     }
@@ -134,7 +132,7 @@ impl PipelineBuilder {
         self,
         device: &ash::Device,
         renderpass: vk::RenderPass,
-    ) -> Result<Pipeline> {
+    ) -> Result<Material> {
         let viewport_state_info = vk::PipelineViewportStateCreateInfo {
             viewport_count: 1,
             p_viewports: &self.viewport,
@@ -181,7 +179,7 @@ impl PipelineBuilder {
             }
         }?;
 
-        Ok(Pipeline {
+        Ok(Material {
             pipeline: graphics_pipelines[0],
             pipeline_layout: self.pipeline_layout,
         })

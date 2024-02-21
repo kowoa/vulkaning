@@ -27,9 +27,7 @@ use crate::renderer::resources::camera::GpuCameraData;
 use self::{
     core::Core,
     memory::AllocatedBuffer,
-    resources::{
-        frame::Frame, scene::GpuSceneData, Resources,
-    },
+    resources::{frame::Frame, scene::GpuSceneData, Resources},
     swapchain::Swapchain,
     upload_context::UploadContext,
     window::Window,
@@ -117,7 +115,7 @@ struct RendererInner {
 
     global_desc_set_layout: vk::DescriptorSetLayout,
     object_desc_set_layout: vk::DescriptorSetLayout,
-    //single_texture_desc_set_layout: vk::DescriptorSetLayout,
+    single_texture_desc_set_layout: vk::DescriptorSetLayout,
     descriptor_pool: vk::DescriptorPool,
 
     scene_camera_buffer: AllocatedBuffer,
@@ -143,8 +141,12 @@ impl RendererInner {
             Swapchain::new(&mut core, window)?
         };
 
-        let (global_desc_set_layout, object_desc_set_layout, descriptor_pool) =
-            Self::create_descriptors(&core)?;
+        let (
+            global_desc_set_layout,
+            object_desc_set_layout,
+            single_texture_desc_set_layout,
+            descriptor_pool,
+        ) = Self::create_descriptors(&core)?;
         let upload_context = UploadContext::new(
             &core.device,
             core.queue_family_indices.get_graphics_family()?,
@@ -154,8 +156,10 @@ impl RendererInner {
         let resources = Resources::new(
             &mut core,
             &swapchain,
+            &descriptor_pool,
             &global_desc_set_layout,
             &object_desc_set_layout,
+            &single_texture_desc_set_layout,
             &upload_context,
             window,
         )?;
@@ -173,9 +177,10 @@ impl RendererInner {
             let offsets =
                 [0, scene_size, 2 * scene_size, 2 * scene_size + camera_size];
 
+            let mut allocator = core.get_allocator_mut()?;
             let mut buffer = AllocatedBuffer::new(
                 &core.device,
-                &mut core.get_allocator_mut()?,
+                &mut allocator,
                 size as u64,
                 vk::BufferUsageFlags::UNIFORM_BUFFER,
                 "Scene-Camera Uniform Buffer",
@@ -217,6 +222,7 @@ impl RendererInner {
             command_pool,
             global_desc_set_layout,
             object_desc_set_layout,
+            single_texture_desc_set_layout,
             descriptor_pool,
             scene_camera_buffer,
             upload_context,
@@ -489,7 +495,7 @@ impl RendererInner {
         {
             // Fill a GpuCameraData struct
             //let cam_pos = Vec3::new(0.0, 6.0, 20.0);
-            let cam_pos = Vec3::new(0.0, 20.0, 20.0);
+            let cam_pos = Vec3::new(0.0, 40.0, 0.0);
             let view = Mat4::look_to_rh(
                 cam_pos,
                 Vec3::new(0.0, 0.0, -1.0),
@@ -526,31 +532,19 @@ impl RendererInner {
             frame.object_buffer.write(&object_data, 0)?;
         }
 
-        let mut last_pipeline = vk::Pipeline::null();
         let mut last_model_drawn = None;
+        let mut last_material_drawn = None;
         for instance_index in first_index..(first_index + count) {
             let device = &core.device;
             let render_obj = &self.resources.render_objs[instance_index];
             let frame = self.get_current_frame()?;
-
-            // Only bind the pipeline if it doesn't match the already bound one
-            if render_obj.pipeline.pipeline != last_pipeline {
-                let cmd = frame.command_buffer;
-                unsafe {
-                    device.cmd_bind_pipeline(
-                        cmd,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        render_obj.pipeline.pipeline,
-                    );
-                }
-                last_pipeline = render_obj.pipeline.pipeline;
-            }
 
             render_obj.draw(
                 device,
                 &frame,
                 frame_index,
                 &mut last_model_drawn,
+                &mut last_material_drawn,
                 &self.scene_camera_buffer,
                 instance_index as u32,
             )?;
@@ -635,7 +629,7 @@ impl RendererInner {
     ) -> Result<(
         vk::DescriptorSetLayout,
         vk::DescriptorSetLayout,
-        //vk::DescriptorSetLayout,
+        vk::DescriptorSetLayout,
         vk::DescriptorPool,
     )> {
         let global_desc_set_layout = {
@@ -682,11 +676,22 @@ impl RendererInner {
             }
         };
 
-        /*
         let single_texture_desc_set_layout = {
-            let 
+            let texture_bind = vkinit::descriptor_set_layout_binding(
+                vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                vk::ShaderStageFlags::FRAGMENT,
+                0,
+            );
+
+            let set_info = vk::DescriptorSetLayoutCreateInfo {
+                binding_count: 1,
+                p_bindings: &texture_bind,
+                ..Default::default()
+            };
+            unsafe {
+                core.device.create_descriptor_set_layout(&set_info, None)?
+            }
         };
-        */
 
         let descriptor_pool = {
             // Create a descriptor pool that will hold 10 uniform buffers
@@ -708,6 +713,11 @@ impl RendererInner {
                     ty: vk::DescriptorType::STORAGE_BUFFER,
                     descriptor_count: 10,
                 },
+                vk::DescriptorPoolSize {
+                    ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                    // For textures
+                    descriptor_count: 10,
+                },
             ];
             let pool_info = vk::DescriptorPoolCreateInfo {
                 max_sets: 10,
@@ -721,6 +731,7 @@ impl RendererInner {
         Ok((
             global_desc_set_layout,
             object_desc_set_layout,
+            single_texture_desc_set_layout,
             descriptor_pool,
         ))
     }

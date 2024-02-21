@@ -25,7 +25,7 @@ pub struct AllocatedBuffer {
 impl AllocatedBuffer {
     pub fn new(
         device: &ash::Device,
-        allocator: &mut MutexGuard<Allocator>,
+        allocator: &mut Allocator,
         buffer_size: u64,
         buffer_usage: vk::BufferUsageFlags,
         alloc_name: &str,
@@ -162,7 +162,7 @@ impl AllocatedImage {
     pub fn load_from_file(
         filename: &str,
         device: &ash::Device,
-        allocator: &mut MutexGuard<Allocator>,
+        allocator: &mut Allocator,
         upload_context: &UploadContext,
     ) -> Result<Self> {
         let (staging_buffer, img_width, img_height) = {

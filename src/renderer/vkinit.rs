@@ -176,8 +176,8 @@ pub fn descriptor_set_layout_binding(
     }
 }
 
-pub fn write_descriptor_set(
-    descriptor_type: vk::DescriptorType,
+pub fn write_descriptor_buffer(
+    desc_type: vk::DescriptorType,
     dst_set: vk::DescriptorSet,
     dst_binding: u32,
     p_buffer_info: *const vk::DescriptorBufferInfo,
@@ -186,7 +186,7 @@ pub fn write_descriptor_set(
         dst_binding,
         dst_set,
         descriptor_count: 1,
-        descriptor_type,
+        descriptor_type: desc_type,
         p_buffer_info,
         ..Default::default()
     }
@@ -231,8 +231,8 @@ pub fn sampler_create_info(
 pub fn write_descriptor_image(
     desc_type: vk::DescriptorType,
     dst_set: vk::DescriptorSet,
-    p_image_info: *const vk::DescriptorImageInfo,
     dst_binding: u32,
+    p_image_info: *const vk::DescriptorImageInfo,
 ) -> vk::WriteDescriptorSet {
     vk::WriteDescriptorSet {
         dst_binding,
