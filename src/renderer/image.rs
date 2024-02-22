@@ -17,8 +17,9 @@ pub struct AllocatedImage {
     pub view: vk::ImageView,
     pub format: vk::Format,
     pub extent: vk::Extent3D,
-    pub allocation: Allocation,
     pub aspect: vk::ImageAspectFlags,
+    pub layout: vk::ImageLayout,
+    pub allocation: Allocation,
 }
 
 impl AllocatedImage {
@@ -57,8 +58,9 @@ impl AllocatedImage {
             view: image_view,
             format,
             extent,
-            allocation,
             aspect: aspect_flags,
+            layout: vk::ImageLayout::UNDEFINED,
+            allocation,
         })
     }
 
@@ -224,18 +226,22 @@ impl AllocatedImage {
     }
 
     pub fn transition_layout(
-        &self,
+        &mut self,
         cmd: &vk::CommandBuffer,
         new_layout: vk::ImageLayout,
         device: &ash::Device,
     ) {
+        if self.layout == new_layout {
+            return;
+        }
+
         let image_barrier = vk::ImageMemoryBarrier2 {
             src_stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
             src_access_mask: vk::AccessFlags2::MEMORY_WRITE,
             dst_stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
             dst_access_mask: vk::AccessFlags2::MEMORY_WRITE
                 | vk::AccessFlags2::MEMORY_READ,
-            old_layout: vk::ImageLayout::UNDEFINED,
+            old_layout: self.layout,
             new_layout,
             subresource_range: vk::ImageSubresourceRange {
                 aspect_mask: self.aspect,
@@ -257,6 +263,8 @@ impl AllocatedImage {
         unsafe {
             device.cmd_pipeline_barrier2(*cmd, &dep_info);
         }
+
+        self.layout = new_layout;
     }
 
     pub fn copy_to_image(

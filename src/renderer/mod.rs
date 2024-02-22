@@ -31,7 +31,11 @@ use crate::renderer::{
 
 use self::{
     core::Core,
-    resources::{frame::Frame, scene::GpuSceneData, Resources},
+    resources::{
+        frame::{self, Frame},
+        scene::GpuSceneData,
+        Resources,
+    },
     swapchain::Swapchain,
     upload_context::UploadContext,
     window::Window,
@@ -326,7 +330,13 @@ impl RendererInner {
         }
     }
 
-    fn draw_background(&self, cmd: &vk::CommandBuffer) {
+    fn draw_background(&mut self, cmd: &vk::CommandBuffer) {
+        self.draw_image.transition_layout(
+            &cmd,
+            vk::ImageLayout::GENERAL,
+            &self.core.device,
+        );
+
         let flash = (self.frame_number as f32 / 120.0).sin().abs();
         let clear = vk::ClearColorValue {
             float32: [0.0, 0.0, flash, 1.0],
@@ -369,48 +379,72 @@ impl RendererInner {
         self.draw_extent.width = self.draw_image.extent.width;
         self.draw_extent.height = self.draw_image.extent.height;
 
-        let swapchain_image_index = unsafe {
+        let (
+            swapchain_image_index,
+            cmd,
+            render_semaphore,
+            present_semaphore,
+            render_fence,
+        ) = {
             let frame = self.get_current_frame()?;
             let fences = [frame.render_fence];
 
             // Wait until GPU has finished rendering last frame (1 sec timeout)
-            self.core
-                .device
-                .wait_for_fences(&fences, true, 1000000000)?;
-            self.core.device.reset_fences(&fences)?;
+            unsafe {
+                self.core
+                    .device
+                    .wait_for_fences(&fences, true, 1000000000)?;
+                self.core.device.reset_fences(&fences)?;
+            }
 
             // Request image from swapchain (1 sec timeout)
-            let (swapchain_image_index, _) =
+            let (swapchain_image_index, _) = unsafe {
                 self.swapchain.swapchain_loader.acquire_next_image(
                     self.swapchain.swapchain,
                     1000000000,
                     frame.present_semaphore,
                     vk::Fence::null(),
-                )?;
+                )?
+            };
 
+            (
+                swapchain_image_index,
+                frame.command_buffer,
+                frame.render_semaphore,
+                frame.present_semaphore,
+                frame.render_fence,
+            )
+        };
+
+        // Begin command buffer recording
+        {
             // Reset the command buffer to begin recording
-            let cmd = frame.command_buffer;
-            self.core.device.reset_command_buffer(
-                cmd,
-                vk::CommandBufferResetFlags::empty(),
-            )?;
+            unsafe {
+                self.core.device.reset_command_buffer(
+                    cmd,
+                    vk::CommandBufferResetFlags::empty(),
+                )?;
+            }
 
             // Begin command buffer recording
             let cmd_begin_info = vk::CommandBufferBeginInfo {
                 flags: vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
                 ..Default::default()
             };
-            self.core
-                .device
-                .begin_command_buffer(cmd, &cmd_begin_info)?;
+            unsafe {
+                self.core
+                    .device
+                    .begin_command_buffer(cmd, &cmd_begin_info)?;
+            }
+        }
 
-            // Transition the main draw image into general layout so it can be
-            // written into. Overwrite all because the older layout doesn't matter.
-            self.draw_image.transition_layout(
-                &cmd,
-                vk::ImageLayout::GENERAL,
-                &self.core.device,
-            );
+        {
+            // Operations related to the draw image
+            {
+                // Transition the main draw image into general layout so it can be
+                // written into. Overwrite all because the older layout doesn't matter.
+                self.draw_background(&cmd);
+            }
 
             let clear_values = {
                 // Make clear color from frame number
@@ -445,13 +479,13 @@ impl RendererInner {
                 p_clear_values: clear_values.as_ptr(),
                 ..Default::default()
             };
-            self.core.device.cmd_begin_render_pass(
-                cmd,
-                &rp_begin_info,
-                vk::SubpassContents::INLINE,
-            );
-
-            swapchain_image_index
+            unsafe {
+                self.core.device.cmd_begin_render_pass(
+                    cmd,
+                    &rp_begin_info,
+                    vk::SubpassContents::INLINE,
+                );
+            }
         };
 
         // RENDERING COMMANDS START
@@ -465,8 +499,6 @@ impl RendererInner {
 
         // RENDERING COMMANDS END
 
-        let frame = self.get_current_frame()?;
-        let cmd = frame.command_buffer;
         unsafe {
             // Finalize the main renderpass
             self.core.device.cmd_end_render_pass(cmd);
@@ -486,9 +518,9 @@ impl RendererInner {
             let submit_info = vk::SubmitInfo {
                 p_wait_dst_stage_mask: wait_stages.as_ptr(),
                 wait_semaphore_count: 1,
-                p_wait_semaphores: &frame.present_semaphore,
+                p_wait_semaphores: &present_semaphore,
                 signal_semaphore_count: 1,
-                p_signal_semaphores: &frame.render_semaphore,
+                p_signal_semaphores: &render_semaphore,
                 command_buffer_count: 1,
                 p_command_buffers: &cmd,
                 ..Default::default()
@@ -496,7 +528,7 @@ impl RendererInner {
             self.core.device.queue_submit(
                 self.core.graphics_queue,
                 &[submit_info],
-                frame.render_fence,
+                render_fence,
             )?;
         }
 
