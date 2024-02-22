@@ -2,7 +2,7 @@ use ash::vk;
 use color_eyre::eyre::{OptionExt, Result};
 use gpu_allocator::vulkan::Allocator;
 
-use super::{core::Core, memory::AllocatedImage, window::Window};
+use super::{core::Core, image::AllocatedImage, window::Window};
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
@@ -47,7 +47,7 @@ impl Swapchain {
             image_views,
             depth_image,
         };
-        
+
         Ok(objs)
     }
 

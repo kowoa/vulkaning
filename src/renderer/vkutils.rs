@@ -21,12 +21,12 @@ pub fn pad_uniform_buffer_size(
 }
 
 pub fn copy_image_to_image(
+    cmd: &vk::CommandBuffer,
     src: vk::Image,
     dst: vk::Image,
     src_size: vk::Extent2D,
     dst_size: vk::Extent2D,
     device: &ash::Device,
-    cmd: vk::CommandBuffer,
 ) {
     let blit_region = vk::ImageBlit2 {
         src_offsets: [
@@ -72,7 +72,7 @@ pub fn copy_image_to_image(
     };
 
     unsafe {
-        device.cmd_blit_image2(cmd, &blit_info);
+        device.cmd_blit_image2(*cmd, &blit_info);
     }
 }
 

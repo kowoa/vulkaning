@@ -1,5 +1,5 @@
 use crate::renderer::{
-    memory::AllocatedImage, upload_context::UploadContext, vkinit,
+    image::AllocatedImage, upload_context::UploadContext, vkinit,
 };
 use ash::vk;
 use color_eyre::eyre::Result;

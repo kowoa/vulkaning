@@ -1,97 +1,16 @@
-use std::{
-    path::PathBuf,
-    sync::{Arc, MutexGuard},
-};
+use std::path::PathBuf;
 
 use ash::vk;
-use color_eyre::eyre::{OptionExt, Result};
+use color_eyre::eyre::Result;
 use gpu_allocator::{
     vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator},
     MemoryLocation,
 };
 
 use super::{
-    resources::model::ASSETS_DIR, upload_context::UploadContext, vkinit,
+    buffer::AllocatedBuffer, resources::model::ASSETS_DIR,
+    upload_context::UploadContext, vkinit, vkutils,
 };
-
-#[derive(Debug)]
-pub struct AllocatedBuffer {
-    pub buffer: vk::Buffer,
-    pub allocation: Allocation,
-    pub size: u64,
-    pub offsets: Option<Vec<u32>>,
-}
-
-impl AllocatedBuffer {
-    pub fn new(
-        device: &ash::Device,
-        allocator: &mut Allocator,
-        buffer_size: u64,
-        buffer_usage: vk::BufferUsageFlags,
-        alloc_name: &str,
-        alloc_loc: MemoryLocation,
-    ) -> Result<Self> {
-        let buffer = {
-            let buffer_info = vk::BufferCreateInfo {
-                size: buffer_size,
-                usage: buffer_usage,
-                sharing_mode: vk::SharingMode::EXCLUSIVE,
-                ..Default::default()
-            };
-            unsafe { device.create_buffer(&buffer_info, None)? }
-        };
-
-        let reqs = unsafe { device.get_buffer_memory_requirements(buffer) };
-        let allocation = allocator.allocate(&AllocationCreateDesc {
-            name: alloc_name,
-            requirements: reqs,
-            location: alloc_loc,
-            linear: true,
-            allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-        })?;
-
-        unsafe {
-            device.bind_buffer_memory(
-                buffer,
-                allocation.memory(),
-                allocation.offset(),
-            )?;
-        }
-
-        Ok(Self {
-            buffer,
-            allocation,
-            size: buffer_size,
-            offsets: None,
-        })
-    }
-
-    pub fn set_offsets(&mut self, offsets: Vec<u32>) {
-        self.offsets = Some(offsets);
-    }
-
-    pub fn write<T>(
-        &mut self,
-        data: &[T],
-        start_offset: usize,
-    ) -> Result<presser::CopyRecord>
-    where
-        T: Copy,
-    {
-        Ok(presser::copy_from_slice_to_offset(
-            data,
-            &mut self.allocation,
-            start_offset,
-        )?)
-    }
-
-    pub fn cleanup(self, device: &ash::Device, allocator: &mut Allocator) {
-        unsafe {
-            allocator.free(self.allocation).unwrap();
-            device.destroy_buffer(self.buffer, None);
-        }
-    }
-}
 
 pub struct AllocatedImage {
     pub image: vk::Image,
@@ -99,6 +18,7 @@ pub struct AllocatedImage {
     pub format: vk::Format,
     pub extent: vk::Extent3D,
     pub allocation: Allocation,
+    pub aspect: vk::ImageAspectFlags,
 }
 
 impl AllocatedImage {
@@ -138,6 +58,7 @@ impl AllocatedImage {
             format,
             extent,
             allocation,
+            aspect: aspect_flags,
         })
     }
 
@@ -198,14 +119,14 @@ impl AllocatedImage {
                 height: img_height,
                 depth: 1,
             };
-            
+
             Self::new(
                 vk::Format::R8G8B8A8_SRGB,
                 img_extent,
                 vk::ImageUsageFlags::SAMPLED
                     | vk::ImageUsageFlags::TRANSFER_DST,
                 vk::ImageAspectFlags::COLOR,
-                "Image from file",
+                &format!("Image from file: {}", filename),
                 device,
                 allocator,
             )?
@@ -300,6 +221,64 @@ impl AllocatedImage {
         staging_buffer.cleanup(device, allocator);
 
         Ok(img)
+    }
+
+    pub fn transition_layout(
+        &self,
+        cmd: &vk::CommandBuffer,
+        new_layout: vk::ImageLayout,
+        device: &ash::Device,
+    ) {
+        let image_barrier = vk::ImageMemoryBarrier2 {
+            src_stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
+            src_access_mask: vk::AccessFlags2::MEMORY_WRITE,
+            dst_stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
+            dst_access_mask: vk::AccessFlags2::MEMORY_WRITE
+                | vk::AccessFlags2::MEMORY_READ,
+            old_layout: vk::ImageLayout::UNDEFINED,
+            new_layout,
+            subresource_range: vk::ImageSubresourceRange {
+                aspect_mask: self.aspect,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            },
+            image: self.image,
+            ..Default::default()
+        };
+
+        let dep_info = vk::DependencyInfo {
+            image_memory_barrier_count: 1,
+            p_image_memory_barriers: &image_barrier,
+            ..Default::default()
+        };
+
+        unsafe {
+            device.cmd_pipeline_barrier2(*cmd, &dep_info);
+        }
+    }
+
+    pub fn copy_to_image(
+        &self,
+        cmd: &vk::CommandBuffer,
+        dst_image: &AllocatedImage,
+        device: &ash::Device,
+    ) {
+        vkutils::copy_image_to_image(
+            cmd,
+            self.image,
+            dst_image.image,
+            vk::Extent2D {
+                width: self.extent.width,
+                height: self.extent.height,
+            },
+            vk::Extent2D {
+                width: dst_image.extent.width,
+                height: dst_image.extent.height,
+            },
+            device,
+        );
     }
 
     pub fn cleanup(self, device: &ash::Device, allocator: &mut Allocator) {

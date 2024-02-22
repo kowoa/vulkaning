@@ -14,7 +14,7 @@ use gpu_allocator::{
 
 use super::{
     queue_family_indices::QueueFamilyIndices,
-    swapchain::query_swapchain_support, vkutils, vkinit, window::Window,
+    swapchain::query_swapchain_support, vkinit, vkutils, window::Window,
 };
 
 pub struct Core {
@@ -159,6 +159,7 @@ impl Core {
         window: &Window,
     ) -> Result<Vec<*const i8>> {
         let mut exts = window.required_instance_extensions()?;
+        //exts.push(vk::KhrSynchronization2Fn::name().as_ptr()); // For cmd_pipeline_barrier2()
         if Self::ENABLE_VALIDATION_LAYERS {
             exts.push(ash::extensions::ext::DebugUtils::name().as_ptr());
         }
@@ -324,10 +325,19 @@ impl Core {
             .iter()
             .map(|ext| ext.as_ptr())
             .collect::<Vec<_>>();
+
+        // Enable synchronization2 feature
+        let sync2_feats = [vk::PhysicalDeviceSynchronization2Features {
+            synchronization2: vk::TRUE,
+            ..Default::default()
+        }];
+        // Enable buffer device address
         let mut buffer_device_address_features =
-            vk::PhysicalDeviceBufferDeviceAddressFeatures::builder()
-                .buffer_device_address(true)
-                .build();
+            vk::PhysicalDeviceBufferDeviceAddressFeatures {
+                buffer_device_address: vk::TRUE,
+                p_next: sync2_feats.as_ptr() as *mut c_void,
+                ..Default::default()
+            };
         let shader_draw_params_features =
             vk::PhysicalDeviceShaderDrawParametersFeatures {
                 shader_draw_parameters: vk::TRUE,

@@ -6,7 +6,7 @@ use glam::{Vec2, Vec3};
 use gpu_allocator::vulkan::Allocator;
 
 use crate::renderer::{
-    memory::AllocatedBuffer, resources::vertex::Vertex,
+    buffer::AllocatedBuffer, resources::vertex::Vertex,
     upload_context::UploadContext,
 };
 
@@ -31,7 +31,10 @@ impl PartialEq for Model {
 
 impl Model {
     pub fn new(meshes: Vec<Mesh>) -> Self {
-        Self { meshes, vertex_buffer: None, }
+        Self {
+            meshes,
+            vertex_buffer: None,
+        }
     }
 
     pub fn load_from_obj(filename: &str) -> Result<Self> {

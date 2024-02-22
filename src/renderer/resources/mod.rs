@@ -32,7 +32,7 @@ use self::{
 };
 
 use super::{
-    core::Core, memory::AllocatedImage, swapchain::Swapchain, vkinit,
+    core::Core, image::AllocatedImage, swapchain::Swapchain, vkinit,
     window::Window, UploadContext,
 };
 
@@ -103,10 +103,7 @@ impl Resources {
             )?;
 
             let mut textures = HashMap::new();
-            textures.insert(
-                "empire-diffuse".to_string(),
-                Arc::new(empire),
-            );
+            textures.insert("empire-diffuse".to_string(), Arc::new(empire));
             textures
         };
 
@@ -196,7 +193,6 @@ impl Resources {
             renderpass.cleanup(device);
         }
     }
-
 
     fn create_materials(
         device: &ash::Device,

@@ -3,7 +3,7 @@ use color_eyre::eyre::{OptionExt, Result};
 use gpu_allocator::vulkan::Allocator;
 
 use crate::renderer::{
-    core::Core, memory::AllocatedBuffer, vkinit, MAX_OBJECTS,
+    core::Core, buffer::AllocatedBuffer, vkinit, MAX_OBJECTS,
 };
 
 use super::{

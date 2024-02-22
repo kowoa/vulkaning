@@ -1,9 +1,10 @@
 mod vkinit;
 mod vkutils;
 
+mod buffer;
 mod core;
 mod descriptors;
-mod memory;
+mod image;
 pub mod queue_family_indices;
 pub mod resources;
 mod swapchain;
@@ -23,11 +24,13 @@ use winit::{
 
 use ash::vk;
 
-use crate::renderer::resources::camera::GpuCameraData;
+use crate::renderer::{
+    buffer::AllocatedBuffer, image::AllocatedImage,
+    resources::camera::GpuCameraData,
+};
 
 use self::{
     core::Core,
-    memory::{AllocatedBuffer, AllocatedImage},
     resources::{frame::Frame, scene::GpuSceneData, Resources},
     swapchain::Swapchain,
     upload_context::UploadContext,
@@ -323,6 +326,24 @@ impl RendererInner {
         }
     }
 
+    fn draw_background(&self, cmd: &vk::CommandBuffer) {
+        let flash = (self.frame_number as f32 / 120.0).sin().abs();
+        let clear = vk::ClearColorValue {
+            float32: [0.0, 0.0, flash, 1.0],
+        };
+        let clear_range =
+            vkinit::image_subresource_range(vk::ImageAspectFlags::COLOR);
+        unsafe {
+            self.core.device.cmd_clear_color_image(
+                *cmd,
+                self.draw_image.image,
+                vk::ImageLayout::GENERAL,
+                &clear,
+                &[clear_range],
+            );
+        }
+    }
+
     fn draw_frame(
         &mut self,
         width: u32,
@@ -343,6 +364,10 @@ impl RendererInner {
                 egui_cmd = Some(cmd);
             }
         }
+
+        // Update draw extent
+        self.draw_extent.width = self.draw_image.extent.width;
+        self.draw_extent.height = self.draw_image.extent.height;
 
         let swapchain_image_index = unsafe {
             let frame = self.get_current_frame()?;
@@ -378,6 +403,14 @@ impl RendererInner {
             self.core
                 .device
                 .begin_command_buffer(cmd, &cmd_begin_info)?;
+
+            // Transition the main draw image into general layout so it can be
+            // written into. Overwrite all because the older layout doesn't matter.
+            self.draw_image.transition_layout(
+                &cmd,
+                vk::ImageLayout::GENERAL,
+                &self.core.device,
+            );
 
             let clear_values = {
                 // Make clear color from frame number
