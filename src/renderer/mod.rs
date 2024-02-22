@@ -2,6 +2,7 @@ mod vkinit;
 mod vkutils;
 
 mod core;
+mod descriptors;
 mod memory;
 pub mod queue_family_indices;
 pub mod resources;
@@ -26,7 +27,7 @@ use crate::renderer::resources::camera::GpuCameraData;
 
 use self::{
     core::Core,
-    memory::AllocatedBuffer,
+    memory::{AllocatedBuffer, AllocatedImage},
     resources::{frame::Frame, scene::GpuSceneData, Resources},
     swapchain::Swapchain,
     upload_context::UploadContext,
@@ -123,6 +124,9 @@ struct RendererInner {
     upload_context: UploadContext,
 
     first_draw: bool,
+
+    draw_image: AllocatedImage, // Image to render into
+    draw_extent: vk::Extent2D,  // Size to render
 }
 
 impl RendererInner {
@@ -213,6 +217,36 @@ impl RendererInner {
             frames
         };
 
+        let draw_image = {
+            let draw_img_extent = vk::Extent3D {
+                width: window.width(),
+                height: window.height(),
+                depth: 1,
+            };
+            let draw_img_usage = vk::ImageUsageFlags::TRANSFER_SRC
+                | vk::ImageUsageFlags::TRANSFER_DST
+                | vk::ImageUsageFlags::STORAGE
+                | vk::ImageUsageFlags::COLOR_ATTACHMENT;
+            let mut allocator = core.get_allocator_mut()?;
+            AllocatedImage::new(
+                vk::Format::R16G16B16A16_SFLOAT,
+                draw_img_extent,
+                draw_img_usage,
+                vk::ImageAspectFlags::COLOR,
+                "Draw image",
+                &core.device,
+                &mut allocator,
+            )?
+        };
+
+        let draw_extent = {
+            let extent = draw_image.extent;
+            vk::Extent2D {
+                width: extent.width,
+                height: extent.height,
+            }
+        };
+
         Ok(Self {
             core,
             swapchain,
@@ -227,6 +261,8 @@ impl RendererInner {
             scene_camera_buffer,
             upload_context,
             first_draw: true,
+            draw_image,
+            draw_extent,
         })
     }
 

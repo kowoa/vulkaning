@@ -15,6 +15,9 @@ pub struct Window {
     required_device_extensions: Option<Vec<CString>>,
     image_registry: Option<egui_ash::ImageRegistry>,
     exit_signal: Option<egui_ash::ExitSignal>,
+
+    width: u32,
+    height: u32,
 }
 
 impl Window {
@@ -27,6 +30,9 @@ impl Window {
             .with_inner_size(winit::dpi::LogicalSize::new(800, 600))
             .with_resizable(false)
             .build(&event_loop)?;
+        let size = window.inner_size();
+        let width = size.width;
+        let height = size.height;
 
         Ok(Self {
             window: Some(window),
@@ -36,11 +42,14 @@ impl Window {
             required_device_extensions: None,
             image_registry: None,
             exit_signal: None,
+            width,
+            height,
         })
     }
 
     pub fn new_with_egui(cc: &egui_ash::CreationContext) -> Self {
         log::info!("Creating window ...");
+        let size = cc.main_window.inner_size();
 
         Self {
             window: None,
@@ -54,6 +63,8 @@ impl Window {
             ),
             image_registry: Some(cc.image_registry.clone()),
             exit_signal: Some(cc.exit_signal.clone()),
+            width: size.width,
+            height: size.height,
         }
     }
 
@@ -115,4 +126,13 @@ impl Window {
             ash::extensions::khr::Surface::new(entry, instance);
         Ok((surface, surface_loader))
     }
+
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
 }
