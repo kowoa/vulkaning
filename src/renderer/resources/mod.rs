@@ -110,14 +110,13 @@ impl Resources {
         // Scene/render objects
         let render_objs = {
             let mut render_objs = Vec::new();
-            /*
             let monkey = RenderObject::new(
-                Arc::clone(&models["monkey"]),
-                Arc::clone(&pipelines["default-lit"]),
-                Mat4::IDENTITY,
+                models["monkey"].clone(),
+                materials["default-lit"].clone(),
+                None,
+                Mat4::from_translation(Vec3::new(0.0, 20.0, -20.0)),
             );
-            */
-            //render_objs.push(monkey);
+            render_objs.push(monkey);
 
             /*
             for x in -20..=20 {
@@ -143,7 +142,7 @@ impl Resources {
                 Some(textures["empire-diffuse"].clone()),
                 Mat4::IDENTITY,
             );
-            render_objs.push(empire);
+            //render_objs.push(empire);
 
             /*
             let backpack = RenderObject::new(

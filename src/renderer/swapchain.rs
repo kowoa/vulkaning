@@ -1,8 +1,8 @@
 use ash::vk;
-use color_eyre::eyre::{OptionExt, Result};
+use color_eyre::eyre::Result;
 use gpu_allocator::vulkan::Allocator;
 
-use super::{core::Core, image::AllocatedImage, window::Window};
+use super::{core::Core, image::AllocatedImage};
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
@@ -128,7 +128,7 @@ fn create_swapchain(
         image_color_space: surface_format.color_space,
         image_extent: extent,
         image_array_layers: 1,
-        image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT,
+        image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST,
         image_sharing_mode,
         queue_family_index_count,
         p_queue_family_indices: queue_family_indices.as_ptr(),
@@ -148,6 +148,8 @@ fn create_swapchain(
     let swapchain_image_format = surface_format.format;
     let swapchain_extent = extent;
 
+    log::info!("Swapchain image count: {}", swapchain_images.len());
+
     Ok((
         swapchain,
         swapchain_loader,
@@ -160,7 +162,7 @@ fn create_swapchain(
 fn create_image_views(
     core_objs: &Core,
     swapchain_image_format: &vk::Format,
-    images: &Vec<vk::Image>,
+    images: &[vk::Image],
 ) -> Result<Vec<vk::ImageView>> {
     let views = images
         .iter()
@@ -193,7 +195,7 @@ fn create_image_views(
 }
 
 fn choose_swapchain_surface_format(
-    available_formats: &Vec<vk::SurfaceFormatKHR>,
+    available_formats: &[vk::SurfaceFormatKHR],
 ) -> vk::SurfaceFormatKHR {
     let format = available_formats.iter().find(|format| {
         format.format == vk::Format::B8G8R8A8_SRGB
@@ -204,7 +206,7 @@ fn choose_swapchain_surface_format(
 }
 
 fn choose_swapchain_present_mode(
-    available_present_modes: &Vec<vk::PresentModeKHR>,
+    available_present_modes: &[vk::PresentModeKHR],
 ) -> vk::PresentModeKHR {
     let mode = available_present_modes
         .iter()

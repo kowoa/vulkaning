@@ -227,7 +227,7 @@ impl AllocatedImage {
 
     pub fn transition_layout(
         &mut self,
-        cmd: &vk::CommandBuffer,
+        cmd: vk::CommandBuffer,
         new_layout: vk::ImageLayout,
         device: &ash::Device,
     ) {
@@ -235,56 +235,34 @@ impl AllocatedImage {
             return;
         }
 
-        let image_barrier = vk::ImageMemoryBarrier2 {
-            src_stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
-            src_access_mask: vk::AccessFlags2::MEMORY_WRITE,
-            dst_stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
-            dst_access_mask: vk::AccessFlags2::MEMORY_WRITE
-                | vk::AccessFlags2::MEMORY_READ,
-            old_layout: self.layout,
+        vkutils::transition_image_layout(
+            cmd,
+            self.image,
+            self.aspect,
+            vk::ImageLayout::UNDEFINED,
             new_layout,
-            subresource_range: vk::ImageSubresourceRange {
-                aspect_mask: self.aspect,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            },
-            image: self.image,
-            ..Default::default()
-        };
-
-        let dep_info = vk::DependencyInfo {
-            image_memory_barrier_count: 1,
-            p_image_memory_barriers: &image_barrier,
-            ..Default::default()
-        };
-
-        unsafe {
-            device.cmd_pipeline_barrier2(*cmd, &dep_info);
-        }
+            device,
+        );
 
         self.layout = new_layout;
     }
 
     pub fn copy_to_image(
         &self,
-        cmd: &vk::CommandBuffer,
-        dst_image: &AllocatedImage,
+        cmd: vk::CommandBuffer,
+        dst_image: vk::Image,
+        dst_image_extent: vk::Extent2D,
         device: &ash::Device,
     ) {
         vkutils::copy_image_to_image(
             cmd,
             self.image,
-            dst_image.image,
+            dst_image,
             vk::Extent2D {
                 width: self.extent.width,
                 height: self.extent.height,
             },
-            vk::Extent2D {
-                width: dst_image.extent.width,
-                height: dst_image.extent.height,
-            },
+            dst_image_extent,
             device,
         );
     }

@@ -31,11 +31,7 @@ use crate::renderer::{
 
 use self::{
     core::Core,
-    resources::{
-        frame::{self, Frame},
-        scene::GpuSceneData,
-        Resources,
-    },
+    resources::{frame::Frame, scene::GpuSceneData, Resources},
     swapchain::Swapchain,
     upload_context::UploadContext,
     window::Window,
@@ -330,9 +326,11 @@ impl RendererInner {
         }
     }
 
-    fn draw_background(&mut self, cmd: &vk::CommandBuffer) {
+    /// This function currently has absolutely no effect on the rendered image
+    /// because the renderpass handles clearing the color and depth attachments.
+    fn draw_background(&mut self, cmd: vk::CommandBuffer) {
         self.draw_image.transition_layout(
-            &cmd,
+            cmd,
             vk::ImageLayout::GENERAL,
             &self.core.device,
         );
@@ -345,7 +343,7 @@ impl RendererInner {
             vkinit::image_subresource_range(vk::ImageAspectFlags::COLOR);
         unsafe {
             self.core.device.cmd_clear_color_image(
-                *cmd,
+                cmd,
                 self.draw_image.image,
                 vk::ImageLayout::GENERAL,
                 &clear,
@@ -443,7 +441,43 @@ impl RendererInner {
             {
                 // Transition the main draw image into general layout so it can be
                 // written into. Overwrite all because the older layout doesn't matter.
-                self.draw_background(&cmd);
+                self.draw_background(cmd);
+
+                // Transition the draw image and swapchain image into their correct transfer layouts
+                let device = &self.core.device;
+                self.draw_image.transition_layout(
+                    cmd,
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    device,
+                );
+                let swapchain_image =
+                    self.swapchain.images[swapchain_image_index as usize];
+                vkutils::transition_image_layout(
+                    cmd,
+                    swapchain_image,
+                    vk::ImageAspectFlags::COLOR,
+                    vk::ImageLayout::UNDEFINED,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    device,
+                );
+
+                // Execute a copy from the draw image into the swapchain
+                self.draw_image.copy_to_image(
+                    cmd,
+                    swapchain_image,
+                    self.swapchain.image_extent,
+                    device,
+                );
+
+                // Transition swapchain image layout to present
+                vkutils::transition_image_layout(
+                    cmd,
+                    swapchain_image,
+                    vk::ImageAspectFlags::COLOR,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    vk::ImageLayout::PRESENT_SRC_KHR,
+                    device,
+                );
             }
 
             let clear_values = {
@@ -622,7 +656,8 @@ impl RendererInner {
 
         // Write into object storage buffer
         {
-            let rot = Mat4::from_rotation_y(self.frame_number as f32 / 240.0);
+            //let rot = Mat4::from_rotation_y(self.frame_number as f32 / 240.0);
+            let rot = Mat4::IDENTITY;
             let object_data = self
                 .resources
                 .render_objs
