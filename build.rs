@@ -2,14 +2,15 @@ extern crate shaderc;
 
 use std::{
     fs::{self, File},
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Write, Read},
     path::{Path, PathBuf},
 };
 
 use color_eyre::eyre::{eyre, OptionExt, Result};
 use shaderc::CompilationArtifact;
 
-const SHADER_EXT: &str = "glsl";
+const COMBINED_SHADER_EXT: &str = "glsl";
+const COMP_SHADER_EXT: &str = "comp";
 
 fn main() -> Result<()> {
     println!("cargo:rerun-if-changed=shaders/*");
@@ -28,33 +29,57 @@ fn main() -> Result<()> {
     let shaders_dirpath = Path::new("./shaders");
     for entry in fs::read_dir(shaders_dirpath)? {
         let filepath = entry?.path();
-        if filepath.is_file()
-            && filepath.extension() == Some(SHADER_EXT.as_ref())
-        {
+        if filepath.is_file() {
+            let ext = filepath.extension();
+            if ext.is_none() {
+                continue;
+            }
+            let ext = ext.unwrap();
             let filestem = filepath.file_stem().unwrap().to_str().unwrap();
             let filename = filepath.file_name().unwrap().to_str().unwrap();
 
-            let (vert_glsl, frag_glsl) = parse_shaderfile(&filepath)?;
-            let (vert_spirv, frag_spirv) = compile_shaders(
-                &vert_glsl, &frag_glsl, &compiler, &options, filename,
-            )?;
+            if ext == COMBINED_SHADER_EXT {
+                let (vert_glsl, frag_glsl) = parse_combined_shaderfile(&filepath)?;
+                let vert_spirv = compile_shader(
+                    &vert_glsl, shaderc::ShaderKind::Vertex, &compiler, &options, filename,
+                )?;
+                let frag_spirv = compile_shader(
+                    &frag_glsl, shaderc::ShaderKind::Fragment, &compiler, &options, filename,
+                )?;
 
-            let vert_spv_filepath =
-                format!("{}/{}-vert.spv", shaderbuild_dirpath, filestem);
-            let mut vert_spv_file = File::create(vert_spv_filepath)?;
-            vert_spv_file.write_all(vert_spirv.as_binary_u8())?;
+                let vert_spv_filepath =
+                    format!("{}/{}-vert.spv", shaderbuild_dirpath, filestem);
+                let mut vert_spv_file = File::create(vert_spv_filepath)?;
+                vert_spv_file.write_all(vert_spirv.as_binary_u8())?;
 
-            let frag_spv_filepath =
-                format!("{}/{}-frag.spv", shaderbuild_dirpath, filestem);
-            let mut frag_spv_file = File::create(frag_spv_filepath)?;
-            frag_spv_file.write_all(frag_spirv.as_binary_u8())?;
+                let frag_spv_filepath =
+                    format!("{}/{}-frag.spv", shaderbuild_dirpath, filestem);
+                let mut frag_spv_file = File::create(frag_spv_filepath)?;
+                frag_spv_file.write_all(frag_spirv.as_binary_u8())?;
+            } else if ext == COMP_SHADER_EXT {
+                let mut file = File::open(&filepath)?;
+                let mut comp_glsl = String::new();
+                file.read_to_string(&mut comp_glsl)?;
+
+                let comp_spirv = compile_shader(
+                    &comp_glsl, shaderc::ShaderKind::Compute,
+                    &compiler,
+                    &options,
+                    filename,
+                )?;
+
+                let mut comp_spv_filepath = PathBuf::from(&shaderbuild_dirpath);
+                comp_spv_filepath.push(format!("{}-comp.spv", filestem));
+                let mut comp_spv_file = File::create(comp_spv_filepath)?;
+                comp_spv_file.write_all(comp_spirv.as_binary_u8())?;
+            }
         }
     }
 
     Ok(())
 }
 
-fn parse_shaderfile(filepath: &PathBuf) -> Result<(String, String)> {
+fn parse_combined_shaderfile(filepath: &PathBuf) -> Result<(String, String)> {
     let file = File::open(filepath)?;
     let reader = BufReader::new(file);
     let lines = reader.lines();
@@ -123,4 +148,20 @@ fn compile_shaders(
     )?;
 
     Ok((vert_spirv, frag_spirv))
+}
+
+fn compile_shader(
+    glsl: &str,
+    kind: shaderc::ShaderKind,
+    compiler: &shaderc::Compiler,
+    options: &shaderc::CompileOptions,
+    filename: &str,
+) -> Result<CompilationArtifact> {
+    Ok(compiler.compile_into_spirv(
+        glsl,
+        kind,
+        filename,
+        "main",
+        Some(options),
+    )?)
 }
