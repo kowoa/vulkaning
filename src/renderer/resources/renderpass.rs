@@ -41,14 +41,16 @@ fn create_renderpass(
             format: swapchain.image_format,
             samples: vk::SampleCountFlags::TYPE_1,
             // Clear when this attachment is loaded
-            load_op: vk::AttachmentLoadOp::CLEAR,
+            //load_op: vk::AttachmentLoadOp::CLEAR,
+            load_op: vk::AttachmentLoadOp::LOAD,
             // Keep attachment stored when renderpass ends
             store_op: vk::AttachmentStoreOp::STORE,
             // We don't care about stencil
             stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
             stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
             // We don't know or care about the starting layout of attachment
-            initial_layout: vk::ImageLayout::UNDEFINED,
+            //initial_layout: vk::ImageLayout::UNDEFINED,
+            initial_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             // After the renderpass ends, the image has to be in a layout ready for display
             final_layout: if window.window.is_some() {
                 // Present if not using egui
