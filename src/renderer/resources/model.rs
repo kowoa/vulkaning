@@ -107,17 +107,17 @@ impl Model {
 
                 // Diffuse map
                 if let Some(filename) = &material.diffuse_texture {
-                    log::info!("Diffuse map: {}", filename);
+                    //log::info!("Diffuse map: {}", filename);
                 }
 
                 // Specular map
                 if let Some(filename) = &material.specular_texture {
-                    log::info!("Specular map: {}", filename);
+                    //log::info!("Specular map: {}", filename);
                 }
 
                 // Normal map
                 if let Some(filename) = &material.normal_texture {
-                    log::info!("Normal map: {}", filename);
+                    //log::info!("Normal map: {}", filename);
                 }
 
                 // NOTE: no height maps for now

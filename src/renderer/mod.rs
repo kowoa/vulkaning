@@ -290,10 +290,11 @@ impl RendererInner {
                                 ..
                             },
                         ..
-                    } => match key.as_ref() {
-                        Key::Named(NamedKey::Escape) => close_requested = true,
-                        _ => (),
-                    },
+                    } => {
+                        if let Key::Named(NamedKey::Escape) = key.as_ref() {
+                            close_requested = true
+                        }
+                    }
                     WindowEvent::RedrawRequested => {
                         if let Some(r) = &mut renderer {
                             let size = &window.inner_size();
@@ -328,16 +329,18 @@ impl RendererInner {
 
     /// This function currently has absolutely no effect on the rendered image
     /// because the renderpass handles clearing the color and depth attachments.
+    /// This means the renderpass's clear values will overwrite these ones.
     fn draw_background(&mut self, cmd: vk::CommandBuffer) {
         self.draw_image.transition_layout(
             cmd,
+            vk::ImageLayout::UNDEFINED,
             vk::ImageLayout::GENERAL,
             &self.core.device,
         );
 
         let flash = (self.frame_number as f32 / 120.0).sin().abs();
         let clear = vk::ClearColorValue {
-            float32: [0.0, 0.0, flash, 1.0],
+            float32: [0.0, 1.0, 0.0, 1.0],
         };
         let clear_range =
             vkinit::image_subresource_range(vk::ImageAspectFlags::COLOR);
@@ -437,49 +440,6 @@ impl RendererInner {
         }
 
         {
-            // Operations related to the draw image
-            {
-                // Transition the main draw image into general layout so it can be
-                // written into. Overwrite all because the older layout doesn't matter.
-                self.draw_background(cmd);
-
-                // Transition the draw image and swapchain image into their correct transfer layouts
-                let device = &self.core.device;
-                self.draw_image.transition_layout(
-                    cmd,
-                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                    device,
-                );
-                let swapchain_image =
-                    self.swapchain.images[swapchain_image_index as usize];
-                vkutils::transition_image_layout(
-                    cmd,
-                    swapchain_image,
-                    vk::ImageAspectFlags::COLOR,
-                    vk::ImageLayout::UNDEFINED,
-                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    device,
-                );
-
-                // Execute a copy from the draw image into the swapchain
-                self.draw_image.copy_to_image(
-                    cmd,
-                    swapchain_image,
-                    self.swapchain.image_extent,
-                    device,
-                );
-
-                // Transition swapchain image layout to present
-                vkutils::transition_image_layout(
-                    cmd,
-                    swapchain_image,
-                    vk::ImageAspectFlags::COLOR,
-                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    vk::ImageLayout::PRESENT_SRC_KHR,
-                    device,
-                );
-            }
-
             let clear_values = {
                 // Make clear color from frame number
                 let flash = (self.frame_number % 100) as f32 / 100.0;
@@ -537,10 +497,54 @@ impl RendererInner {
             // Finalize the main renderpass
             self.core.device.cmd_end_render_pass(cmd);
         }
-
         // Record egui commands
         if let Some(egui_cmd) = egui_cmd {
             egui_cmd.record(cmd, swapchain_image_index as usize);
+        }
+
+        // Operations related to the draw image
+        // These operations effectively overwrite the image drawn by the previous commands
+        {
+            // Clear the draw image with a background color
+            self.draw_background(cmd);
+
+            let device = &self.core.device;
+            let swapchain_image =
+                self.swapchain.images[swapchain_image_index as usize];
+
+            // Transition the draw image and swapchain image into their correct transfer layouts
+            self.draw_image.transition_layout(
+                cmd,
+                vk::ImageLayout::GENERAL,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                device,
+            );
+            vkutils::transition_image_layout(
+                cmd,
+                swapchain_image,
+                vk::ImageAspectFlags::COLOR,
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                device,
+            );
+
+            // Execute a copy from the draw image into the swapchain
+            self.draw_image.copy_to_image(
+                cmd,
+                swapchain_image,
+                self.swapchain.image_extent,
+                device,
+            );
+
+            // Transition swapchain image layout to present
+            vkutils::transition_image_layout(
+                cmd,
+                swapchain_image,
+                vk::ImageAspectFlags::COLOR,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                vk::ImageLayout::PRESENT_SRC_KHR,
+                device,
+            );
         }
 
         unsafe {

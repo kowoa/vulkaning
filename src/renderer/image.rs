@@ -18,7 +18,6 @@ pub struct AllocatedImage {
     pub format: vk::Format,
     pub extent: vk::Extent3D,
     pub aspect: vk::ImageAspectFlags,
-    pub layout: vk::ImageLayout,
     pub allocation: Allocation,
 }
 
@@ -59,7 +58,6 @@ impl AllocatedImage {
             format,
             extent,
             aspect: aspect_flags,
-            layout: vk::ImageLayout::UNDEFINED,
             allocation,
         })
     }
@@ -228,23 +226,18 @@ impl AllocatedImage {
     pub fn transition_layout(
         &mut self,
         cmd: vk::CommandBuffer,
+        old_layout: vk::ImageLayout,
         new_layout: vk::ImageLayout,
         device: &ash::Device,
     ) {
-        if self.layout == new_layout {
-            return;
-        }
-
         vkutils::transition_image_layout(
             cmd,
             self.image,
             self.aspect,
-            vk::ImageLayout::UNDEFINED,
+            old_layout,
             new_layout,
             device,
         );
-
-        self.layout = new_layout;
     }
 
     pub fn copy_to_image(
