@@ -12,6 +12,15 @@ use super::{
     upload_context::UploadContext, vkinit, vkutils,
 };
 
+pub struct AllocatedImageCreateInfo {
+    pub format: vk::Format,
+    pub extent: vk::Extent3D,
+    pub usage_flags: vk::ImageUsageFlags,
+    pub aspect_flags: vk::ImageAspectFlags,
+    pub name: String,
+    pub desc_set: Option<vk::DescriptorSet>,
+}
+
 pub struct AllocatedImage {
     pub image: vk::Image,
     pub view: vk::ImageView,
@@ -19,25 +28,26 @@ pub struct AllocatedImage {
     pub extent: vk::Extent3D,
     pub aspect: vk::ImageAspectFlags,
     pub allocation: Allocation,
+    pub desc_set: Option<vk::DescriptorSet>, // Some if accessible from shaders, None otherwise
 }
 
 impl AllocatedImage {
     pub fn new(
-        format: vk::Format,
-        extent: vk::Extent3D,
-        usage_flags: vk::ImageUsageFlags,
-        aspect_flags: vk::ImageAspectFlags,
-        name: &str,
+        create_info: &AllocatedImageCreateInfo,
         device: &ash::Device,
         allocator: &mut Allocator,
     ) -> Result<Self> {
         let image = {
-            let info = vkinit::image_create_info(format, usage_flags, extent);
+            let info = vkinit::image_create_info(
+                create_info.format,
+                create_info.usage_flags,
+                create_info.extent,
+            );
             unsafe { device.create_image(&info, None)? }
         };
         let reqs = unsafe { device.get_image_memory_requirements(image) };
         let allocation = allocator.allocate(&AllocationCreateDesc {
-            name,
+            name: &create_info.name,
             requirements: reqs,
             location: MemoryLocation::GpuOnly,
             linear: false,
@@ -46,36 +56,45 @@ impl AllocatedImage {
         unsafe {
             device.bind_image_memory(image, allocation.memory(), 0)?;
         }
-        let image_view = {
-            let info =
-                vkinit::image_view_create_info(format, image, aspect_flags);
+        let view = {
+            let info = vkinit::image_view_create_info(
+                create_info.format,
+                image,
+                create_info.aspect_flags,
+            );
             unsafe { device.create_image_view(&info, None)? }
         };
 
         Ok(Self {
             image,
-            view: image_view,
-            format,
-            extent,
-            aspect: aspect_flags,
+            view,
+            format: create_info.format,
+            extent: create_info.extent,
+            aspect: create_info.aspect_flags,
             allocation,
+            desc_set: create_info.desc_set,
         })
     }
 
     pub fn new_depth_image(
-        extent: vk::Extent3D,
+        width: u32,
+        height: u32,
         device: &ash::Device,
         allocator: &mut Allocator,
     ) -> Result<Self> {
-        let image = Self::new(
-            vk::Format::D32_SFLOAT,
-            extent,
-            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-            vk::ImageAspectFlags::DEPTH,
-            "Depth image",
-            device,
-            allocator,
-        )?;
+        let create_info = AllocatedImageCreateInfo {
+            format: vk::Format::D32_SFLOAT,
+            extent: vk::Extent3D {
+                width,
+                height,
+                depth: 1,
+            },
+            usage_flags: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            aspect_flags: vk::ImageAspectFlags::DEPTH,
+            name: "Depth image".into(),
+            desc_set: None,
+        };
+        let image = Self::new(&create_info, device, allocator)?;
 
         Ok(image)
     }
@@ -85,6 +104,7 @@ impl AllocatedImage {
         device: &ash::Device,
         allocator: &mut Allocator,
         upload_context: &UploadContext,
+        desc_set: Option<vk::DescriptorSet>,
     ) -> Result<Self> {
         let (staging_buffer, img_width, img_height) = {
             let filepath = unsafe {
@@ -120,13 +140,18 @@ impl AllocatedImage {
                 depth: 1,
             };
 
-            Self::new(
-                vk::Format::R8G8B8A8_SRGB,
-                img_extent,
-                vk::ImageUsageFlags::SAMPLED
+            let create_info = AllocatedImageCreateInfo {
+                format: vk::Format::R8G8B8A8_SRGB,
+                extent: img_extent,
+                usage_flags: vk::ImageUsageFlags::SAMPLED
                     | vk::ImageUsageFlags::TRANSFER_DST,
-                vk::ImageAspectFlags::COLOR,
-                &format!("Image from file: {}", filename),
+                aspect_flags: vk::ImageAspectFlags::COLOR,
+                name: format!("Image from file: {}", filename),
+                desc_set,
+            };
+
+            Self::new(
+                &create_info,
                 device,
                 allocator,
             )?

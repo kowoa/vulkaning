@@ -1,9 +1,9 @@
 use ash::vk;
-use color_eyre::eyre::{OptionExt, Result};
+use color_eyre::eyre::Result;
 use gpu_allocator::vulkan::Allocator;
 
 use crate::renderer::{
-    core::Core, buffer::AllocatedBuffer, vkinit, MAX_OBJECTS,
+    buffer::AllocatedBuffer, core::Core, vkinit, MAX_OBJECTS,
 };
 
 use super::{
@@ -26,9 +26,6 @@ pub struct Frame {
 impl Frame {
     pub fn new(
         core: &mut Core,
-        descriptor_pool: &vk::DescriptorPool,
-        global_desc_set_layout: &vk::DescriptorSetLayout,
-        object_desc_set_layout: &vk::DescriptorSetLayout,
         scene_camera_buffer: &AllocatedBuffer,
         command_pool: &vk::CommandPool,
     ) -> Result<Self> {
@@ -41,27 +38,13 @@ impl Frame {
         let (present_semaphore, render_semaphore, render_fence) =
             Self::create_sync_objs(device)?;
 
+        let desc_allocator = core.get_desc_allocator_mut()?;
         // Allocate descriptor set using the global descriptor set layout
-        let global_desc_set = {
-            let info = vk::DescriptorSetAllocateInfo {
-                descriptor_pool: *descriptor_pool,
-                descriptor_set_count: 1,
-                p_set_layouts: global_desc_set_layout,
-                ..Default::default()
-            };
-            unsafe { device.allocate_descriptor_sets(&info)?[0] }
-        };
-
+        let global_desc_set =
+            desc_allocator.allocate(&core.device, "global")?;
         // Allocate descriptor set using the object descriptor set layout
-        let object_desc_set = {
-            let info = vk::DescriptorSetAllocateInfo {
-                descriptor_pool: *descriptor_pool,
-                descriptor_set_count: 1,
-                p_set_layouts: object_desc_set_layout,
-                ..Default::default()
-            };
-            unsafe { device.allocate_descriptor_sets(&info)?[0] }
-        };
+        let object_desc_set =
+            desc_allocator.allocate(&core.device, "object")?;
 
         // Create object buffer
         let mut allocator = core.get_allocator_mut()?;

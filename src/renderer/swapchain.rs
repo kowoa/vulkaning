@@ -25,14 +25,10 @@ impl Swapchain {
         let image_views = create_image_views(core, &image_format, &images)?;
 
         let depth_image = {
-            let extent = vk::Extent3D {
-                width: image_extent.width,
-                height: image_extent.height,
-                depth: 1,
-            };
             let mut allocator = core.get_allocator_mut()?;
             AllocatedImage::new_depth_image(
-                extent,
+                image_extent.width,
+                image_extent.height,
                 &core.device,
                 &mut allocator,
             )?
@@ -128,7 +124,8 @@ fn create_swapchain(
         image_color_space: surface_format.color_space,
         image_extent: extent,
         image_array_layers: 1,
-        image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST,
+        image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
+            | vk::ImageUsageFlags::TRANSFER_DST,
         image_sharing_mode,
         queue_family_index_count,
         p_queue_family_indices: queue_family_indices.as_ptr(),

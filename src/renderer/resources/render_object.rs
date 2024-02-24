@@ -136,7 +136,7 @@ impl RenderObject {
                             vk::PipelineBindPoint::GRAPHICS,
                             self.material.pipeline_layout,
                             2,
-                            &[texture.desc_set],
+                            &[texture.desc_set()],
                             &[],
                         );
                     }

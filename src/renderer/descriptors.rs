@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use ash::vk;
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{OptionExt, Result};
 
 pub struct DescriptorLayoutBuilder {
     bindings: Vec<vk::DescriptorSetLayoutBinding>,
@@ -16,13 +18,16 @@ impl DescriptorLayoutBuilder {
         mut self,
         binding: u32,
         desc_type: vk::DescriptorType,
+        stage_flags: vk::ShaderStageFlags,
     ) -> Self {
-        self.bindings.push(vk::DescriptorSetLayoutBinding {
-            binding,
-            descriptor_type: desc_type,
-            descriptor_count: 1,
-            ..Default::default()
-        });
+        self.bindings.push(
+            vk::DescriptorSetLayoutBinding::builder()
+                .binding(binding)
+                .descriptor_type(desc_type)
+                .descriptor_count(1)
+                .stage_flags(stage_flags)
+                .build(),
+        );
         self
     }
 
@@ -34,30 +39,23 @@ impl DescriptorLayoutBuilder {
     pub fn build(
         mut self,
         device: &ash::Device,
-        shader_stages: vk::ShaderStageFlags,
     ) -> Result<vk::DescriptorSetLayout> {
-        for binding in &mut self.bindings {
-            binding.stage_flags |= shader_stages;
-        }
-
-        let info = vk::DescriptorSetLayoutCreateInfo {
-            p_bindings: self.bindings.as_ptr(),
-            binding_count: self.bindings.len() as u32,
-            flags: vk::DescriptorSetLayoutCreateFlags::empty(),
-            ..Default::default()
-        };
-
+        let info = vk::DescriptorSetLayoutCreateInfo::builder()
+            .bindings(&self.bindings)
+            .build();
         Ok(unsafe { device.create_descriptor_set_layout(&info, None)? })
     }
 }
 
 pub struct PoolSizeRatio {
-    desc_type: vk::DescriptorType,
-    ratio: f32,
+    pub desc_type: vk::DescriptorType,
+    pub ratio: f32,
 }
 
+#[derive(Debug)]
 pub struct DescriptorAllocator {
     pub pool: vk::DescriptorPool,
+    layouts: HashMap<String, vk::DescriptorSetLayout>,
 }
 
 impl DescriptorAllocator {
@@ -80,10 +78,12 @@ impl DescriptorAllocator {
             p_pool_sizes: pool_sizes.as_ptr(),
             ..Default::default()
         };
-
         let pool = unsafe { device.create_descriptor_pool(&pool_info, None)? };
 
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            layouts: HashMap::new(),
+        })
     }
 
     pub fn clear_descriptors(&mut self, device: &ash::Device) -> Result<()> {
@@ -97,27 +97,38 @@ impl DescriptorAllocator {
         Ok(())
     }
 
+    pub fn add_layout(&mut self, name: &str, layout: vk::DescriptorSetLayout) {
+        self.layouts.insert(name.into(), layout);
+    }
+
+    pub fn get_layout(&self, name: &str) -> Result<&vk::DescriptorSetLayout> {
+        self.layouts
+            .get(name.into())
+            .ok_or_eyre(format!("Layout not found: {}", name))
+    }
+
     pub fn allocate(
         &self,
         device: &ash::Device,
-        layout: vk::DescriptorSetLayout,
+        layout_name: &str,
     ) -> Result<vk::DescriptorSet> {
-        let alloc_info = vk::DescriptorSetAllocateInfo {
-            descriptor_pool: self.pool,
-            descriptor_set_count: 1,
-            p_set_layouts: &layout,
-            ..Default::default()
-        };
-
-        let desc_set =
-            unsafe { device.allocate_descriptor_sets(&alloc_info)?[0] };
-
-        Ok(desc_set)
+        let layout = self.get_layout(layout_name)?;
+        let layouts = [*layout];
+        let alloc_info = vk::DescriptorSetAllocateInfo::builder()
+            .descriptor_pool(self.pool)
+            .set_layouts(&layouts)
+            .build();
+        Ok(unsafe { device.allocate_descriptor_sets(&alloc_info)?[0] })
     }
 
     pub fn cleanup(self, device: &ash::Device) {
         unsafe {
             device.destroy_descriptor_pool(self.pool, None);
+            for (_, layout) in self.layouts {
+                unsafe {
+                    device.destroy_descriptor_set_layout(layout, None);
+                }
+            }
         }
     }
 }

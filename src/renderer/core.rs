@@ -13,8 +13,11 @@ use gpu_allocator::{
 };
 
 use super::{
+    descriptors::{DescriptorAllocator, PoolSizeRatio},
     queue_family_indices::QueueFamilyIndices,
-    swapchain::query_swapchain_support, vkinit, vkutils, window::Window,
+    swapchain::query_swapchain_support,
+    vkinit, vkutils,
+    window::Window,
 };
 
 pub struct Core {
@@ -37,6 +40,7 @@ pub struct Core {
     pub queue_family_indices: QueueFamilyIndices,
 
     allocator: ManuallyDrop<Arc<Mutex<Allocator>>>,
+    desc_allocator: Arc<Mutex<DescriptorAllocator>>,
 }
 
 impl Core {
@@ -95,6 +99,8 @@ impl Core {
             allocation_sizes: Default::default(),
         })?;
 
+        let desc_allocator = Self::create_desc_allocator(&device)?;
+
         Ok(Self {
             entry,
             instance,
@@ -109,12 +115,19 @@ impl Core {
             present_queue,
             queue_family_indices,
             allocator: ManuallyDrop::new(Arc::new(Mutex::new(allocator))),
+            desc_allocator: Arc::new(Mutex::new(desc_allocator)),
         })
     }
 
     pub fn cleanup(mut self) {
         log::info!("Cleaning up core ...");
         unsafe {
+            Arc::try_unwrap(self.desc_allocator)
+                .unwrap()
+                .into_inner()
+                .unwrap()
+                .cleanup(&self.device);
+
             // We need to do this because the allocator doesn't destroy all
             // memory blocks (VkDeviceMemory) until it is dropped.
             ManuallyDrop::drop(&mut self.allocator);
@@ -136,6 +149,15 @@ impl Core {
 
     pub fn get_allocator_mut(&self) -> Result<MutexGuard<Allocator>> {
         match self.allocator.lock() {
+            Ok(allocator) => Ok(allocator),
+            Err(err) => Err(eyre!(err.to_string())),
+        }
+    }
+
+    pub fn get_desc_allocator_mut(
+        &self,
+    ) -> Result<MutexGuard<DescriptorAllocator>> {
+        match self.desc_allocator.lock() {
             Ok(allocator) => Ok(allocator),
             Err(err) => Err(eyre!(err.to_string())),
         }
@@ -513,5 +535,37 @@ impl Core {
             .all(|ext| available_exts.contains(ext));
 
         Ok(contains_all)
+    }
+
+    fn create_desc_allocator(
+        device: &ash::Device,
+    ) -> Result<DescriptorAllocator> {
+        let ratios = [
+            PoolSizeRatio {
+                // For the camera buffer
+                desc_type: vk::DescriptorType::UNIFORM_BUFFER,
+                ratio: 1.0,
+            },
+            PoolSizeRatio {
+                // For the scene params buffer
+                desc_type: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
+                ratio: 1.0,
+            },
+            PoolSizeRatio {
+                // For the object buffer
+                desc_type: vk::DescriptorType::STORAGE_BUFFER,
+                ratio: 1.0,
+            },
+            PoolSizeRatio {
+                desc_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                // For textures
+                ratio: 1.0,
+            },
+        ];
+
+        let global_desc_allocator =
+            DescriptorAllocator::new(device, 10, &ratios)?;
+
+        Ok(global_desc_allocator)
     }
 }

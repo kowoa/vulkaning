@@ -1,30 +1,33 @@
 use crate::renderer::{
-    image::AllocatedImage, upload_context::UploadContext, vkinit,
+    descriptors::DescriptorAllocator, image::AllocatedImage,
+    upload_context::UploadContext, vkinit,
 };
 use ash::vk;
 use color_eyre::eyre::Result;
 use gpu_allocator::vulkan::Allocator;
 
 pub struct Texture {
-    pub image: AllocatedImage,
-    pub sampler: vk::Sampler,
-    pub desc_set: vk::DescriptorSet,
+    image: AllocatedImage,
+    sampler: vk::Sampler,
 }
 
 impl Texture {
     pub fn load_from_file(
         filename: &str,
-        descriptor_pool: &vk::DescriptorPool,
-        single_texture_desc_set_layout: &vk::DescriptorSetLayout,
         device: &ash::Device,
         allocator: &mut Allocator,
+        desc_allocator: &mut DescriptorAllocator,
         upload_context: &UploadContext,
     ) -> Result<Self> {
+        // Allocate new descriptor set
+        let desc_set = desc_allocator.allocate(device, "single texture")?;
+
         let image = AllocatedImage::load_from_file(
             filename,
             device,
             allocator,
             upload_context,
+            Some(desc_set),
         )?;
 
         let sampler = {
@@ -36,16 +39,7 @@ impl Texture {
             unsafe { device.create_sampler(&info, None)? }
         };
 
-        let desc_set = {
-            let info = vk::DescriptorSetAllocateInfo {
-                descriptor_pool: *descriptor_pool,
-                descriptor_set_count: 1,
-                p_set_layouts: single_texture_desc_set_layout,
-                ..Default::default()
-            };
-            unsafe { device.allocate_descriptor_sets(&info)? }
-        }[0];
-
+        // Update new descriptor set
         let info = vk::DescriptorImageInfo {
             sampler,
             image_view: image.view,
@@ -57,13 +51,12 @@ impl Texture {
             0,
             &info,
         );
-
         unsafe { device.update_descriptor_sets(&[write], &[]) }
 
-        Ok(Self {
-            image,
-            sampler,
-            desc_set,
-        })
+        Ok(Self { image, sampler })
+    }
+
+    pub fn desc_set(&self) -> vk::DescriptorSet {
+        self.image.desc_set.unwrap()
     }
 }

@@ -31,6 +31,8 @@ use crate::renderer::{
 
 use self::{
     core::Core,
+    descriptors::{DescriptorAllocator, DescriptorLayoutBuilder},
+    image::AllocatedImageCreateInfo,
     resources::{frame::Frame, scene::GpuSceneData, Resources},
     swapchain::Swapchain,
     upload_context::UploadContext,
@@ -117,11 +119,6 @@ struct RendererInner {
     frames: Vec<Arc<Mutex<Frame>>>,
     command_pool: vk::CommandPool,
 
-    global_desc_set_layout: vk::DescriptorSetLayout,
-    object_desc_set_layout: vk::DescriptorSetLayout,
-    single_texture_desc_set_layout: vk::DescriptorSetLayout,
-    descriptor_pool: vk::DescriptorPool,
-
     scene_camera_buffer: AllocatedBuffer,
 
     upload_context: UploadContext,
@@ -129,7 +126,6 @@ struct RendererInner {
     first_draw: bool,
 
     draw_image: AllocatedImage, // Image to render into
-    draw_extent: vk::Extent2D,  // Size to render
 }
 
 impl RendererInner {
@@ -148,28 +144,25 @@ impl RendererInner {
             Swapchain::new(&mut core, window)?
         };
 
-        let (
-            global_desc_set_layout,
-            object_desc_set_layout,
-            single_texture_desc_set_layout,
-            descriptor_pool,
-        ) = Self::create_descriptors(&core)?;
+        {
+            let mut desc_allocator = core.get_desc_allocator_mut()?;
+            Self::create_desc_set_layouts(&core.device, &mut desc_allocator)?;
+        }
+
         let upload_context = UploadContext::new(
             &core.device,
             core.queue_family_indices.get_graphics_family()?,
             core.graphics_queue,
         )?;
 
-        let resources = Resources::new(
+        let draw_image = Self::create_draw_image(
             &mut core,
-            &swapchain,
-            &descriptor_pool,
-            &global_desc_set_layout,
-            &object_desc_set_layout,
-            &single_texture_desc_set_layout,
-            &upload_context,
-            window,
+            window.width(),
+            window.height(),
         )?;
+
+        let resources =
+            Resources::new(&mut core, &swapchain, &upload_context, window)?;
 
         let scene_camera_buffer = {
             let scene_size = core
@@ -206,48 +199,12 @@ impl RendererInner {
             let mut frames = Vec::with_capacity(FRAME_OVERLAP as usize);
             for _ in 0..FRAME_OVERLAP {
                 // Call Frame constructor
-                let frame = Frame::new(
-                    &mut core,
-                    &descriptor_pool,
-                    &global_desc_set_layout,
-                    &object_desc_set_layout,
-                    &scene_camera_buffer,
-                    &command_pool,
-                )?;
+                let frame =
+                    Frame::new(&mut core, &scene_camera_buffer, &command_pool)?;
 
                 frames.push(Arc::new(Mutex::new(frame)));
             }
             frames
-        };
-
-        let draw_image = {
-            let draw_img_extent = vk::Extent3D {
-                width: window.width(),
-                height: window.height(),
-                depth: 1,
-            };
-            let draw_img_usage = vk::ImageUsageFlags::TRANSFER_SRC
-                | vk::ImageUsageFlags::TRANSFER_DST
-                | vk::ImageUsageFlags::STORAGE
-                | vk::ImageUsageFlags::COLOR_ATTACHMENT;
-            let mut allocator = core.get_allocator_mut()?;
-            AllocatedImage::new(
-                vk::Format::R16G16B16A16_SFLOAT,
-                draw_img_extent,
-                draw_img_usage,
-                vk::ImageAspectFlags::COLOR,
-                "Draw image",
-                &core.device,
-                &mut allocator,
-            )?
-        };
-
-        let draw_extent = {
-            let extent = draw_image.extent;
-            vk::Extent2D {
-                width: extent.width,
-                height: extent.height,
-            }
         };
 
         Ok(Self {
@@ -257,15 +214,10 @@ impl RendererInner {
             frame_number: 0,
             frames,
             command_pool,
-            global_desc_set_layout,
-            object_desc_set_layout,
-            single_texture_desc_set_layout,
-            descriptor_pool,
             scene_camera_buffer,
             upload_context,
             first_draw: true,
             draw_image,
-            draw_extent,
         })
     }
 
@@ -375,10 +327,6 @@ impl RendererInner {
                 egui_cmd = Some(cmd);
             }
         }
-
-        // Update draw extent
-        self.draw_extent.width = self.draw_image.extent.width;
-        self.draw_extent.height = self.draw_image.extent.height;
 
         let (
             swapchain_image_index,
@@ -699,17 +647,6 @@ impl RendererInner {
 
             self.upload_context.cleanup(device);
 
-            unsafe {
-                device.destroy_descriptor_pool(self.descriptor_pool, None);
-                device.destroy_descriptor_set_layout(
-                    self.object_desc_set_layout,
-                    None,
-                );
-                device.destroy_descriptor_set_layout(
-                    self.global_desc_set_layout,
-                    None,
-                );
-            }
             self.resources.cleanup(device, &mut allocator);
 
             // Destroy command pool
@@ -752,15 +689,10 @@ impl RendererInner {
         Ok(command_pool)
     }
 
-    /// Helper function that creates the descriptor pool and descriptor sets
-    fn create_descriptors(
-        core: &Core,
-    ) -> Result<(
-        vk::DescriptorSetLayout,
-        vk::DescriptorSetLayout,
-        vk::DescriptorSetLayout,
-        vk::DescriptorPool,
-    )> {
+    fn create_desc_set_layouts(
+        device: &ash::Device,
+        desc_allocator: &mut DescriptorAllocator,
+    ) -> Result<()> {
         let global_desc_set_layout = {
             // Binding 0 for GpuSceneData
             let scene_bind = vkinit::descriptor_set_layout_binding(
@@ -782,9 +714,7 @@ impl RendererInner {
                 p_bindings: bindings.as_ptr(),
                 ..Default::default()
             };
-            unsafe {
-                core.device.create_descriptor_set_layout(&set_info, None)?
-            }
+            unsafe { device.create_descriptor_set_layout(&set_info, None)? }
         };
 
         let object_desc_set_layout = {
@@ -800,9 +730,7 @@ impl RendererInner {
                 p_bindings: &object_bind,
                 ..Default::default()
             };
-            unsafe {
-                core.device.create_descriptor_set_layout(&set_info, None)?
-            }
+            unsafe { device.create_descriptor_set_layout(&set_info, None)? }
         };
 
         let single_texture_desc_set_layout = {
@@ -817,51 +745,73 @@ impl RendererInner {
                 p_bindings: &texture_bind,
                 ..Default::default()
             };
-            unsafe {
-                core.device.create_descriptor_set_layout(&set_info, None)?
-            }
+            unsafe { device.create_descriptor_set_layout(&set_info, None)? }
         };
 
-        let descriptor_pool = {
-            // Create a descriptor pool that will hold 10 uniform buffers
-            // and 10 dynamic uniform buffers
-            // and 10 storage buffers
-            let sizes = [
-                vk::DescriptorPoolSize {
-                    // For the camera buffer
-                    ty: vk::DescriptorType::UNIFORM_BUFFER,
-                    descriptor_count: 10,
-                },
-                vk::DescriptorPoolSize {
-                    // For the scene params buffer
-                    ty: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-                    descriptor_count: 10,
-                },
-                vk::DescriptorPoolSize {
-                    // For the object buffer
-                    ty: vk::DescriptorType::STORAGE_BUFFER,
-                    descriptor_count: 10,
-                },
-                vk::DescriptorPoolSize {
-                    ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                    // For textures
-                    descriptor_count: 10,
-                },
-            ];
-            let pool_info = vk::DescriptorPoolCreateInfo {
-                max_sets: 10,
-                pool_size_count: sizes.len() as u32,
-                p_pool_sizes: sizes.as_ptr(),
-                ..Default::default()
+        desc_allocator.add_layout("global", global_desc_set_layout);
+        desc_allocator.add_layout("object", object_desc_set_layout);
+        desc_allocator
+            .add_layout("single texture", single_texture_desc_set_layout);
+
+        Ok(())
+    }
+
+    /// Helper function that creates the descriptor pool and descriptor sets
+    fn create_draw_image(
+        core: &mut Core,
+        width: u32,
+        height: u32,
+    ) -> Result<AllocatedImage> {
+        let draw_image_desc_set = {
+            let layout = DescriptorLayoutBuilder::new()
+                .add_binding(
+                    0,
+                    vk::DescriptorType::STORAGE_IMAGE,
+                    vk::ShaderStageFlags::COMPUTE,
+                )
+                .build(&core.device)?;
+            let mut desc_allocator = core.get_desc_allocator_mut()?;
+            desc_allocator.add_layout("draw image", layout);
+            let set = desc_allocator.allocate(&core.device, "draw image")?;
+            set
+        };
+
+        let draw_image = {
+            let extent = vk::Extent3D {
+                width,
+                height,
+                depth: 1,
             };
-            unsafe { core.device.create_descriptor_pool(&pool_info, None)? }
+            let usage_flags = vk::ImageUsageFlags::TRANSFER_SRC
+                | vk::ImageUsageFlags::TRANSFER_DST
+                | vk::ImageUsageFlags::STORAGE
+                | vk::ImageUsageFlags::COLOR_ATTACHMENT;
+            let create_info = AllocatedImageCreateInfo {
+                format: vk::Format::R16G16B16A16_SFLOAT,
+                extent,
+                usage_flags,
+                aspect_flags: vk::ImageAspectFlags::COLOR,
+                name: "Draw image".into(),
+                desc_set: Some(draw_image_desc_set),
+            };
+            let mut allocator = core.get_allocator_mut()?;
+            AllocatedImage::new(&create_info, &core.device, &mut allocator)?
         };
 
-        Ok((
-            global_desc_set_layout,
-            object_desc_set_layout,
-            single_texture_desc_set_layout,
-            descriptor_pool,
-        ))
+        let draw_image_info = [vk::DescriptorImageInfo::builder()
+            .image_layout(vk::ImageLayout::GENERAL)
+            .image_view(draw_image.view)
+            .build()];
+        let draw_image_write = vk::WriteDescriptorSet::builder()
+            .dst_binding(0)
+            .dst_set(draw_image_desc_set)
+            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+            .image_info(&draw_image_info)
+            .build();
+        unsafe {
+            core.device.update_descriptor_sets(&[draw_image_write], &[]);
+        }
+
+        Ok(draw_image)
     }
 }

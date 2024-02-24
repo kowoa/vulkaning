@@ -12,7 +12,7 @@ pub mod shader;
 pub mod texture;
 pub mod vertex;
 
-use color_eyre::eyre::{OptionExt, Result};
+use color_eyre::eyre::Result;
 use std::{collections::HashMap, mem::ManuallyDrop, sync::Arc};
 
 use ash::vk;
@@ -32,8 +32,7 @@ use self::{
 };
 
 use super::{
-    core::Core, image::AllocatedImage, swapchain::Swapchain, vkinit,
-    window::Window, UploadContext,
+    core::Core, swapchain::Swapchain, vkinit, window::Window, UploadContext,
 };
 
 pub struct Resources {
@@ -50,15 +49,16 @@ impl Resources {
     pub fn new(
         core: &mut Core,
         swapchain: &Swapchain,
-        descriptor_pool: &vk::DescriptorPool,
-        global_desc_set_layout: &vk::DescriptorSetLayout,
-        object_desc_set_layout: &vk::DescriptorSetLayout,
-        single_texture_desc_set_layout: &vk::DescriptorSetLayout,
         upload_context: &UploadContext,
         window: &Window,
     ) -> Result<Self> {
+        let mut desc_allocator = core.get_desc_allocator_mut()?;
+        let global_desc_set_layout = desc_allocator.get_layout("global")?;
+        let object_desc_set_layout = desc_allocator.get_layout("object")?;
+        let single_texture_desc_set_layout =
+            desc_allocator.get_layout("single texture")?;
+
         let device = &core.device;
-        let mut allocator = core.get_allocator_mut()?;
         let renderpass = Renderpass::new(device, swapchain, window)?;
 
         let materials = Self::create_materials(
@@ -78,10 +78,21 @@ impl Resources {
             let mut backpack_model = Model::load_from_obj("backpack.obj")?;
 
             // Upload models onto GPU immediately
-            monkey_model.upload(device, &mut allocator, upload_context)?;
-            triangle_model.upload(device, &mut allocator, upload_context)?;
-            empire_model.upload(device, &mut allocator, upload_context)?;
-            backpack_model.upload(device, &mut allocator, &upload_context)?;
+            {
+                let mut allocator = core.get_allocator_mut()?;
+                monkey_model.upload(device, &mut allocator, upload_context)?;
+                triangle_model.upload(
+                    device,
+                    &mut allocator,
+                    upload_context,
+                )?;
+                empire_model.upload(device, &mut allocator, upload_context)?;
+                backpack_model.upload(
+                    device,
+                    &mut allocator,
+                    upload_context,
+                )?;
+            }
 
             // Create HashMap with model name as keys and model as values
             let mut models = HashMap::new();
@@ -93,12 +104,12 @@ impl Resources {
         };
 
         let textures = {
+            let mut allocator = core.get_allocator_mut()?;
             let empire = Texture::load_from_file(
                 "lost_empire-RGBA.png",
-                descriptor_pool,
-                single_texture_desc_set_layout,
                 device,
                 &mut allocator,
+                &mut desc_allocator,
                 upload_context,
             )?;
 
