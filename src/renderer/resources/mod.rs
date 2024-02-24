@@ -28,7 +28,7 @@ use self::{
     model::Model,
     render_object::RenderObject,
     texture::Texture,
-    vertex::Vertex,
+    vertex::Vertex, shader::ComputeShader,
 };
 
 use super::{
@@ -69,6 +69,8 @@ impl Resources {
             object_desc_set_layout,
             single_texture_desc_set_layout,
         )?;
+
+        let comp_shader = ComputeShader::new("gradient", device)?;
 
         let models = {
             // Create models

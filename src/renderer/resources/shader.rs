@@ -3,7 +3,7 @@ use color_eyre::eyre::{Context, OptionExt, Result};
 use std::{
     fs::File,
     io::Read,
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 pub static mut SHADERBUILD_DIR: Option<String> = None;
@@ -53,7 +53,7 @@ impl Shader {
 
     fn create_shader_module(
         device: &ash::Device,
-        code: &Vec<u8>,
+        code: &[u8],
     ) -> Result<vk::ShaderModule> {
         let create_info = vk::ShaderModuleCreateInfo {
             code_size: code.len(),
@@ -72,6 +72,37 @@ impl Shader {
         unsafe {
             device.destroy_shader_module(self.vert_shader_mod, None);
             device.destroy_shader_module(self.frag_shader_mod, None);
+        }
+    }
+}
+
+pub struct ComputeShader {
+    pub shader_mod: vk::ShaderModule,
+}
+
+impl ComputeShader {
+    pub fn new(shadername: &str, device: &ash::Device) -> Result<Self> {
+        let shaderbuild_dir = unsafe {
+            SHADERBUILD_DIR
+                .as_ref()
+                .ok_or_eyre("Shader build directory not specified")?
+        };
+
+        let mut filepath = PathBuf::from(shaderbuild_dir);
+        filepath.push(format!("{}-comp.spv", shadername));
+        let mut file = File::open(&filepath)
+            .with_context(|| format!("Failed to open file: {:#?}", filepath))?;
+        let mut spv = Vec::new();
+        file.read_to_end(&mut spv)
+            .with_context(|| format!("Failed to read file: {:#?}", filepath))?;
+        let shader_mod = Shader::create_shader_module(device, &spv)?;
+
+        Ok(Self { shader_mod })
+    }
+
+    pub fn cleanup(self, device: &ash::Device) {
+        unsafe {
+            device.destroy_shader_module(self.shader_mod, None);
         }
     }
 }
