@@ -14,6 +14,20 @@ pub struct Material {
 }
 
 impl Material {
+    pub fn builder<'a>(
+        vert_shader_mod: &vk::ShaderModule,
+        frag_shader_mod: &vk::ShaderModule,
+        device: &'a ash::Device,
+        swapchain: &Swapchain,
+    ) -> MaterialBuilder<'a> {
+        MaterialBuilder::new(
+            vert_shader_mod,
+            frag_shader_mod,
+            device,
+            swapchain,
+        )
+    }
+
     pub fn cleanup(self, device: &ash::Device) {
         log::info!("Cleaning up pipeline ...");
         unsafe {
@@ -44,12 +58,12 @@ pub struct MaterialBuilder<'a> {
 }
 
 impl<'a> MaterialBuilder<'a> {
-    pub fn new(
+    fn new(
         vert_shader_mod: &vk::ShaderModule,
         frag_shader_mod: &vk::ShaderModule,
         device: &'a ash::Device,
         swapchain: &Swapchain,
-    ) -> Result<Self> {
+    ) -> Self {
         let shader_main_fn_name = CString::new("main").unwrap();
         let shader_stages = vec![
             vkinit::pipeline_shader_stage_create_info(
@@ -89,7 +103,7 @@ impl<'a> MaterialBuilder<'a> {
             vk::CompareOp::LESS_OR_EQUAL,
         );
 
-        Ok(Self {
+        Self {
             _shader_main_fn_name: shader_main_fn_name,
             shader_stages,
             vertex_input,
@@ -105,11 +119,16 @@ impl<'a> MaterialBuilder<'a> {
             pipeline_layout: None,
 
             device,
-        })
+        }
     }
 
     pub fn pipeline_layout(mut self, layout: vk::PipelineLayout) -> Self {
-        self.pipeline_layout = Some(layout);
+        let old_layout = self.pipeline_layout.replace(layout);
+        if let Some(layout) = old_layout {
+            unsafe {
+                self.device.destroy_pipeline_layout(layout, None);
+            }
+        }
         self
     }
 

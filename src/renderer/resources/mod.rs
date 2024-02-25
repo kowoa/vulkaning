@@ -244,12 +244,12 @@ impl Resources {
             };
 
             let default_lit_shader = Shader::new("default-lit", device)?;
-            let default_lit_mat = MaterialBuilder::new(
+            let default_lit_mat = Material::builder(
                 &default_lit_shader.vert_shader_mod,
                 &default_lit_shader.frag_shader_mod,
                 device,
                 swapchain,
-            )?
+            )
             .pipeline_layout(pipeline_layout)
             .vertex_input(Vertex::get_vertex_desc())
             .build(device, renderpass.renderpass)?;
@@ -280,12 +280,12 @@ impl Resources {
                 unsafe { device.create_pipeline_layout(&layout_info, None)? }
             };
             let textured_lit_shader = Shader::new("textured-lit", device)?;
-            let textured_lit_mat = MaterialBuilder::new(
+            let textured_lit_mat = Material::builder(
                 &textured_lit_shader.vert_shader_mod,
                 &textured_lit_shader.frag_shader_mod,
                 device,
                 swapchain,
-            )?
+            )
             .pipeline_layout(pipeline_layout)
             .vertex_input(Vertex::get_vertex_desc())
             .build(device, renderpass.renderpass)?;
@@ -294,9 +294,11 @@ impl Resources {
         };
 
         let gradient_mat = {
-            //let pipeline_layout = vk::PipelineLayoutCreateInfo::builder();
+            /*
+            let pipeline_layout = vk::PipelineLayoutCreateInfo::builder()
+                .set_layouts()
+            */
             let gradient_shader = ComputeShader::new("gradient", device)?;
-            gradient_shader.cleanup(device);
         };
 
         let mut map = HashMap::new();
