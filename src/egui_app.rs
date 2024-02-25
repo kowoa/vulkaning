@@ -158,7 +158,7 @@ impl egui_ash::App for EguiApp {
         match event {
             egui_ash::event::Event::AppEvent { event } => match event {
                 egui_ash::event::AppEvent::LoopExiting => {
-                    self.renderer.cleanup();
+                    log::info!("Loop exiting ...");
                 }
                 _ => {}
             },
@@ -179,6 +179,12 @@ impl egui_ash::App for EguiApp {
                 renderer.present_frame(swapchain_image_index).unwrap();
             }
         }))
+    }
+}
+
+impl Drop for EguiApp {
+    fn drop(&mut self) {
+        self.renderer.cleanup();
     }
 }
 

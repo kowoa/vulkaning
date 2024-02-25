@@ -125,9 +125,7 @@ impl DescriptorAllocator {
         unsafe {
             device.destroy_descriptor_pool(self.pool, None);
             for (_, layout) in self.layouts {
-                unsafe {
-                    device.destroy_descriptor_set_layout(layout, None);
-                }
+                device.destroy_descriptor_set_layout(layout, None);
             }
         }
     }

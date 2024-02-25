@@ -106,7 +106,9 @@ impl Renderer {
         if let Some(inner) = self.inner.take() {
             let inner = match Arc::try_unwrap(inner) {
                 Ok(inner) => Ok(inner),
-                Err(_) => Err(eyre!("Failed to cleanup because renderer has already been destroyed")),
+                Err(_) => Err(eyre!(
+                    "Failed to cleanup because renderer is currently in use"
+                )),
             }
             .unwrap();
             let inner = inner.into_inner().unwrap();
@@ -125,13 +127,11 @@ struct RendererInner {
     frames: Vec<Arc<Mutex<Frame>>>,
     command_pool: vk::CommandPool,
 
+    draw_image: AllocatedImage, // Image to render into
     scene_camera_buffer: AllocatedBuffer,
-
     upload_context: UploadContext,
 
     first_draw: bool,
-
-    draw_image: AllocatedImage, // Image to render into
 }
 
 impl RendererInner {
@@ -632,6 +632,7 @@ impl RendererInner {
 
             // Clean up buffers
             self.scene_camera_buffer.cleanup(device, &mut allocator);
+            self.draw_image.cleanup(device, &mut allocator);
 
             // Clean up swapchain
             self.swapchain.cleanup(device, &mut allocator);

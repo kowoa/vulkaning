@@ -200,6 +200,12 @@ impl Resources {
             }
         }
 
+        for (_, texture) in self.textures {
+            if let Ok(texture) = Arc::try_unwrap(texture) {
+                texture.cleanup(device, allocator);
+            }
+        }
+
         for renderpass in self.renderpasses {
             renderpass.cleanup(device);
         }
@@ -292,8 +298,9 @@ impl Resources {
         };
 
         let gradient_mat = {
-            let pipeline_layout = vk::PipelineLayoutCreateInfo::builder();
+            //let pipeline_layout = vk::PipelineLayoutCreateInfo::builder();
             let gradient_shader = ComputeShader::new("gradient", device)?;
+            gradient_shader.cleanup(device);
         };
 
         let mut map = HashMap::new();

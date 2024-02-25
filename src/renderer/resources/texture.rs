@@ -59,4 +59,11 @@ impl Texture {
     pub fn desc_set(&self) -> vk::DescriptorSet {
         self.image.desc_set.unwrap()
     }
+
+    pub fn cleanup(self, device: &ash::Device, allocator: &mut Allocator) {
+        self.image.cleanup(device, allocator);
+        unsafe {
+            device.destroy_sampler(self.sampler, None);
+        }
+    }
 }

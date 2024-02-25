@@ -78,7 +78,6 @@ impl MaterialBuilder {
             vkinit::rasterization_state_create_info(vk::PolygonMode::FILL);
         let color_blend_attachment = vkinit::color_blend_attachment_state();
         let multisampling = vkinit::multisampling_state_create_info();
-        let pipeline_layout = default_pipeline_layout(device)?;
         let depth_stencil = vkinit::depth_stencil_create_info(
             true,
             true,
@@ -96,7 +95,7 @@ impl MaterialBuilder {
             rasterizer,
             color_blend_attachment,
             multisampling,
-            pipeline_layout,
+            pipeline_layout: vk::PipelineLayout::null(),
             depth_stencil,
         })
     }
