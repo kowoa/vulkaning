@@ -1,7 +1,7 @@
 use ash::vk;
 use color_eyre::eyre::Result;
 
-use crate::renderer::{swapchain::Swapchain, window::Window};
+use crate::renderer::swapchain::Swapchain;
 
 pub struct Renderpass {
     pub renderpass: vk::RenderPass,
@@ -9,8 +9,8 @@ pub struct Renderpass {
 }
 
 impl Renderpass {
-    pub fn new(device: &ash::Device, swapchain: &Swapchain, window: &Window) -> Result<Self> {
-        let renderpass = create_renderpass(device, swapchain, window)?;
+    pub fn new(device: &ash::Device, swapchain: &Swapchain) -> Result<Self> {
+        let renderpass = create_renderpass(device, swapchain)?;
         let framebuffers = create_framebuffers(&renderpass, device, swapchain)?;
 
         Ok(Self {
@@ -33,7 +33,6 @@ impl Renderpass {
 fn create_renderpass(
     device: &ash::Device,
     swapchain: &Swapchain,
-    window: &Window,
 ) -> Result<vk::RenderPass> {
     let attachments = [
         // Color attachment (where rendering commands will be written into)
@@ -51,15 +50,8 @@ fn create_renderpass(
             // We don't know or care about the starting layout of attachment
             //initial_layout: vk::ImageLayout::UNDEFINED,
             initial_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            // After the renderpass ends, the image has to be in a layout ready for display
-            final_layout: if window.window.is_some() {
-                // Present if not using egui
-                vk::ImageLayout::PRESENT_SRC_KHR
-            } else {
-                // Do not present yet if using egui
-                // Not ready for presentation yet; egui's renderpass will transition to PRESENT_SRC_KHR
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
-            },
+            // After the renderpass ends, the image has to be in a layout ready for egui
+            final_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             ..Default::default()
         },
         // Depth attachment

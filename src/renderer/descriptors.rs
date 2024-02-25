@@ -37,7 +37,7 @@ impl DescriptorLayoutBuilder {
     }
 
     pub fn build(
-        mut self,
+        self,
         device: &ash::Device,
     ) -> Result<vk::DescriptorSetLayout> {
         let info = vk::DescriptorSetLayoutCreateInfo::builder()
@@ -104,7 +104,7 @@ impl DescriptorAllocator {
     pub fn get_layout(&self, name: &str) -> Result<&vk::DescriptorSetLayout> {
         self.layouts
             .get(name.into())
-            .ok_or_eyre(format!("Layout not found: {}", name))
+            .ok_or_eyre(format!("Descriptor Set Layout not found: {}", name))
     }
 
     pub fn allocate(

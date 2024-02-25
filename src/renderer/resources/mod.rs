@@ -8,7 +8,6 @@ pub mod object;
 pub mod render_object;
 pub mod renderpass;
 pub mod scene;
-pub mod shader;
 pub mod texture;
 pub mod vertex;
 
@@ -20,7 +19,6 @@ use glam::{Mat4, Vec3};
 use gpu_allocator::vulkan::Allocator;
 use mesh::Mesh;
 use renderpass::Renderpass;
-use shader::Shader;
 
 use self::{
     material::{Material, MaterialBuilder},
@@ -28,11 +26,15 @@ use self::{
     model::Model,
     render_object::RenderObject,
     texture::Texture,
-    vertex::Vertex, shader::ComputeShader,
+    vertex::Vertex,
 };
 
 use super::{
-    core::Core, swapchain::Swapchain, vkinit, window::Window, UploadContext,
+    core::Core,
+    descriptors::DescriptorAllocator,
+    shader::{ComputeShader, Shader},
+    swapchain::Swapchain,
+    vkinit, UploadContext,
 };
 
 pub struct Resources {
@@ -50,27 +52,18 @@ impl Resources {
         core: &mut Core,
         swapchain: &Swapchain,
         upload_context: &UploadContext,
-        window: &Window,
+        desc_allocator: &mut DescriptorAllocator,
     ) -> Result<Self> {
-        let mut desc_allocator = core.get_desc_allocator_mut()?;
-        let global_desc_set_layout = desc_allocator.get_layout("global")?;
-        let object_desc_set_layout = desc_allocator.get_layout("object")?;
-        let single_texture_desc_set_layout =
-            desc_allocator.get_layout("single texture")?;
+        let mut allocator = core.get_allocator()?;
 
-        let device = &core.device;
-        let renderpass = Renderpass::new(device, swapchain, window)?;
+        let renderpass = Renderpass::new(&core.device, swapchain)?;
 
         let materials = Self::create_materials(
-            device,
+            &core.device,
             swapchain,
             &renderpass,
-            global_desc_set_layout,
-            object_desc_set_layout,
-            single_texture_desc_set_layout,
+            desc_allocator,
         )?;
-
-        let comp_shader = ComputeShader::new("gradient", device)?;
 
         let models = {
             // Create models
@@ -81,16 +74,23 @@ impl Resources {
 
             // Upload models onto GPU immediately
             {
-                let mut allocator = core.get_allocator_mut()?;
-                monkey_model.upload(device, &mut allocator, upload_context)?;
-                triangle_model.upload(
-                    device,
+                monkey_model.upload(
+                    &core.device,
                     &mut allocator,
                     upload_context,
                 )?;
-                empire_model.upload(device, &mut allocator, upload_context)?;
+                triangle_model.upload(
+                    &core.device,
+                    &mut allocator,
+                    upload_context,
+                )?;
+                empire_model.upload(
+                    &core.device,
+                    &mut allocator,
+                    upload_context,
+                )?;
                 backpack_model.upload(
-                    device,
+                    &core.device,
                     &mut allocator,
                     upload_context,
                 )?;
@@ -106,12 +106,11 @@ impl Resources {
         };
 
         let textures = {
-            let mut allocator = core.get_allocator_mut()?;
             let empire = Texture::load_from_file(
                 "lost_empire-RGBA.png",
-                device,
+                &core.device,
                 &mut allocator,
-                &mut desc_allocator,
+                desc_allocator,
                 upload_context,
             )?;
 
@@ -210,10 +209,15 @@ impl Resources {
         device: &ash::Device,
         swapchain: &Swapchain,
         renderpass: &Renderpass,
-        global_desc_set_layout: &vk::DescriptorSetLayout,
-        object_desc_set_layout: &vk::DescriptorSetLayout,
-        single_texture_desc_set_layout: &vk::DescriptorSetLayout,
+        desc_allocator: &DescriptorAllocator,
     ) -> Result<HashMap<String, Arc<Material>>> {
+        let global_desc_set_layout = desc_allocator.get_layout("global")?;
+        let object_desc_set_layout = desc_allocator.get_layout("object")?;
+        let single_texture_desc_set_layout =
+            desc_allocator.get_layout("single texture")?;
+        let draw_image_desc_set_layout =
+            desc_allocator.get_layout("draw image")?;
+
         let default_lit_mat = {
             let pipeline_layout = {
                 let mut layout_info = vkinit::pipeline_layout_create_info();
@@ -285,6 +289,11 @@ impl Resources {
             .build(device, renderpass.renderpass)?;
             textured_lit_shader.cleanup(device);
             textured_lit_mat
+        };
+
+        let gradient_mat = {
+            let pipeline_layout = vk::PipelineLayoutCreateInfo::builder();
+            let gradient_shader = ComputeShader::new("gradient", device)?;
         };
 
         let mut map = HashMap::new();

@@ -24,15 +24,12 @@ impl Swapchain {
             create_swapchain(core, window)?;
         let image_views = create_image_views(core, &image_format, &images)?;
 
-        let depth_image = {
-            let mut allocator = core.get_allocator_mut()?;
-            AllocatedImage::new_depth_image(
-                image_extent.width,
-                image_extent.height,
-                &core.device,
-                &mut allocator,
-            )?
-        };
+        let depth_image = AllocatedImage::new_depth_image(
+            image_extent.width,
+            image_extent.height,
+            &core.device,
+            &mut *core.get_allocator()?,
+        )?;
 
         let objs = Self {
             swapchain,

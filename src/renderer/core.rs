@@ -1,4 +1,5 @@
 use color_eyre::eyre::{eyre, Result};
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use std::{
     collections::HashSet,
     ffi::{c_void, CString},
@@ -13,11 +14,8 @@ use gpu_allocator::{
 };
 
 use super::{
-    descriptors::{DescriptorAllocator, PoolSizeRatio},
     queue_family_indices::QueueFamilyIndices,
-    swapchain::query_swapchain_support,
-    vkinit, vkutils,
-    window::Window,
+    swapchain::query_swapchain_support, vkinit, vkutils,
 };
 
 pub struct Core {
@@ -40,7 +38,6 @@ pub struct Core {
     pub queue_family_indices: QueueFamilyIndices,
 
     allocator: ManuallyDrop<Arc<Mutex<Allocator>>>,
-    desc_allocator: Arc<Mutex<DescriptorAllocator>>,
 }
 
 impl Core {
@@ -49,20 +46,27 @@ impl Core {
         ["VK_LAYER_KHRONOS_validation"];
 
     pub fn new(
-        window: &Window,
-        winit_window: Option<&winit::window::Window>,
+        window: &winit::window::Window,
+        window_req_instance_exts: Vec<CString>,
+        window_req_device_exts: Vec<CString>,
     ) -> Result<Self> {
+        let mut req_instance_exts = Self::create_required_instance_extensions();
+        req_instance_exts.extend(window_req_instance_exts);
+
+        let mut req_device_exts = Self::create_required_device_extensions();
+        req_device_exts.extend(window_req_device_exts);
+
         let entry = ash::Entry::linked();
-        let instance = Self::create_instance(&entry, window)?;
+        let instance = Self::create_instance(&entry, &req_instance_exts)?;
         let (debug_messenger, debug_messenger_loader) =
             Self::create_debug_messenger(&entry, &instance)?;
         let (surface, surface_loader) =
-            Self::create_surface(&entry, &instance, window, winit_window)?;
+            Self::create_surface(&entry, &instance, window)?;
         let physical_device = Self::create_physical_device(
             &instance,
             &surface,
             &surface_loader,
-            window,
+            &req_device_exts,
         )?;
 
         let physical_device_props =
@@ -80,7 +84,7 @@ impl Core {
                 &physical_device,
                 &surface,
                 &surface_loader,
-                window,
+                &req_device_exts,
             )?;
 
         let allocator = Allocator::new(&AllocatorCreateDesc {
@@ -99,8 +103,6 @@ impl Core {
             allocation_sizes: Default::default(),
         })?;
 
-        let desc_allocator = Self::create_desc_allocator(&device)?;
-
         Ok(Self {
             entry,
             instance,
@@ -115,19 +117,12 @@ impl Core {
             present_queue,
             queue_family_indices,
             allocator: ManuallyDrop::new(Arc::new(Mutex::new(allocator))),
-            desc_allocator: Arc::new(Mutex::new(desc_allocator)),
         })
     }
 
     pub fn cleanup(mut self) {
         log::info!("Cleaning up core ...");
         unsafe {
-            Arc::try_unwrap(self.desc_allocator)
-                .unwrap()
-                .into_inner()
-                .unwrap()
-                .cleanup(&self.device);
-
             // We need to do this because the allocator doesn't destroy all
             // memory blocks (VkDeviceMemory) until it is dropped.
             ManuallyDrop::drop(&mut self.allocator);
@@ -143,24 +138,15 @@ impl Core {
         }
     }
 
-    pub fn get_allocator(&self) -> Arc<Mutex<Allocator>> {
-        Arc::clone(&self.allocator)
-    }
-
-    pub fn get_allocator_mut(&self) -> Result<MutexGuard<Allocator>> {
+    pub fn get_allocator(&self) -> Result<MutexGuard<Allocator>> {
         match self.allocator.lock() {
             Ok(allocator) => Ok(allocator),
             Err(err) => Err(eyre!(err.to_string())),
         }
     }
 
-    pub fn get_desc_allocator_mut(
-        &self,
-    ) -> Result<MutexGuard<DescriptorAllocator>> {
-        match self.desc_allocator.lock() {
-            Ok(allocator) => Ok(allocator),
-            Err(err) => Err(eyre!(err.to_string())),
-        }
+    pub fn get_allocator_ref(&self) -> Arc<Mutex<Allocator>> {
+        Arc::clone(&self.allocator)
     }
 
     pub fn min_uniform_buffer_offset_alignment(&self) -> u64 {
@@ -177,22 +163,19 @@ impl Core {
         )
     }
 
-    fn get_required_instance_extensions(
-        window: &Window,
-    ) -> Result<Vec<*const i8>> {
-        let mut exts = window.required_instance_extensions()?;
-        //exts.push(vk::KhrSynchronization2Fn::name().as_ptr()); // For cmd_pipeline_barrier2()
+    fn create_required_instance_extensions() -> Vec<CString> {
+        let mut exts = Vec::new();
         if Self::ENABLE_VALIDATION_LAYERS {
-            exts.push(ash::extensions::ext::DebugUtils::name().as_ptr());
+            exts.push(ash::extensions::ext::DebugUtils::name().to_owned());
         }
         #[cfg(target_os = "macos")]
-        exts.push(vk::KhrGetPhysicalDeviceProperties2Fn::name().as_ptr());
-        Ok(exts)
+        exts.push(vk::KhrGetPhysicalDeviceProperties2Fn::name().to_owned());
+        exts
     }
 
-    fn get_required_device_extensions(window: &Window) -> Vec<CString> {
+    fn create_required_device_extensions() -> Vec<CString> {
         #[allow(unused_mut)]
-        let mut exts = window.required_device_extensions();
+        let mut exts = Vec::new();
         #[cfg(target_os = "macos")]
         exts.push(vk::KhrPortabilitySubsetFn::name().to_owned());
         exts
@@ -200,7 +183,7 @@ impl Core {
 
     fn create_instance(
         entry: &ash::Entry,
-        window: &Window,
+        req_instance_exts: &Vec<CString>,
     ) -> Result<ash::Instance> {
         if Self::ENABLE_VALIDATION_LAYERS {
             Self::check_required_validation_layers(entry)?;
@@ -211,14 +194,17 @@ impl Core {
             ..Default::default()
         };
 
-        let req_inst_exts = Self::get_required_instance_extensions(window)?;
-
         let req_layers = Self::REQUIRED_VALIDATION_LAYERS
             .iter()
             .map(|&s| CString::new(s))
             .collect::<Result<Vec<_>, _>>()?;
         let req_layers_ptr =
             req_layers.iter().map(|s| s.as_ptr()).collect::<Vec<_>>();
+
+        let req_instance_exts = req_instance_exts
+            .iter()
+            .map(|ext| ext.as_ptr())
+            .collect::<Vec<_>>();
 
         let debug_info = vkinit::debug_utils_messenger_create_info();
         let instance_info = vk::InstanceCreateInfo {
@@ -239,8 +225,8 @@ impl Core {
             } else {
                 std::ptr::null()
             },
-            enabled_extension_count: req_inst_exts.len() as u32,
-            pp_enabled_extension_names: req_inst_exts.as_ptr(),
+            enabled_extension_count: req_instance_exts.len() as u32,
+            pp_enabled_extension_names: req_instance_exts.as_ptr(),
             ..Default::default()
         };
 
@@ -270,17 +256,27 @@ impl Core {
     fn create_surface(
         entry: &ash::Entry,
         instance: &ash::Instance,
-        window: &Window,
-        winit_window: Option<&winit::window::Window>, // Only Some when using egui
+        window: &winit::window::Window,
     ) -> Result<(vk::SurfaceKHR, ash::extensions::khr::Surface)> {
-        window.create_surface(entry, instance, winit_window)
+        let surface = unsafe {
+            ash_window::create_surface(
+                entry,
+                instance,
+                window.raw_display_handle(),
+                window.raw_window_handle(),
+                None,
+            )?
+        };
+        let surface_loader =
+            ash::extensions::khr::Surface::new(entry, instance);
+        Ok((surface, surface_loader))
     }
 
     fn create_physical_device(
         instance: &ash::Instance,
         surface: &vk::SurfaceKHR,
         surface_loader: &ash::extensions::khr::Surface,
-        window: &Window,
+        req_device_exts: &Vec<CString>,
     ) -> Result<vk::PhysicalDevice> {
         let devices = unsafe { instance.enumerate_physical_devices()? };
         if devices.is_empty() {
@@ -292,10 +288,10 @@ impl Core {
             .filter(|device| {
                 Self::physical_device_is_suitable(
                     device,
+                    req_device_exts,
                     instance,
                     surface,
                     surface_loader,
-                    window,
                 )
                 .is_ok_and(|suitable| suitable)
             })
@@ -316,7 +312,7 @@ impl Core {
         physical_device: &vk::PhysicalDevice,
         surface: &vk::SurfaceKHR,
         surface_loader: &ash::extensions::khr::Surface,
-        window: &Window,
+        req_device_exts: &Vec<CString>,
     ) -> Result<(ash::Device, vk::Queue, vk::Queue, QueueFamilyIndices)> {
         let indices = QueueFamilyIndices::new(
             instance,
@@ -342,8 +338,7 @@ impl Core {
             .collect::<Vec<_>>();
 
         let physical_device_features = vk::PhysicalDeviceFeatures::default();
-        let req_ext_names = Self::get_required_device_extensions(window);
-        let req_ext_names_ptr = req_ext_names
+        let req_device_exts = req_device_exts
             .iter()
             .map(|ext| ext.as_ptr())
             .collect::<Vec<_>>();
@@ -372,8 +367,8 @@ impl Core {
             p_queue_create_infos: queue_infos.as_ptr(),
             p_enabled_features: &physical_device_features,
             queue_create_info_count: queue_infos.len() as u32,
-            enabled_extension_count: req_ext_names.len() as u32,
-            pp_enabled_extension_names: req_ext_names_ptr.as_ptr(),
+            enabled_extension_count: req_device_exts.len() as u32,
+            pp_enabled_extension_names: req_device_exts.as_ptr(),
             p_next: &shader_draw_params_features
                 as *const vk::PhysicalDeviceShaderDrawParametersFeatures
                 as *const c_void,
@@ -417,10 +412,10 @@ impl Core {
 
     fn physical_device_is_suitable(
         physical_device: &vk::PhysicalDevice,
+        req_device_exts: &Vec<CString>,
         instance: &ash::Instance,
         surface: &vk::SurfaceKHR,
         surface_loader: &ash::extensions::khr::Surface,
-        window: &Window,
     ) -> Result<bool> {
         let indices = QueueFamilyIndices::new(
             instance,
@@ -429,10 +424,10 @@ impl Core {
             surface_loader,
         )?;
 
-        let exts_supported = Self::check_required_device_extensions(
+        let exts_supported = Self::physical_device_has_extensions(
             physical_device,
+            req_device_exts,
             instance,
-            window,
         )?;
 
         let swapchain_adequate = {
@@ -515,57 +510,22 @@ impl Core {
     }
 
     /// Check if the physical device has all the required device extensions
-    fn check_required_device_extensions(
+    fn physical_device_has_extensions(
         physical_device: &vk::PhysicalDevice,
+        req_device_exts: &Vec<CString>,
         instance: &ash::Instance,
-        window: &Window,
     ) -> Result<bool> {
         let available_exts = unsafe {
             instance.enumerate_device_extension_properties(*physical_device)?
         }
         .iter()
-        .map(|ext| vkutils::c_char_to_string(&ext.extension_name))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|ext| vkutils::c_char_to_cstring(&ext.extension_name))
+        .collect::<Vec<_>>();
 
-        let contains_all = Self::get_required_device_extensions(window)
-            .iter()
-            .map(|ext| ext.clone().into_string())
-            .collect::<Result<Vec<_>, _>>()?
+        let contains_all = req_device_exts
             .iter()
             .all(|ext| available_exts.contains(ext));
 
         Ok(contains_all)
-    }
-
-    fn create_desc_allocator(
-        device: &ash::Device,
-    ) -> Result<DescriptorAllocator> {
-        let ratios = [
-            PoolSizeRatio {
-                // For the camera buffer
-                desc_type: vk::DescriptorType::UNIFORM_BUFFER,
-                ratio: 1.0,
-            },
-            PoolSizeRatio {
-                // For the scene params buffer
-                desc_type: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-                ratio: 1.0,
-            },
-            PoolSizeRatio {
-                // For the object buffer
-                desc_type: vk::DescriptorType::STORAGE_BUFFER,
-                ratio: 1.0,
-            },
-            PoolSizeRatio {
-                desc_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                // For textures
-                ratio: 1.0,
-            },
-        ];
-
-        let global_desc_allocator =
-            DescriptorAllocator::new(device, 10, &ratios)?;
-
-        Ok(global_desc_allocator)
     }
 }

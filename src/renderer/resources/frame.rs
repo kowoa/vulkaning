@@ -3,7 +3,8 @@ use color_eyre::eyre::Result;
 use gpu_allocator::vulkan::Allocator;
 
 use crate::renderer::{
-    buffer::AllocatedBuffer, core::Core, vkinit, MAX_OBJECTS,
+    buffer::AllocatedBuffer, core::Core, descriptors::DescriptorAllocator,
+    vkinit, MAX_OBJECTS,
 };
 
 use super::{
@@ -28,6 +29,7 @@ impl Frame {
         core: &mut Core,
         scene_camera_buffer: &AllocatedBuffer,
         command_pool: &vk::CommandPool,
+        desc_allocator: &mut DescriptorAllocator,
     ) -> Result<Self> {
         let device = &core.device;
 
@@ -38,7 +40,6 @@ impl Frame {
         let (present_semaphore, render_semaphore, render_fence) =
             Self::create_sync_objs(device)?;
 
-        let desc_allocator = core.get_desc_allocator_mut()?;
         // Allocate descriptor set using the global descriptor set layout
         let global_desc_set =
             desc_allocator.allocate(&core.device, "global")?;
@@ -47,7 +48,7 @@ impl Frame {
             desc_allocator.allocate(&core.device, "object")?;
 
         // Create object buffer
-        let mut allocator = core.get_allocator_mut()?;
+        let mut allocator = core.get_allocator()?;
         let object_buffer = AllocatedBuffer::new(
             &core.device,
             &mut allocator,

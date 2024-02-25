@@ -7,19 +7,17 @@ mod descriptors;
 mod image;
 pub mod queue_family_indices;
 pub mod resources;
+pub mod shader;
 mod swapchain;
 mod upload_context;
-
-pub mod window;
 
 use color_eyre::eyre::{eyre, OptionExt, Result};
 use egui_ash::{AshRenderState, EguiCommand};
 use glam::{Mat4, Vec3, Vec4};
 use gpu_allocator::vulkan::Allocator;
-use std::sync::{Arc, Mutex, MutexGuard};
-use winit::{
-    event::{ElementState, Event, KeyEvent, WindowEvent},
-    keyboard::{Key, NamedKey},
+use std::{
+    ffi::CString,
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 use ash::vk;
@@ -31,12 +29,13 @@ use crate::renderer::{
 
 use self::{
     core::Core,
-    descriptors::{DescriptorAllocator, DescriptorLayoutBuilder},
+    descriptors::{
+        DescriptorAllocator, DescriptorLayoutBuilder, PoolSizeRatio,
+    },
     image::AllocatedImageCreateInfo,
     resources::{frame::Frame, scene::GpuSceneData, Resources},
     swapchain::Swapchain,
     upload_context::UploadContext,
-    window::Window,
 };
 
 const FRAME_OVERLAP: u32 = 2;
@@ -44,19 +43,21 @@ const MAX_OBJECTS: u32 = 10000; // Max objects per frame
 
 #[derive(Clone)]
 pub struct Renderer {
-    inner: Arc<Mutex<RendererInner>>,
+    inner: Option<Arc<Mutex<RendererInner>>>,
 }
 
 impl Renderer {
     pub fn new(
-        window: &Window,
-        winit_window: Option<&winit::window::Window>,
+        window: &winit::window::Window,
+        window_req_instance_exts: Vec<CString>,
+        window_req_device_exts: Vec<CString>,
     ) -> Result<Self> {
         Ok(Self {
-            inner: Arc::new(Mutex::new(RendererInner::new(
+            inner: Some(Arc::new(Mutex::new(RendererInner::new(
                 window,
-                winit_window,
-            )?)),
+                window_req_instance_exts,
+                window_req_device_exts,
+            )?))),
         })
     }
 
@@ -66,31 +67,23 @@ impl Renderer {
         height: u32,
         egui_cmd: Option<EguiCommand>,
     ) -> Result<u32> {
-        self.inner
-            .lock()
-            .unwrap()
-            .draw_frame(width, height, egui_cmd)
+        if let Some(inner) = &self.inner {
+            inner.lock().unwrap().draw_frame(width, height, egui_cmd)
+        } else {
+            Err(eyre!("Failed to draw frame because renderer has already been destroyed"))
+        }
     }
 
     pub fn present_frame(&self, swapchain_image_index: u32) -> Result<()> {
-        self.inner
-            .lock()
-            .unwrap()
-            .present_frame(swapchain_image_index)
-    }
-
-    pub fn run_loop_without_egui(self, window: Window) -> Result<()> {
-        match Arc::try_unwrap(self.inner) {
-            Ok(inner) => {
-                let inner = inner.into_inner()?;
-                inner.run_loop_without_egui(window)
-            }
-            Err(_) => Err(eyre!("Failed to unwrap Arc<Mutex<RendererInner>>")),
+        if let Some(inner) = &self.inner {
+            inner.lock().unwrap().present_frame(swapchain_image_index)
+        } else {
+            Err(eyre!("Failed to present frame because renderer has already been destroyed"))
         }
     }
 
     pub fn ash_render_state(&self) -> AshRenderState<Arc<Mutex<Allocator>>> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.as_ref().unwrap().lock().unwrap();
         AshRenderState {
             entry: inner.core.entry.clone(),
             instance: inner.core.instance.clone(),
@@ -105,7 +98,19 @@ impl Renderer {
                 .get_graphics_family()
                 .unwrap(),
             command_pool: inner.command_pool,
-            allocator: inner.core.get_allocator(),
+            allocator: inner.core.get_allocator_ref(),
+        }
+    }
+
+    pub fn cleanup(&mut self) {
+        if let Some(inner) = self.inner.take() {
+            let inner = match Arc::try_unwrap(inner) {
+                Ok(inner) => Ok(inner),
+                Err(_) => Err(eyre!("Failed to cleanup because renderer has already been destroyed")),
+            }
+            .unwrap();
+            let inner = inner.into_inner().unwrap();
+            inner.cleanup();
         }
     }
 }
@@ -114,6 +119,7 @@ struct RendererInner {
     core: Core,
     swapchain: Swapchain,
     resources: Resources,
+    desc_allocator: DescriptorAllocator,
 
     frame_number: u32,
     frames: Vec<Arc<Mutex<Frame>>>,
@@ -130,24 +136,21 @@ struct RendererInner {
 
 impl RendererInner {
     pub fn new(
-        window: &Window,
-        winit_window: Option<&winit::window::Window>,
+        window: &winit::window::Window,
+        window_req_instance_exts: Vec<CString>,
+        window_req_device_exts: Vec<CString>,
     ) -> Result<Self> {
         log::info!("Initializing renderer ...");
 
-        let mut core = Core::new(window, winit_window)?;
-        let swapchain = if let Some(window) = winit_window {
-            Swapchain::new(&mut core, window)?
-        } else {
-            let window =
-                window.window.as_ref().ok_or_eyre("No window_found")?;
-            Swapchain::new(&mut core, window)?
-        };
+        let mut core = Core::new(
+            window,
+            window_req_instance_exts,
+            window_req_device_exts,
+        )?;
+        let swapchain = Swapchain::new(&mut core, window)?;
 
-        {
-            let mut desc_allocator = core.get_desc_allocator_mut()?;
-            Self::create_desc_set_layouts(&core.device, &mut desc_allocator)?;
-        }
+        let mut desc_allocator = Self::create_desc_allocator(&core.device)?;
+        Self::create_desc_set_layouts(&core.device, &mut desc_allocator)?;
 
         let upload_context = UploadContext::new(
             &core.device,
@@ -155,14 +158,23 @@ impl RendererInner {
             core.graphics_queue,
         )?;
 
-        let draw_image = Self::create_draw_image(
-            &mut core,
-            window.width(),
-            window.height(),
-        )?;
+        let draw_image = {
+            let size = window.inner_size();
+            Self::create_draw_image(
+                size.width,
+                size.height,
+                &core.device,
+                &mut *core.get_allocator()?,
+                &mut desc_allocator,
+            )?
+        };
 
-        let resources =
-            Resources::new(&mut core, &swapchain, &upload_context, window)?;
+        let resources = Resources::new(
+            &mut core,
+            &swapchain,
+            &upload_context,
+            &mut desc_allocator,
+        )?;
 
         let scene_camera_buffer = {
             let scene_size = core
@@ -177,7 +189,7 @@ impl RendererInner {
             let offsets =
                 [0, scene_size, 2 * scene_size, 2 * scene_size + camera_size];
 
-            let mut allocator = core.get_allocator_mut()?;
+            let mut allocator = core.get_allocator()?;
             let mut buffer = AllocatedBuffer::new(
                 &core.device,
                 &mut allocator,
@@ -199,8 +211,12 @@ impl RendererInner {
             let mut frames = Vec::with_capacity(FRAME_OVERLAP as usize);
             for _ in 0..FRAME_OVERLAP {
                 // Call Frame constructor
-                let frame =
-                    Frame::new(&mut core, &scene_camera_buffer, &command_pool)?;
+                let frame = Frame::new(
+                    &mut core,
+                    &scene_camera_buffer,
+                    &command_pool,
+                    &mut desc_allocator,
+                )?;
 
                 frames.push(Arc::new(Mutex::new(frame)));
             }
@@ -218,58 +234,8 @@ impl RendererInner {
             upload_context,
             first_draw: true,
             draw_image,
+            desc_allocator,
         })
-    }
-
-    fn run_loop_without_egui(self, window: Window) -> Result<()> {
-        let event_loop = window.event_loop.ok_or_eyre("No event loop found")?;
-        let window = window.window.ok_or_eyre("No window found")?;
-        let mut renderer = Some(self);
-        let mut close_requested = false;
-
-        log::info!("Starting render loop ...");
-        Ok(event_loop.run(move |event, elwt| match event {
-            Event::WindowEvent { event, window_id }
-                if window_id == window.id() =>
-            {
-                match event {
-                    WindowEvent::CloseRequested => close_requested = true,
-                    WindowEvent::KeyboardInput {
-                        event:
-                            KeyEvent {
-                                logical_key: key,
-                                state: ElementState::Released,
-                                ..
-                            },
-                        ..
-                    } => {
-                        if let Key::Named(NamedKey::Escape) = key.as_ref() {
-                            close_requested = true
-                        }
-                    }
-                    WindowEvent::RedrawRequested => {
-                        if let Some(r) = &mut renderer {
-                            let size = &window.inner_size();
-                            let swapchain_image_index = r
-                                .draw_frame(size.width, size.height, None)
-                                .unwrap();
-                            window.pre_present_notify();
-                            r.present_frame(swapchain_image_index).unwrap();
-                        }
-                    }
-                    _ => (),
-                }
-            }
-            Event::AboutToWait => {
-                if close_requested {
-                    renderer.take().unwrap().cleanup();
-                    elwt.exit();
-                } else {
-                    window.request_redraw();
-                }
-            }
-            _ => (),
-        })?)
     }
 
     fn get_current_frame(&self) -> Result<MutexGuard<Frame>> {
@@ -307,6 +273,7 @@ impl RendererInner {
         }
     }
 
+    /// Returns the swapchain image index draw into
     fn draw_frame(
         &mut self,
         width: u32,
@@ -629,6 +596,7 @@ impl RendererInner {
 
         Ok(())
     }
+
     fn cleanup(mut self) {
         // Wait until all frames have finished rendering
         for frame in &self.frames {
@@ -643,10 +611,10 @@ impl RendererInner {
 
         {
             let device = &self.core.device;
-            let mut allocator = self.core.get_allocator_mut().unwrap();
+            let mut allocator = self.core.get_allocator().unwrap();
 
+            self.desc_allocator.cleanup(device);
             self.upload_context.cleanup(device);
-
             self.resources.cleanup(device, &mut allocator);
 
             // Destroy command pool
@@ -758,9 +726,11 @@ impl RendererInner {
 
     /// Helper function that creates the descriptor pool and descriptor sets
     fn create_draw_image(
-        core: &mut Core,
         width: u32,
         height: u32,
+        device: &ash::Device,
+        allocator: &mut Allocator,
+        desc_allocator: &mut DescriptorAllocator,
     ) -> Result<AllocatedImage> {
         let draw_image_desc_set = {
             let layout = DescriptorLayoutBuilder::new()
@@ -769,11 +739,9 @@ impl RendererInner {
                     vk::DescriptorType::STORAGE_IMAGE,
                     vk::ShaderStageFlags::COMPUTE,
                 )
-                .build(&core.device)?;
-            let mut desc_allocator = core.get_desc_allocator_mut()?;
+                .build(device)?;
             desc_allocator.add_layout("draw image", layout);
-            let set = desc_allocator.allocate(&core.device, "draw image")?;
-            set
+            desc_allocator.allocate(device, "draw image")?
         };
 
         let draw_image = {
@@ -794,8 +762,7 @@ impl RendererInner {
                 name: "Draw image".into(),
                 desc_set: Some(draw_image_desc_set),
             };
-            let mut allocator = core.get_allocator_mut()?;
-            AllocatedImage::new(&create_info, &core.device, &mut allocator)?
+            AllocatedImage::new(&create_info, device, allocator)?
         };
 
         let draw_image_info = [vk::DescriptorImageInfo::builder()
@@ -809,9 +776,41 @@ impl RendererInner {
             .image_info(&draw_image_info)
             .build();
         unsafe {
-            core.device.update_descriptor_sets(&[draw_image_write], &[]);
+            device.update_descriptor_sets(&[draw_image_write], &[]);
         }
 
         Ok(draw_image)
+    }
+
+    fn create_desc_allocator(
+        device: &ash::Device,
+    ) -> Result<DescriptorAllocator> {
+        let ratios = [
+            PoolSizeRatio {
+                // For the camera buffer
+                desc_type: vk::DescriptorType::UNIFORM_BUFFER,
+                ratio: 1.0,
+            },
+            PoolSizeRatio {
+                // For the scene params buffer
+                desc_type: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
+                ratio: 1.0,
+            },
+            PoolSizeRatio {
+                // For the object buffer
+                desc_type: vk::DescriptorType::STORAGE_BUFFER,
+                ratio: 1.0,
+            },
+            PoolSizeRatio {
+                desc_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                // For textures
+                ratio: 1.0,
+            },
+        ];
+
+        let global_desc_allocator =
+            DescriptorAllocator::new(device, 10, &ratios)?;
+
+        Ok(global_desc_allocator)
     }
 }

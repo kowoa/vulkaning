@@ -1,10 +1,9 @@
 #[allow(unused_imports)]
-use app::{egui_app::EguiApp, winit_app::WinitApp, App};
 use color_eyre::eyre::{eyre, Result};
-use renderer::resources::{model::ASSETS_DIR, shader::SHADERBUILD_DIR};
+use renderer::{resources::model::ASSETS_DIR, shader::SHADERBUILD_DIR};
 use std::process::ExitCode;
 
-mod app;
+mod egui_app;
 mod renderer;
 
 pub fn run() -> Result<ExitCode> {
@@ -13,9 +12,7 @@ pub fn run() -> Result<ExitCode> {
 
     set_directories()?;
 
-    //let app = App::<WinitApp>::new()?;
-    let app = App::<EguiApp>::new();
-    let exit_code = app.run()?;
+    let exit_code = egui_app::run()?;
 
     Ok(exit_code)
 }
