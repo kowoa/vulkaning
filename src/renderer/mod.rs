@@ -5,6 +5,7 @@ mod buffer;
 mod core;
 mod descriptors;
 mod image;
+mod material;
 pub mod queue_family_indices;
 pub mod resources;
 pub mod shader;

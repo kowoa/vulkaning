@@ -1,11 +1,11 @@
-use color_eyre::eyre::{eyre, Result};
+use color_eyre::eyre::{eyre, OptionExt, Result};
 use std::ffi::CString;
 
 use ash::vk;
 
 use crate::renderer::{swapchain::Swapchain, vkinit};
 
-use super::vertex::VertexInputDescription;
+use super::resources::vertex::VertexInputDescription;
 
 #[derive(PartialEq)]
 pub struct Material {
@@ -23,7 +23,8 @@ impl Material {
     }
 }
 
-pub struct MaterialBuilder {
+pub struct MaterialBuilder<'a> {
+    // vk::Pipeline related info
     _shader_main_fn_name: CString,
     shader_stages: Vec<vk::PipelineShaderStageCreateInfo>,
     vertex_input: vk::PipelineVertexInputStateCreateInfo,
@@ -34,15 +35,19 @@ pub struct MaterialBuilder {
     rasterizer: vk::PipelineRasterizationStateCreateInfo,
     color_blend_attachment: vk::PipelineColorBlendAttachmentState,
     multisampling: vk::PipelineMultisampleStateCreateInfo,
-    pipeline_layout: vk::PipelineLayout,
     depth_stencil: vk::PipelineDepthStencilStateCreateInfo,
+
+    // vk::PipelineLayout related info
+    pipeline_layout: Option<vk::PipelineLayout>,
+
+    device: &'a ash::Device,
 }
 
-impl MaterialBuilder {
+impl<'a> MaterialBuilder<'a> {
     pub fn new(
         vert_shader_mod: &vk::ShaderModule,
         frag_shader_mod: &vk::ShaderModule,
-        device: &ash::Device,
+        device: &'a ash::Device,
         swapchain: &Swapchain,
     ) -> Result<Self> {
         let shader_main_fn_name = CString::new("main").unwrap();
@@ -95,13 +100,16 @@ impl MaterialBuilder {
             rasterizer,
             color_blend_attachment,
             multisampling,
-            pipeline_layout: vk::PipelineLayout::null(),
             depth_stencil,
+
+            pipeline_layout: None,
+
+            device,
         })
     }
 
     pub fn pipeline_layout(mut self, layout: vk::PipelineLayout) -> Self {
-        self.pipeline_layout = layout;
+        self.pipeline_layout = Some(layout);
         self
     }
 
@@ -128,10 +136,15 @@ impl MaterialBuilder {
     }
 
     pub fn build(
-        self,
+        mut self,
         device: &ash::Device,
         renderpass: vk::RenderPass,
     ) -> Result<Material> {
+        let pipeline_layout = self
+            .pipeline_layout
+            .take()
+            .ok_or_eyre("No pipeline layout provided for MaterialBuilder")?;
+
         let viewport_state_info = vk::PipelineViewportStateCreateInfo {
             viewport_count: 1,
             p_viewports: &self.viewport,
@@ -158,7 +171,7 @@ impl MaterialBuilder {
             p_rasterization_state: &self.rasterizer,
             p_multisample_state: &self.multisampling,
             p_color_blend_state: &color_blend_info,
-            layout: self.pipeline_layout,
+            layout: pipeline_layout,
             render_pass: renderpass,
             subpass: 0,
             base_pipeline_handle: vk::Pipeline::null(),
@@ -180,13 +193,18 @@ impl MaterialBuilder {
 
         Ok(Material {
             pipeline: graphics_pipelines[0],
-            pipeline_layout: self.pipeline_layout,
+            pipeline_layout,
         })
     }
 }
 
-fn default_pipeline_layout(device: &ash::Device) -> Result<vk::PipelineLayout> {
-    // Build the pipeline layout that controls the inputs/outputs of the shader
-    let layout_info = vkinit::pipeline_layout_create_info();
-    Ok(unsafe { device.create_pipeline_layout(&layout_info, None)? })
+impl<'a> Drop for MaterialBuilder<'a> {
+    fn drop(&mut self) {
+        // Destroy pipeline layout in case it was never used
+        if let Some(layout) = self.pipeline_layout {
+            unsafe {
+                self.device.destroy_pipeline_layout(layout, None);
+            }
+        }
+    }
 }

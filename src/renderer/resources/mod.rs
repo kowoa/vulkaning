@@ -1,7 +1,6 @@
 // Asset initialization
 pub mod camera;
 pub mod frame;
-pub mod material;
 pub mod mesh;
 pub mod model;
 pub mod object;
@@ -21,17 +20,14 @@ use mesh::Mesh;
 use renderpass::Renderpass;
 
 use self::{
-    material::{Material, MaterialBuilder},
-    mesh::MeshPushConstants,
-    model::Model,
-    render_object::RenderObject,
-    texture::Texture,
-    vertex::Vertex,
+    mesh::MeshPushConstants, model::Model, render_object::RenderObject,
+    texture::Texture, vertex::Vertex,
 };
 
 use super::{
     core::Core,
     descriptors::DescriptorAllocator,
+    material::{Material, MaterialBuilder},
     shader::{ComputeShader, Shader},
     swapchain::Swapchain,
     vkinit, UploadContext,
