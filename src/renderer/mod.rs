@@ -246,9 +246,6 @@ impl RendererInner {
         }
     }
 
-    /// This function currently has absolutely no effect on the rendered image
-    /// because the renderpass handles clearing the color and depth attachments.
-    /// This means the renderpass's clear values will overwrite these ones.
     fn draw_background(&mut self, cmd: vk::CommandBuffer) {
         self.draw_image.transition_layout(
             cmd,
@@ -257,19 +254,38 @@ impl RendererInner {
             &self.core.device,
         );
 
-        let flash = (self.frame_number as f32 / 120.0).sin().abs();
-        let clear = vk::ClearColorValue {
-            float32: [0.0, flash, 0.0, 1.0],
-        };
-        let clear_range =
-            vkinit::image_subresource_range(vk::ImageAspectFlags::COLOR);
+        let gradient_mat = self.resources.materials["gradient"].as_ref();
+
+        // Bind the gradient drawing compute pipeline
         unsafe {
-            self.core.device.cmd_clear_color_image(
+            self.core.device.cmd_bind_pipeline(
                 cmd,
-                self.draw_image.image,
-                vk::ImageLayout::GENERAL,
-                &clear,
-                &[clear_range],
+                vk::PipelineBindPoint::COMPUTE,
+                gradient_mat.pipeline,
+            );
+        }
+
+        // Bind the descriptor set containing the draw image to the compute pipeline
+        unsafe {
+            self.core.device.cmd_bind_descriptor_sets(
+                cmd,
+                vk::PipelineBindPoint::COMPUTE,
+                gradient_mat.pipeline_layout,
+                0,
+                &[self.draw_image.desc_set.unwrap()],
+                &[],
+            )
+        }
+
+        // Execute the compute pipeline dispatch
+        // The gradient compute shader uses a 16x16 workgroup, so divide by 16
+        // The compute shader will write to the draw image
+        unsafe {
+            self.core.device.cmd_dispatch(
+                cmd,
+                (self.draw_image.extent.width as f64 / 16.0).ceil() as u32,
+                (self.draw_image.extent.height as f64 / 16.0).ceil() as u32,
+                1,
             );
         }
     }
