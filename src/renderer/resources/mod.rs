@@ -33,7 +33,7 @@ use super::{
     core::Core,
     descriptors::DescriptorAllocator,
     material::{Material, MaterialBuilder},
-    shader::{ComputeShader, Shader},
+    shader::{ComputePushConstants, ComputeShader, Shader},
     swapchain::Swapchain,
     vkinit, UploadContext,
 };
@@ -301,12 +301,18 @@ impl Resources {
         let gradient_mat = {
             let pipeline_layout = {
                 let layouts = [*draw_image_desc_set_layout];
+                let push_constant_ranges = [vk::PushConstantRange {
+                    stage_flags: vk::ShaderStageFlags::COMPUTE,
+                    offset: 0,
+                    size: std::mem::size_of::<ComputePushConstants>() as u32,
+                }];
                 let layout_info = vk::PipelineLayoutCreateInfo::builder()
                     .set_layouts(&layouts)
+                    .push_constant_ranges(&push_constant_ranges)
                     .build();
                 unsafe { device.create_pipeline_layout(&layout_info, None)? }
             };
-            let gradient_shader = ComputeShader::new("gradient", device)?;
+            let gradient_shader = ComputeShader::new("gradient-color", device)?;
             let name = CString::new("main")?;
             let stage_info = vk::PipelineShaderStageCreateInfo::builder()
                 .stage(vk::ShaderStageFlags::COMPUTE)

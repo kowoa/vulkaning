@@ -35,6 +35,7 @@ use self::{
     },
     image::AllocatedImageCreateInfo,
     resources::{frame::Frame, scene::GpuSceneData, Resources},
+    shader::ComputePushConstants,
     swapchain::Swapchain,
     upload_context::UploadContext,
 };
@@ -275,6 +276,22 @@ impl RendererInner {
                 &[self.draw_image.desc_set.unwrap()],
                 &[],
             )
+        }
+
+        let pc = ComputePushConstants {
+            data1: Vec4::new(1.0, 0.0, 0.0, 1.0),
+            data2: Vec4::new(0.0, 0.0, 1.0, 1.0),
+            data3: Vec4::ZERO,
+            data4: Vec4::ZERO,
+        };
+        unsafe {
+            self.core.device.cmd_push_constants(
+                cmd,
+                gradient_mat.pipeline_layout,
+                vk::ShaderStageFlags::COMPUTE,
+                0,
+                bytemuck::cast_slice(&[pc]),
+            );
         }
 
         // Execute the compute pipeline dispatch

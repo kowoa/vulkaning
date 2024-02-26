@@ -1,10 +1,8 @@
 use ash::vk;
+use bytemuck::{Pod, Zeroable};
 use color_eyre::eyre::{Context, OptionExt, Result};
-use std::{
-    fs::File,
-    io::Read,
-    path::PathBuf,
-};
+use glam::Vec4;
+use std::{fs::File, io::Read, path::PathBuf};
 
 pub static mut SHADERBUILD_DIR: Option<String> = None;
 
@@ -74,6 +72,15 @@ impl Shader {
             device.destroy_shader_module(self.frag_shader_mod, None);
         }
     }
+}
+
+#[repr(C)]
+#[derive(Pod, Zeroable, Clone, Copy)]
+pub struct ComputePushConstants {
+    pub data1: Vec4,
+    pub data2: Vec4,
+    pub data3: Vec4,
+    pub data4: Vec4,
 }
 
 pub struct ComputeShader {
