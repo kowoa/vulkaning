@@ -244,7 +244,9 @@ pub fn write_descriptor_image(
     }
 }
 
-pub fn image_subresource_range(aspect_mask: vk::ImageAspectFlags) -> vk::ImageSubresourceRange {
+pub fn image_subresource_range(
+    aspect_mask: vk::ImageAspectFlags,
+) -> vk::ImageSubresourceRange {
     vk::ImageSubresourceRange {
         aspect_mask,
         base_mip_level: 0,
@@ -252,6 +254,28 @@ pub fn image_subresource_range(aspect_mask: vk::ImageAspectFlags) -> vk::ImageSu
         base_array_layer: 0,
         layer_count: 1,
     }
+}
+
+pub fn attachment_info(
+    view: vk::ImageView,
+    clear: Option<vk::ClearValue>,
+    layout: vk::ImageLayout,
+) -> vk::RenderingAttachmentInfo {
+    vk::RenderingAttachmentInfo::builder()
+        .image_view(view)
+        .image_layout(layout)
+        .load_op(if clear.is_some() {
+            vk::AttachmentLoadOp::CLEAR
+        } else {
+            vk::AttachmentLoadOp::LOAD
+        })
+        .store_op(vk::AttachmentStoreOp::STORE)
+        .clear_value(if let Some(clear) = clear {
+            clear
+        } else {
+            vk::ClearValue::default()
+        })
+        .build()
 }
 
 pub fn debug_utils_messenger_create_info(
