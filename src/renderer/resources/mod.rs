@@ -10,8 +10,13 @@ pub mod scene;
 pub mod texture;
 pub mod vertex;
 
-use color_eyre::eyre::Result;
-use std::{collections::HashMap, mem::ManuallyDrop, sync::Arc};
+use color_eyre::eyre::{eyre, Result};
+use std::{
+    collections::HashMap,
+    ffi::{CStr, CString},
+    mem::ManuallyDrop,
+    sync::Arc,
+};
 
 use ash::vk;
 use glam::{Mat4, Vec3};
@@ -294,16 +299,42 @@ impl Resources {
         };
 
         let gradient_mat = {
-            /*
-            let pipeline_layout = vk::PipelineLayoutCreateInfo::builder()
-                .set_layouts()
-            */
+            let pipeline_layout = {
+                let layouts = [*draw_image_desc_set_layout];
+                let layout_info = vk::PipelineLayoutCreateInfo::builder()
+                    .set_layouts(&layouts)
+                    .build();
+                unsafe { device.create_pipeline_layout(&layout_info, None)? }
+            };
             let gradient_shader = ComputeShader::new("gradient", device)?;
+            let name = CString::new("main")?;
+            let stage_info = vk::PipelineShaderStageCreateInfo::builder()
+                .stage(vk::ShaderStageFlags::COMPUTE)
+                .module(gradient_shader.shader_mod)
+                .name(&name)
+                .build();
+            let pipeline_info = vk::ComputePipelineCreateInfo::builder()
+                .layout(pipeline_layout)
+                .stage(stage_info)
+                .build();
+            let gradient_pipeline = unsafe {
+                match device.create_compute_pipelines(
+                    vk::PipelineCache::null(),
+                    &[pipeline_info],
+                    None,
+                ) {
+                    Ok(pipelines) => Ok(pipelines),
+                    Err(_) => Err(eyre!("Failed to create compute pipelines")),
+                }
+            }?[0];
+            gradient_shader.cleanup(device);
+            Material::new(gradient_pipeline, pipeline_layout)
         };
 
         let mut map = HashMap::new();
         map.insert("default-lit".into(), Arc::new(default_lit_mat));
         map.insert("textured-lit".into(), Arc::new(textured_lit_mat));
+        map.insert("gradient".into(), Arc::new(gradient_mat));
         Ok(map)
     }
 }

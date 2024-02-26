@@ -14,6 +14,16 @@ pub struct Material {
 }
 
 impl Material {
+    pub fn new(
+        pipeline: vk::Pipeline,
+        pipeline_layout: vk::PipelineLayout,
+    ) -> Self {
+        Self {
+            pipeline,
+            pipeline_layout,
+        }
+    }
+
     pub fn builder<'a>(
         vert_shader_mod: &vk::ShaderModule,
         frag_shader_mod: &vk::ShaderModule,
@@ -206,7 +216,7 @@ impl<'a> MaterialBuilder<'a> {
                 None,
             ) {
                 Ok(pipelines) => Ok(pipelines),
-                Err(_) => Err(eyre!("Failed to create graphics piplines")),
+                Err(_) => Err(eyre!("Failed to create graphics pipelines")),
             }
         }?;
 
