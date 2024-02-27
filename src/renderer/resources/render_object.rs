@@ -1,5 +1,5 @@
 use ash::vk;
-use color_eyre::eyre::{eyre, OptionExt, Result};
+use color_eyre::eyre::{OptionExt, Result};
 use std::sync::Arc;
 
 use glam::{Mat4, Vec4};

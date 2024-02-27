@@ -1,4 +1,3 @@
-// Asset initialization
 pub mod camera;
 pub mod frame;
 pub mod mesh;
@@ -11,15 +10,10 @@ pub mod texture;
 pub mod vertex;
 
 use color_eyre::eyre::{eyre, Result};
-use std::{
-    collections::HashMap,
-    ffi::{CStr, CString},
-    mem::ManuallyDrop,
-    sync::Arc,
-};
+use std::{collections::HashMap, ffi::CString, mem::ManuallyDrop, sync::Arc};
 
 use ash::vk;
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec3, Vec4};
 use gpu_allocator::vulkan::Allocator;
 use mesh::Mesh;
 use renderpass::Renderpass;
@@ -32,20 +26,23 @@ use self::{
 use super::{
     core::Core,
     descriptors::DescriptorAllocator,
-    material::{Material, MaterialBuilder},
-    shader::{ComputePushConstants, ComputeShader, Shader},
+    material::Material,
+    shader::{ComputeEffect, ComputePushConstants, ComputeShader, Shader},
     swapchain::Swapchain,
-    vkinit, UploadContext,
+    upload_context::UploadContext,
+    vkinit,
 };
 
 pub struct Resources {
-    pub renderpasses: Vec<Renderpass>,
+    pub renderpass: Renderpass,
 
-    pub materials: HashMap<String, Arc<Material>>,
-    pub models: HashMap<String, Arc<Model>>,
-    pub textures: HashMap<String, Arc<Texture>>,
+    materials: HashMap<String, Arc<Material>>,
+    models: HashMap<String, Arc<Model>>,
+    textures: HashMap<String, Arc<Texture>>,
 
     pub render_objs: ManuallyDrop<Vec<RenderObject>>,
+    pub background_effects: Vec<ComputeEffect>,
+    pub current_background_effects_index: usize,
 }
 
 impl Resources {
@@ -59,11 +56,13 @@ impl Resources {
 
         let renderpass = Renderpass::new(&core.device, swapchain)?;
 
+        let mut background_effects = Vec::new();
         let materials = Self::create_materials(
             &core.device,
             swapchain,
             &renderpass,
             desc_allocator,
+            &mut background_effects,
         )?;
 
         let models = {
@@ -170,11 +169,13 @@ impl Resources {
         };
 
         Ok(Self {
-            renderpasses: vec![renderpass],
+            renderpass,
             materials,
             models,
             textures,
             render_objs: ManuallyDrop::new(render_objs),
+            background_effects,
+            current_background_effects_index: 0,
         })
     }
 
@@ -207,9 +208,7 @@ impl Resources {
             }
         }
 
-        for renderpass in self.renderpasses {
-            renderpass.cleanup(device);
-        }
+        self.renderpass.cleanup(device);
     }
 
     fn create_materials(
@@ -217,6 +216,7 @@ impl Resources {
         swapchain: &Swapchain,
         renderpass: &Renderpass,
         desc_allocator: &DescriptorAllocator,
+        background_fx: &mut Vec<ComputeEffect>,
     ) -> Result<HashMap<String, Arc<Material>>> {
         let global_desc_set_layout = desc_allocator.get_layout("global")?;
         let object_desc_set_layout = desc_allocator.get_layout("object")?;
@@ -336,11 +336,71 @@ impl Resources {
             gradient_shader.cleanup(device);
             Material::new(gradient_pipeline, pipeline_layout)
         };
+        let gradient_comp_fx = ComputeEffect {
+            name: "gradient".into(),
+            material: gradient_mat.clone(),
+            data: ComputePushConstants {
+                data1: Vec4::new(1.0, 0.0, 0.0, 1.0),
+                data2: Vec4::new(0.0, 0.0, 1.0, 1.0),
+                ..Default::default()
+            },
+        };
+
+        let sky_mat = {
+            let pipeline_layout = {
+                let layouts = [*draw_image_desc_set_layout];
+                let push_constant_ranges = [vk::PushConstantRange {
+                    stage_flags: vk::ShaderStageFlags::COMPUTE,
+                    offset: 0,
+                    size: std::mem::size_of::<ComputePushConstants>() as u32,
+                }];
+                let layout_info = vk::PipelineLayoutCreateInfo::builder()
+                    .set_layouts(&layouts)
+                    .push_constant_ranges(&push_constant_ranges)
+                    .build();
+                unsafe { device.create_pipeline_layout(&layout_info, None)? }
+            };
+            let sky_shader = ComputeShader::new("sky", device)?;
+            let name = CString::new("main")?;
+            let stage_info = vk::PipelineShaderStageCreateInfo::builder()
+                .stage(vk::ShaderStageFlags::COMPUTE)
+                .module(sky_shader.shader_mod)
+                .name(&name)
+                .build();
+            let pipeline_info = vk::ComputePipelineCreateInfo::builder()
+                .layout(pipeline_layout)
+                .stage(stage_info)
+                .build();
+            let sky_pipeline = unsafe {
+                match device.create_compute_pipelines(
+                    vk::PipelineCache::null(),
+                    &[pipeline_info],
+                    None,
+                ) {
+                    Ok(pipelines) => Ok(pipelines),
+                    Err(_) => Err(eyre!("Failed to create compute pipelines")),
+                }
+            }?[0];
+            sky_shader.cleanup(device);
+            Material::new(sky_pipeline, pipeline_layout)
+        };
+        let sky_comp_fx = ComputeEffect {
+            name: "sky".into(),
+            material: sky_mat.clone(),
+            data: ComputePushConstants {
+                data1: Vec4::new(0.1, 0.2, 0.4, 0.97),
+                ..Default::default()
+            },
+        };
+
+        background_fx.push(gradient_comp_fx);
+        background_fx.push(sky_comp_fx);
 
         let mut map = HashMap::new();
         map.insert("default-lit".into(), Arc::new(default_lit_mat));
         map.insert("textured-lit".into(), Arc::new(textured_lit_mat));
         map.insert("gradient".into(), Arc::new(gradient_mat));
+        map.insert("sky".into(), Arc::new(sky_mat));
         Ok(map)
     }
 }

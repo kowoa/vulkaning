@@ -7,7 +7,7 @@ use crate::renderer::{swapchain::Swapchain, vkinit};
 
 use super::resources::vertex::VertexInputDescription;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub struct Material {
     pub pipeline: vk::Pipeline,
     pub pipeline_layout: vk::PipelineLayout,

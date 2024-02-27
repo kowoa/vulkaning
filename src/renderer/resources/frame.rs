@@ -4,7 +4,7 @@ use gpu_allocator::vulkan::Allocator;
 
 use crate::renderer::{
     buffer::AllocatedBuffer, core::Core, descriptors::DescriptorAllocator,
-    vkinit, MAX_OBJECTS,
+    inner::MAX_OBJECTS, vkinit,
 };
 
 use super::{

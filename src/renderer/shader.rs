@@ -4,6 +4,8 @@ use color_eyre::eyre::{Context, OptionExt, Result};
 use glam::Vec4;
 use std::{fs::File, io::Read, path::PathBuf};
 
+use super::material::Material;
+
 pub static mut SHADERBUILD_DIR: Option<String> = None;
 
 pub struct Shader {
@@ -74,6 +76,12 @@ impl Shader {
     }
 }
 
+pub struct ComputeEffect {
+    pub name: String,
+    pub material: Material,
+    pub data: ComputePushConstants,
+}
+
 #[repr(C)]
 #[derive(Pod, Zeroable, Clone, Copy)]
 pub struct ComputePushConstants {
@@ -81,6 +89,17 @@ pub struct ComputePushConstants {
     pub data2: Vec4,
     pub data3: Vec4,
     pub data4: Vec4,
+}
+
+impl Default for ComputePushConstants {
+    fn default() -> Self {
+        Self {
+            data1: Vec4::ZERO,
+            data2: Vec4::ZERO,
+            data3: Vec4::ZERO,
+            data4: Vec4::ZERO,
+        }
+    }
 }
 
 pub struct ComputeShader {
