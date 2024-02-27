@@ -64,10 +64,18 @@ impl egui_ash::App for EguiApp {
         egui::Window::new("top left window")
             .id(egui::Id::new("top_left_window"))
             .resizable(false)
-            .interactable(false)
+            .interactable(true)
             .title_bar(false)
             .show(ctx, |ui| {
                 ui.label(format!("FPS: {:.2}", fps));
+
+                // Slider for changing background
+                ui.label("Background:");
+                let mut bg_index = self.renderer.get_background_index();
+                let response = ui.add(egui::Slider::new(&mut bg_index, 0..=1));
+                if response.changed() {
+                    self.renderer.set_background_index(bg_index);
+                }
             });
         /*
         egui::SidePanel::left("my_side_panel").show(ctx, |ui| {

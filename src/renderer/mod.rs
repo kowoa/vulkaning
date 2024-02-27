@@ -97,4 +97,24 @@ impl Renderer {
             inner.cleanup();
         }
     }
+
+    pub fn get_background_index(&self) -> u32 {
+        self.inner
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .resources
+            .current_background_effects_index as u32
+    }
+
+    pub fn set_background_index(&mut self, new_index: u32) {
+        self.inner
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .resources
+            .current_background_effects_index = new_index as usize;
+    }
 }
