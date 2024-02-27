@@ -430,7 +430,7 @@ impl RendererInner {
             unsafe {
                 self.swapchain
                     .swapchain_loader
-                    .queue_present(self.core.graphics_queue, &present_info)?;
+                    .queue_present(self.core.present_queue, &present_info)?;
             }
         }
 
