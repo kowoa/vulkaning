@@ -61,6 +61,7 @@ impl Resources {
         let mut background_effects = Vec::new();
         let materials = Self::create_materials(
             &core.device,
+            &swapchain,
             &renderpass,
             desc_allocator,
             &mut background_effects,
@@ -215,6 +216,7 @@ impl Resources {
 
     fn create_materials(
         device: &ash::Device,
+        swapchain: &Swapchain,
         renderpass: &Renderpass,
         desc_allocator: &DescriptorAllocator,
         background_fx: &mut Vec<ComputeEffect>,
@@ -256,6 +258,7 @@ impl Resources {
                 .shader(default_lit_shader)
                 .vertex_input(Vertex::get_vertex_desc())
                 .color_attachment_format(draw_image.format)
+                .depth_attachment_format(swapchain.depth_image.format)
                 .build(renderpass.renderpass)?
         };
 
@@ -287,6 +290,7 @@ impl Resources {
                 .shader(textured_lit_shader)
                 .vertex_input(Vertex::get_vertex_desc())
                 .color_attachment_format(draw_image.format)
+                .depth_attachment_format(swapchain.depth_image.format)
                 .build(renderpass.renderpass)?
         };
 

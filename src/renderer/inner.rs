@@ -292,6 +292,32 @@ impl RendererInner {
             }
         }
 
+        // Set dynamic viewport and scissor
+        {
+            let viewport = vk::Viewport::builder()
+                .x(0.0)
+                .y(0.0)
+                .width(self.draw_image.extent.width as f32)
+                .height(self.draw_image.extent.height as f32)
+                .min_depth(0.0)
+                .max_depth(1.0)
+                .build();
+            unsafe {
+                self.core.device.cmd_set_viewport(cmd, 0, &[viewport]);
+            }
+
+            let scissor = vk::Rect2D::builder()
+                .offset(vk::Offset2D { x: 0, y: 0 })
+                .extent(vk::Extent2D {
+                    width: self.draw_image.extent.width,
+                    height: self.draw_image.extent.height,
+                })
+                .build();
+            unsafe {
+                self.core.device.cmd_set_scissor(cmd, 0, &[scissor]);
+            }
+        }
+
         // Operations related to the draw image
         {
             // Clear the draw image with a background color
