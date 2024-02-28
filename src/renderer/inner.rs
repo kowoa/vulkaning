@@ -211,7 +211,97 @@ impl RendererInner {
         }
     }
 
-    // TODO: Split drawing into a draw_background and draw_geometry stage
+    fn draw_geometry(&mut self, cmd: vk::CommandBuffer) -> Result<()> {
+        self.draw_image.transition_layout(
+            cmd,
+            vk::ImageLayout::GENERAL,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            &self.core.device,
+        );
+
+        let color_attachments = [vk::RenderingAttachmentInfo::builder()
+            .image_view(self.draw_image.view)
+            .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .load_op(vk::AttachmentLoadOp::LOAD)
+            .store_op(vk::AttachmentStoreOp::STORE)
+            .build()];
+
+        let depth_clear = vk::ClearValue {
+            depth_stencil: vk::ClearDepthStencilValue {
+                depth: 1.0,
+                stencil: 0,
+            },
+        };
+        let depth_attachment = vk::RenderingAttachmentInfo::builder()
+            .image_view(self.swapchain.depth_image.view)
+            .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::STORE)
+            .clear_value(depth_clear)
+            .build();
+
+        let rendering_info = vk::RenderingInfo::builder()
+            .render_area(vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent: vk::Extent2D {
+                    width: self.draw_image.extent.width,
+                    height: self.draw_image.extent.height,
+                },
+            })
+            .layer_count(1)
+            .color_attachments(&color_attachments)
+            .depth_attachment(&depth_attachment)
+            .build();
+
+        // Begin a render pass connected to the draw image
+        unsafe {
+            self.core.device.cmd_begin_rendering(cmd, &rendering_info);
+        }
+
+        // Set dynamic viewport and scissor
+        {
+            let viewport = vk::Viewport::builder()
+                .x(0.0)
+                .y(0.0)
+                .width(self.draw_image.extent.width as f32)
+                .height(self.draw_image.extent.height as f32)
+                .min_depth(0.0)
+                .max_depth(1.0)
+                .build();
+            unsafe {
+                self.core.device.cmd_set_viewport(cmd, 0, &[viewport]);
+            }
+
+            let scissor = vk::Rect2D::builder()
+                .offset(vk::Offset2D { x: 0, y: 0 })
+                .extent(vk::Extent2D {
+                    width: self.draw_image.extent.width,
+                    height: self.draw_image.extent.height,
+                })
+                .build();
+            unsafe {
+                self.core.device.cmd_set_scissor(cmd, 0, &[scissor]);
+            }
+        }
+
+        // RENDERING COMMANDS START
+
+        self.draw_render_objects(
+            self.draw_image.extent.width,
+            self.draw_image.extent.height,
+            0,
+            self.resources.render_objs.len(),
+        )?;
+
+        // RENDERING COMMANDS END
+        //
+        // End the renderpass
+        unsafe {
+            self.core.device.cmd_end_rendering(cmd);
+        }
+
+        Ok(())
+    }
 
     /// Returns the swapchain image index draw into
     pub fn draw_frame(
@@ -294,11 +384,11 @@ impl RendererInner {
             }
         }
 
-        // Operations related to the draw image
-        {
-            // Clear the draw image with a background color
-            self.draw_background(cmd);
+        self.draw_background(cmd);
+        self.draw_geometry(cmd)?;
 
+        // Copy draw image to swapchain image
+        {
             let device = &self.core.device;
             let swapchain_image =
                 self.swapchain.images[swapchain_image_index as usize];
@@ -306,7 +396,7 @@ impl RendererInner {
             // Transition the draw image and swapchain image into their correct transfer layouts
             self.draw_image.transition_layout(
                 cmd,
-                vk::ImageLayout::GENERAL,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                 vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                 device,
             );
@@ -326,92 +416,18 @@ impl RendererInner {
                 self.swapchain.image_extent,
                 device,
             );
+
+            // Transition swapchain image to COLOR_ATTACHMENT_OPTIMAL for use with egui
+            vkutils::transition_image_layout(
+                cmd,
+                swapchain_image,
+                vk::ImageAspectFlags::COLOR,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                device,
+            );
         }
 
-        {
-            let clear_values = {
-                // Make clear color from frame number
-                let flash = (self.frame_number % 100) as f32 / 100.0;
-                let clear = vk::ClearValue {
-                    color: vk::ClearColorValue {
-                        float32: [0.0, 0.0, flash, 1.0],
-                    },
-                };
-
-                // Make clear value for depth buffer
-                let depth_clear = vk::ClearValue {
-                    depth_stencil: vk::ClearDepthStencilValue {
-                        depth: 1.0,
-                        stencil: 0,
-                    },
-                };
-
-                [clear, depth_clear]
-            };
-
-            // Start the main renderpass
-            let rp = &self.resources.renderpass;
-            let rp_begin_info = vk::RenderPassBeginInfo {
-                render_pass: rp.renderpass,
-                render_area: vk::Rect2D {
-                    offset: vk::Offset2D { x: 0, y: 0 },
-                    extent: vk::Extent2D { width, height },
-                },
-                framebuffer: rp.framebuffers[swapchain_image_index as usize],
-                clear_value_count: clear_values.len() as u32,
-                p_clear_values: clear_values.as_ptr(),
-                ..Default::default()
-            };
-            unsafe {
-                self.core.device.cmd_begin_render_pass(
-                    cmd,
-                    &rp_begin_info,
-                    vk::SubpassContents::INLINE,
-                );
-            }
-        };
-
-        // Set dynamic viewport and scissor
-        {
-            let viewport = vk::Viewport::builder()
-                .x(0.0)
-                .y(0.0)
-                .width(self.draw_image.extent.width as f32)
-                .height(self.draw_image.extent.height as f32)
-                .min_depth(0.0)
-                .max_depth(1.0)
-                .build();
-            unsafe {
-                self.core.device.cmd_set_viewport(cmd, 0, &[viewport]);
-            }
-
-            let scissor = vk::Rect2D::builder()
-                .offset(vk::Offset2D { x: 0, y: 0 })
-                .extent(vk::Extent2D {
-                    width: self.draw_image.extent.width,
-                    height: self.draw_image.extent.height,
-                })
-                .build();
-            unsafe {
-                self.core.device.cmd_set_scissor(cmd, 0, &[scissor]);
-            }
-        }
-
-        // RENDERING COMMANDS START
-
-        self.draw_render_objects(
-            width,
-            height,
-            0,
-            self.resources.render_objs.len(),
-        )?;
-
-        // RENDERING COMMANDS END
-
-        unsafe {
-            // Finalize the main renderpass
-            self.core.device.cmd_end_render_pass(cmd);
-        }
         // Record egui commands
         if let Some(egui_cmd) = egui_cmd {
             egui_cmd.record(cmd, swapchain_image_index as usize);

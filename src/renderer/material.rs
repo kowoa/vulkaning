@@ -188,7 +188,7 @@ impl<'a> MaterialBuilder<'a> {
         self
     }
 
-    pub fn build(mut self, renderpass: vk::RenderPass) -> Result<Material> {
+    pub fn build(mut self) -> Result<Material> {
         let device = self.device;
 
         let shader = self
@@ -247,8 +247,6 @@ impl<'a> MaterialBuilder<'a> {
             .color_blend_state(&color_blend_info)
             .depth_stencil_state(&self.depth_stencil)
             .dynamic_state(&dynamic_info)
-            .render_pass(renderpass)
-            .subpass(0)
             .build();
 
         let graphics_pipelines = unsafe {

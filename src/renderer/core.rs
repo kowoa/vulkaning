@@ -175,7 +175,9 @@ impl Core {
 
     fn create_required_device_extensions() -> Vec<CString> {
         #[allow(unused_mut)]
-        let mut exts = Vec::new();
+        let mut exts =
+            vec![ash::extensions::khr::DynamicRendering::name().to_owned()];
+        log::info!("{:#?}", exts);
         #[cfg(target_os = "macos")]
         exts.push(vk::KhrPortabilitySubsetFn::name().to_owned());
         exts
@@ -183,7 +185,7 @@ impl Core {
 
     fn create_instance(
         entry: &ash::Entry,
-        req_instance_exts: &Vec<CString>,
+        req_instance_exts: &[CString],
     ) -> Result<ash::Instance> {
         if Self::ENABLE_VALIDATION_LAYERS {
             Self::check_required_validation_layers(entry)?;
@@ -343,9 +345,15 @@ impl Core {
             .map(|ext| ext.as_ptr())
             .collect::<Vec<_>>();
 
+        // Enable dynamic rendering
+        let dyn_rendering_feats =
+            [vk::PhysicalDeviceDynamicRenderingFeaturesKHR::builder()
+                .dynamic_rendering(true)
+                .build()];
         // Enable synchronization2 feature
         let sync2_feats = [vk::PhysicalDeviceSynchronization2Features {
             synchronization2: vk::TRUE,
+            p_next: dyn_rendering_feats.as_ptr() as *mut c_void,
             ..Default::default()
         }];
         // Enable buffer device address

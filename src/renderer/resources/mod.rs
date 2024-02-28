@@ -35,8 +35,6 @@ use super::{
 };
 
 pub struct Resources {
-    pub renderpass: Renderpass,
-
     materials: HashMap<String, Arc<Material>>,
     models: HashMap<String, Arc<Model>>,
     textures: HashMap<String, Arc<Texture>>,
@@ -56,13 +54,10 @@ impl Resources {
     ) -> Result<Self> {
         let mut allocator = core.get_allocator()?;
 
-        let renderpass = Renderpass::new(&core.device, swapchain)?;
-
         let mut background_effects = Vec::new();
         let materials = Self::create_materials(
             &core.device,
-            &swapchain,
-            &renderpass,
+            swapchain,
             desc_allocator,
             &mut background_effects,
             draw_image,
@@ -172,7 +167,6 @@ impl Resources {
         };
 
         Ok(Self {
-            renderpass,
             materials,
             models,
             textures,
@@ -210,14 +204,11 @@ impl Resources {
                 texture.cleanup(device, allocator);
             }
         }
-
-        self.renderpass.cleanup(device);
     }
 
     fn create_materials(
         device: &ash::Device,
         swapchain: &Swapchain,
-        renderpass: &Renderpass,
         desc_allocator: &DescriptorAllocator,
         background_fx: &mut Vec<ComputeEffect>,
         draw_image: &AllocatedImage,
@@ -259,7 +250,7 @@ impl Resources {
                 .vertex_input(Vertex::get_vertex_desc())
                 .color_attachment_format(draw_image.format)
                 .depth_attachment_format(swapchain.depth_image.format)
-                .build(renderpass.renderpass)?
+                .build()?
         };
 
         let textured_lit_mat = {
@@ -291,7 +282,7 @@ impl Resources {
                 .vertex_input(Vertex::get_vertex_desc())
                 .color_attachment_format(draw_image.format)
                 .depth_attachment_format(swapchain.depth_image.format)
-                .build(renderpass.renderpass)?
+                .build()?
         };
 
         let gradient_mat = {
