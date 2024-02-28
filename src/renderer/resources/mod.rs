@@ -26,6 +26,7 @@ use self::{
 use super::{
     core::Core,
     descriptors::DescriptorAllocator,
+    image::AllocatedImage,
     material::Material,
     shader::{ComputeEffect, ComputePushConstants, ComputeShader, Shader},
     swapchain::Swapchain,
@@ -51,6 +52,7 @@ impl Resources {
         swapchain: &Swapchain,
         upload_context: &UploadContext,
         desc_allocator: &mut DescriptorAllocator,
+        draw_image: &AllocatedImage,
     ) -> Result<Self> {
         let mut allocator = core.get_allocator()?;
 
@@ -59,10 +61,10 @@ impl Resources {
         let mut background_effects = Vec::new();
         let materials = Self::create_materials(
             &core.device,
-            swapchain,
             &renderpass,
             desc_allocator,
             &mut background_effects,
+            draw_image,
         )?;
 
         let models = {
@@ -213,10 +215,10 @@ impl Resources {
 
     fn create_materials(
         device: &ash::Device,
-        swapchain: &Swapchain,
         renderpass: &Renderpass,
         desc_allocator: &DescriptorAllocator,
         background_fx: &mut Vec<ComputeEffect>,
+        draw_image: &AllocatedImage,
     ) -> Result<HashMap<String, Arc<Material>>> {
         let global_desc_set_layout = desc_allocator.get_layout("global")?;
         let object_desc_set_layout = desc_allocator.get_layout("object")?;
@@ -249,17 +251,12 @@ impl Resources {
             };
 
             let default_lit_shader = Shader::new("default-lit", device)?;
-            let default_lit_mat = Material::builder(
-                &default_lit_shader.vert_shader_mod,
-                &default_lit_shader.frag_shader_mod,
-                device,
-                swapchain,
-            )
-            .pipeline_layout(pipeline_layout)
-            .vertex_input(Vertex::get_vertex_desc())
-            .build(device, renderpass.renderpass)?;
-            default_lit_shader.cleanup(device);
-            default_lit_mat
+            Material::builder(device)
+                .pipeline_layout(pipeline_layout)
+                .shader(default_lit_shader)
+                .vertex_input(Vertex::get_vertex_desc())
+                .color_attachment_format(draw_image.format)
+                .build(renderpass.renderpass)?
         };
 
         let textured_lit_mat = {
@@ -285,17 +282,12 @@ impl Resources {
                 unsafe { device.create_pipeline_layout(&layout_info, None)? }
             };
             let textured_lit_shader = Shader::new("textured-lit", device)?;
-            let textured_lit_mat = Material::builder(
-                &textured_lit_shader.vert_shader_mod,
-                &textured_lit_shader.frag_shader_mod,
-                device,
-                swapchain,
-            )
-            .pipeline_layout(pipeline_layout)
-            .vertex_input(Vertex::get_vertex_desc())
-            .build(device, renderpass.renderpass)?;
-            textured_lit_shader.cleanup(device);
-            textured_lit_mat
+            Material::builder(device)
+                .pipeline_layout(pipeline_layout)
+                .shader(textured_lit_shader)
+                .vertex_input(Vertex::get_vertex_desc())
+                .color_attachment_format(draw_image.format)
+                .build(renderpass.renderpass)?
         };
 
         let gradient_mat = {

@@ -1,12 +1,18 @@
 use ash::vk;
 use bytemuck::{offset_of, Pod, Zeroable};
-use glam::{Vec3, Vec2};
+use glam::{Vec2, Vec3};
 
 #[derive(Debug)]
 pub struct VertexInputDescription {
     pub bindings: Vec<vk::VertexInputBindingDescription>,
     pub attributes: Vec<vk::VertexInputAttributeDescription>,
     pub flags: vk::PipelineVertexInputStateCreateFlags,
+}
+
+impl Default for VertexInputDescription {
+    fn default() -> Self {
+        Vertex::get_vertex_desc()
+    }
 }
 
 #[derive(Copy, Clone, Pod, Zeroable, Default, Debug)]

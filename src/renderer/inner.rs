@@ -19,7 +19,6 @@ use super::{
     },
     image::{AllocatedImage, AllocatedImageCreateInfo},
     resources::{frame::Frame, Resources},
-    shader::ComputePushConstants,
     swapchain::Swapchain,
     upload_context::UploadContext,
     vkinit, vkutils,
@@ -85,6 +84,7 @@ impl RendererInner {
             &swapchain,
             &upload_context,
             &mut desc_allocator,
+            &draw_image,
         )?;
 
         let scene_camera_buffer = {
