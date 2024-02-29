@@ -2,6 +2,7 @@ mod vkinit;
 mod vkutils;
 
 mod buffer;
+mod camera;
 mod core;
 mod descriptors;
 mod frame;

@@ -9,10 +9,11 @@ use egui_ash::EguiCommand;
 use glam::{Mat4, Vec3, Vec4};
 use gpu_allocator::vulkan::Allocator;
 
-use crate::renderer::resources::{camera::GpuCameraData, scene::GpuSceneData};
+use crate::renderer::{camera::GpuCameraData, resources::scene::GpuSceneData};
 
 use super::{
     buffer::AllocatedBuffer,
+    camera::Camera,
     core::Core,
     descriptors::{
         DescriptorAllocator, DescriptorLayoutBuilder, PoolSizeRatio,
@@ -519,25 +520,13 @@ impl RendererInner {
 
         // Write into camera section of scene-camera uniform buffer
         {
+            let mut cam = Camera::default();
+            cam.set_position(Vec3::new(0.0, 10.0, 10.0));
+            cam.look_at(Vec3::ZERO);
+
             // Fill a GpuCameraData struct
-            let cam_pos = Vec3::new(0.0, 20.0, 0.0);
-            //let cam_pos = Vec3::new(0.0, 40.0, 0.0);
-            let view = Mat4::look_to_rh(
-                cam_pos,
-                Vec3::new(0.0, 0.0, -1.0),
-                Vec3::new(0.0, 1.0, 0.0),
-            );
-            let mut proj = Mat4::perspective_rh(
-                70.0,
-                width as f32 / height as f32,
-                0.1,
-                200.0,
-            );
-            proj.y_axis.y *= -1.0;
             let cam_data = GpuCameraData {
-                proj,
-                view,
-                viewproj: proj * view,
+                viewproj: cam.viewproj_mat(width as f32, height as f32),
             };
 
             // Copy GpuCameraData struct to buffer

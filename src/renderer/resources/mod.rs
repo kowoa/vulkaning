@@ -1,4 +1,3 @@
-pub mod camera;
 pub mod object;
 pub mod renderpass;
 pub mod scene;
@@ -161,7 +160,7 @@ impl Resources {
                 models["backpack"].clone(),
                 materials["textured-lit"].clone(),
                 Some(textures["backpack-diffuse"].clone()),
-                Mat4::from_translation(Vec3::new(0.0, 20.0, -20.0)),
+                Mat4::IDENTITY,
             );
             render_objs.push(backpack);
 
