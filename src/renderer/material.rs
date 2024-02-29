@@ -3,7 +3,7 @@ use std::ffi::CString;
 
 use ash::vk;
 
-use super::{resources::vertex::VertexInputDescription, shader::Shader};
+use super::{shader::Shader, vertex::VertexInputDescription};
 
 #[derive(PartialEq, Clone)]
 pub struct Material {

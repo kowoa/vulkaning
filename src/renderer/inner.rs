@@ -17,8 +17,9 @@ use super::{
     descriptors::{
         DescriptorAllocator, DescriptorLayoutBuilder, PoolSizeRatio,
     },
+    frame::Frame,
     image::{AllocatedImage, AllocatedImageCreateInfo},
-    resources::{frame::Frame, Resources},
+    resources::Resources,
     swapchain::Swapchain,
     upload_context::UploadContext,
     vkinit, vkutils,

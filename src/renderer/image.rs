@@ -8,8 +8,8 @@ use gpu_allocator::{
 };
 
 use super::{
-    buffer::AllocatedBuffer, resources::model::ASSETS_DIR,
-    upload_context::UploadContext, vkinit, vkutils,
+    buffer::AllocatedBuffer, upload_context::UploadContext, vkinit, vkutils,
+    ASSETS_DIR,
 };
 
 pub struct AllocatedImageCreateInfo {
@@ -150,11 +150,7 @@ impl AllocatedImage {
                 desc_set,
             };
 
-            Self::new(
-                &create_info,
-                device,
-                allocator,
-            )?
+            Self::new(&create_info, device, allocator)?
         };
 
         let _ = upload_context.immediate_submit(

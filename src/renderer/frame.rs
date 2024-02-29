@@ -7,7 +7,7 @@ use crate::renderer::{
     inner::MAX_OBJECTS, vkinit,
 };
 
-use super::{
+use super::resources::{
     camera::GpuCameraData, object::GpuObjectData, scene::GpuSceneData,
 };
 

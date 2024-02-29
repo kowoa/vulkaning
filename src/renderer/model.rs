@@ -6,13 +6,11 @@ use glam::{Vec2, Vec3};
 use gpu_allocator::vulkan::Allocator;
 
 use crate::renderer::{
-    buffer::AllocatedBuffer, resources::vertex::Vertex,
-    upload_context::UploadContext,
+    buffer::AllocatedBuffer, upload_context::UploadContext, vertex::Vertex,
+    ASSETS_DIR,
 };
 
 use super::mesh::Mesh;
-
-pub static mut ASSETS_DIR: Option<String> = None;
 
 #[derive(Default)]
 pub struct Model {

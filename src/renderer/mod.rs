@@ -4,14 +4,20 @@ mod vkutils;
 mod buffer;
 mod core;
 mod descriptors;
+mod frame;
 mod image;
 mod inner;
 mod material;
-pub mod queue_family_indices;
-pub mod resources;
-pub mod shader;
+mod mesh;
+mod model;
+mod queue_family_indices;
+mod render_object;
+mod resources;
+mod shader;
 mod swapchain;
+mod texture;
 mod upload_context;
+mod vertex;
 
 use color_eyre::eyre::{eyre, Result};
 use egui_ash::{AshRenderState, EguiCommand};
@@ -22,6 +28,9 @@ use std::{
 };
 
 use self::inner::RendererInner;
+
+pub static mut ASSETS_DIR: Option<String> = None;
+pub static mut SHADERBUILD_DIR: Option<String> = None;
 
 #[derive(Clone)]
 pub struct Renderer {

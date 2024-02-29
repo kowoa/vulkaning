@@ -1,13 +1,7 @@
 pub mod camera;
-pub mod frame;
-pub mod mesh;
-pub mod model;
 pub mod object;
-pub mod render_object;
 pub mod renderpass;
 pub mod scene;
-pub mod texture;
-pub mod vertex;
 
 use color_eyre::eyre::{eyre, Result};
 use std::{collections::HashMap, ffi::CString, mem::ManuallyDrop, sync::Arc};
@@ -15,22 +9,20 @@ use std::{collections::HashMap, ffi::CString, mem::ManuallyDrop, sync::Arc};
 use ash::vk;
 use glam::{Mat4, Vec3, Vec4};
 use gpu_allocator::vulkan::Allocator;
-use mesh::Mesh;
-use renderpass::Renderpass;
-
-use self::{
-    mesh::MeshPushConstants, model::Model, render_object::RenderObject,
-    texture::Texture, vertex::Vertex,
-};
 
 use super::{
     core::Core,
     descriptors::DescriptorAllocator,
     image::AllocatedImage,
     material::Material,
+    mesh::{Mesh, MeshPushConstants},
+    model::Model,
+    render_object::RenderObject,
     shader::{ComputeEffect, ComputePushConstants, ComputeShader, Shader},
     swapchain::Swapchain,
+    texture::Texture,
     upload_context::UploadContext,
+    vertex::Vertex,
     vkinit,
 };
 
@@ -126,7 +118,7 @@ impl Resources {
                 None,
                 Mat4::from_translation(Vec3::new(0.0, 20.0, -20.0)),
             );
-            render_objs.push(monkey);
+            //render_objs.push(monkey);
 
             /*
             for x in -20..=20 {
@@ -152,7 +144,7 @@ impl Resources {
                 Some(textures["empire-diffuse"].clone()),
                 Mat4::IDENTITY,
             );
-            //render_objs.push(empire);
+            render_objs.push(empire);
 
             /*
             let backpack = RenderObject::new(

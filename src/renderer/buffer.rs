@@ -1,17 +1,8 @@
-use std::{
-    path::PathBuf,
-    sync::{Arc, MutexGuard},
-};
-
 use ash::vk;
-use color_eyre::eyre::{OptionExt, Result};
+use color_eyre::eyre::Result;
 use gpu_allocator::{
     vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator},
     MemoryLocation,
-};
-
-use super::{
-    resources::model::ASSETS_DIR, upload_context::UploadContext, vkinit,
 };
 
 #[derive(Debug)]
@@ -92,4 +83,3 @@ impl AllocatedBuffer {
         }
     }
 }
-

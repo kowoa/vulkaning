@@ -4,11 +4,12 @@ use std::sync::Arc;
 
 use glam::{Mat4, Vec4};
 
-use crate::renderer::{buffer::AllocatedBuffer, material::Material};
-
-use super::{
-    frame::Frame, mesh::MeshPushConstants, model::Model, texture::Texture,
+use crate::renderer::{
+    buffer::AllocatedBuffer, material::Material, mesh::MeshPushConstants,
+    model::Model,
 };
+
+use super::{frame::Frame, texture::Texture};
 
 pub struct RenderObject {
     pub model: Arc<Model>,

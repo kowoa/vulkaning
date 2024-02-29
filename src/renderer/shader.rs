@@ -4,9 +4,7 @@ use color_eyre::eyre::{Context, OptionExt, Result};
 use glam::Vec4;
 use std::{fs::File, io::Read, path::PathBuf};
 
-use super::material::Material;
-
-pub static mut SHADERBUILD_DIR: Option<String> = None;
+use super::{material::Material, SHADERBUILD_DIR};
 
 pub struct Shader {
     pub vert_shader_mod: vk::ShaderModule,

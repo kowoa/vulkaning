@@ -1,6 +1,6 @@
 #[allow(unused_imports)]
 use color_eyre::eyre::{eyre, Result};
-use renderer::{resources::model::ASSETS_DIR, shader::SHADERBUILD_DIR};
+use renderer::{ASSETS_DIR, SHADERBUILD_DIR};
 use std::process::ExitCode;
 
 mod egui_app;
