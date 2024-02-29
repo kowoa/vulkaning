@@ -6,12 +6,12 @@ use std::{fs::File, io::Read, path::PathBuf};
 
 use super::{material::Material, SHADERBUILD_DIR};
 
-pub struct Shader {
+pub struct GraphicsShader {
     pub vert_shader_mod: vk::ShaderModule,
     pub frag_shader_mod: vk::ShaderModule,
 }
 
-impl Shader {
+impl GraphicsShader {
     pub fn new(shadername: &str, device: &ash::Device) -> Result<Self> {
         let shaderbuild_dir = unsafe {
             SHADERBUILD_DIR
@@ -40,29 +40,13 @@ impl Shader {
             format!("Failed to read file: {:#?}", frag_filepath)
         })?;
 
-        let vert_shader_mod = Self::create_shader_module(device, &vert_spv)?;
-        let frag_shader_mod = Self::create_shader_module(device, &frag_spv)?;
+        let vert_shader_mod = create_shader_module(device, &vert_spv)?;
+        let frag_shader_mod = create_shader_module(device, &frag_spv)?;
 
         Ok(Self {
             vert_shader_mod,
             frag_shader_mod,
         })
-    }
-
-    fn create_shader_module(
-        device: &ash::Device,
-        code: &[u8],
-    ) -> Result<vk::ShaderModule> {
-        let create_info = vk::ShaderModuleCreateInfo {
-            code_size: code.len(),
-            p_code: code.as_ptr() as *const u32,
-            ..Default::default()
-        };
-
-        let shader_module =
-            unsafe { device.create_shader_module(&create_info, None)? };
-
-        Ok(shader_module)
     }
 
     pub fn cleanup(self, device: &ash::Device) {
@@ -119,7 +103,7 @@ impl ComputeShader {
         let mut spv = Vec::new();
         file.read_to_end(&mut spv)
             .with_context(|| format!("Failed to read file: {:#?}", filepath))?;
-        let shader_mod = Shader::create_shader_module(device, &spv)?;
+        let shader_mod = create_shader_module(device, &spv)?;
 
         Ok(Self { shader_mod })
     }
@@ -129,4 +113,20 @@ impl ComputeShader {
             device.destroy_shader_module(self.shader_mod, None);
         }
     }
+}
+
+fn create_shader_module(
+    device: &ash::Device,
+    code: &[u8],
+) -> Result<vk::ShaderModule> {
+    let create_info = vk::ShaderModuleCreateInfo {
+        code_size: code.len(),
+        p_code: code.as_ptr() as *const u32,
+        ..Default::default()
+    };
+
+    let shader_module =
+        unsafe { device.create_shader_module(&create_info, None)? };
+
+    Ok(shader_module)
 }

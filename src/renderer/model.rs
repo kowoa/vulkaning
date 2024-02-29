@@ -35,6 +35,44 @@ impl Model {
         }
     }
 
+    pub fn draw(
+        &self,
+        cmd: vk::CommandBuffer,
+        device: &ash::Device,
+    ) -> Result<()> {
+        self.bind_vertex_buffer(cmd, device)?;
+
+        // Draw this render object's model
+        let vertex_count = self
+            .meshes
+            .iter()
+            .map(|mesh| mesh.vertices.len() as u32)
+            .sum();
+        unsafe {
+            device.cmd_draw(cmd, vertex_count, 1, 0, 0);
+        }
+
+        Ok(())
+    }
+
+    fn bind_vertex_buffer(
+        &self,
+        cmd: vk::CommandBuffer,
+        device: &ash::Device,
+    ) -> Result<()> {
+        let buffer = self
+            .vertex_buffer
+            .as_ref()
+            .ok_or_eyre("No vertex buffer found")?;
+
+        // Bind vertex buffer
+        unsafe {
+            device.cmd_bind_vertex_buffers(cmd, 0, &[buffer.buffer], &[0]);
+        }
+
+        Ok(())
+    }
+
     /*
     pub fn load_from_gltf(filename: &str) -> Result<Self> {
         let filepath = unsafe {

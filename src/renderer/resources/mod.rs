@@ -17,7 +17,9 @@ use super::{
     mesh::{Mesh, MeshPushConstants},
     model::Model,
     render_object::RenderObject,
-    shader::{ComputeEffect, ComputePushConstants, ComputeShader, Shader},
+    shader::{
+        ComputeEffect, ComputePushConstants, ComputeShader, GraphicsShader,
+    },
     swapchain::Swapchain,
     texture::Texture,
     upload_context::UploadContext,
@@ -26,8 +28,8 @@ use super::{
 };
 
 pub struct Resources {
-    materials: HashMap<String, Arc<Material>>,
-    models: HashMap<String, Arc<Model>>,
+    pub materials: HashMap<String, Arc<Material>>,
+    pub models: HashMap<String, Arc<Model>>,
     textures: HashMap<String, Arc<Texture>>,
 
     pub render_objs: ManuallyDrop<Vec<RenderObject>>,
@@ -244,8 +246,9 @@ impl Resources {
                 unsafe { device.create_pipeline_layout(&layout_info, None)? }
             };
 
-            let default_lit_shader = Shader::new("default-lit", device)?;
-            Material::builder(device)
+            let default_lit_shader =
+                GraphicsShader::new("default-lit", device)?;
+            Material::builder_graphics(device)
                 .pipeline_layout(pipeline_layout)
                 .shader(default_lit_shader)
                 .vertex_input(Vertex::get_vertex_desc())
@@ -276,8 +279,9 @@ impl Resources {
                 // Create pipeline layout
                 unsafe { device.create_pipeline_layout(&layout_info, None)? }
             };
-            let textured_lit_shader = Shader::new("textured-lit", device)?;
-            Material::builder(device)
+            let textured_lit_shader =
+                GraphicsShader::new("textured-lit", device)?;
+            Material::builder_graphics(device)
                 .pipeline_layout(pipeline_layout)
                 .shader(textured_lit_shader)
                 .vertex_input(Vertex::get_vertex_desc())
@@ -301,28 +305,10 @@ impl Resources {
                 unsafe { device.create_pipeline_layout(&layout_info, None)? }
             };
             let gradient_shader = ComputeShader::new("gradient-color", device)?;
-            let name = CString::new("main")?;
-            let stage_info = vk::PipelineShaderStageCreateInfo::builder()
-                .stage(vk::ShaderStageFlags::COMPUTE)
-                .module(gradient_shader.shader_mod)
-                .name(&name)
-                .build();
-            let pipeline_info = vk::ComputePipelineCreateInfo::builder()
-                .layout(pipeline_layout)
-                .stage(stage_info)
-                .build();
-            let gradient_pipeline = unsafe {
-                match device.create_compute_pipelines(
-                    vk::PipelineCache::null(),
-                    &[pipeline_info],
-                    None,
-                ) {
-                    Ok(pipelines) => Ok(pipelines),
-                    Err(_) => Err(eyre!("Failed to create compute pipelines")),
-                }
-            }?[0];
-            gradient_shader.cleanup(device);
-            Material::new(gradient_pipeline, pipeline_layout)
+            Material::builder_compute(device)
+                .pipeline_layout(pipeline_layout)
+                .shader(gradient_shader)
+                .build()?
         };
         let gradient_comp_fx = ComputeEffect {
             name: "gradient".into(),
@@ -349,28 +335,10 @@ impl Resources {
                 unsafe { device.create_pipeline_layout(&layout_info, None)? }
             };
             let sky_shader = ComputeShader::new("sky", device)?;
-            let name = CString::new("main")?;
-            let stage_info = vk::PipelineShaderStageCreateInfo::builder()
-                .stage(vk::ShaderStageFlags::COMPUTE)
-                .module(sky_shader.shader_mod)
-                .name(&name)
-                .build();
-            let pipeline_info = vk::ComputePipelineCreateInfo::builder()
-                .layout(pipeline_layout)
-                .stage(stage_info)
-                .build();
-            let sky_pipeline = unsafe {
-                match device.create_compute_pipelines(
-                    vk::PipelineCache::null(),
-                    &[pipeline_info],
-                    None,
-                ) {
-                    Ok(pipelines) => Ok(pipelines),
-                    Err(_) => Err(eyre!("Failed to create compute pipelines")),
-                }
-            }?[0];
-            sky_shader.cleanup(device);
-            Material::new(sky_pipeline, pipeline_layout)
+            Material::builder_compute(device)
+                .pipeline_layout(pipeline_layout)
+                .shader(sky_shader)
+                .build()?
         };
         let sky_comp_fx = ComputeEffect {
             name: "sky".into(),

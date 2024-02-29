@@ -1,29 +1,31 @@
 use color_eyre::eyre::{eyre, OptionExt, Result};
-use std::ffi::CString;
+use std::{collections::HashMap, ffi::CString};
 
 use ash::vk;
 
-use super::{shader::Shader, vertex::VertexInputDescription};
+use super::{
+    shader::{ComputeShader, GraphicsShader},
+    vertex::VertexInputDescription,
+};
 
 #[derive(PartialEq, Clone)]
 pub struct Material {
-    pub pipeline: vk::Pipeline,
-    pub pipeline_layout: vk::PipelineLayout,
+    pipeline: vk::Pipeline,
+    pipeline_layout: vk::PipelineLayout,
+    pipeline_bind_point: vk::PipelineBindPoint,
 }
 
 impl Material {
-    pub fn new(
-        pipeline: vk::Pipeline,
-        pipeline_layout: vk::PipelineLayout,
-    ) -> Self {
-        Self {
-            pipeline,
-            pipeline_layout,
-        }
+    pub fn builder_graphics<'a>(
+        device: &'a ash::Device,
+    ) -> GraphicsMaterialBuilder<'a> {
+        GraphicsMaterialBuilder::new(device)
     }
 
-    pub fn builder<'a>(device: &'a ash::Device) -> MaterialBuilder<'a> {
-        MaterialBuilder::new(device)
+    pub fn builder_compute<'a>(
+        device: &'a ash::Device,
+    ) -> ComputeMaterialBuilder<'a> {
+        ComputeMaterialBuilder::new(device)
     }
 
     pub fn cleanup(self, device: &ash::Device) {
@@ -33,9 +35,57 @@ impl Material {
             device.destroy_pipeline(self.pipeline, None);
         }
     }
+
+    pub fn update_push_constants(
+        &self,
+        cmd: vk::CommandBuffer,
+        device: &ash::Device,
+        shader_stages: vk::ShaderStageFlags,
+        constants: &[u8],
+    ) {
+        unsafe {
+            device.cmd_push_constants(
+                cmd,
+                self.pipeline_layout,
+                shader_stages,
+                0,
+                constants,
+            );
+        }
+    }
+
+    pub fn bind_pipeline(&self, cmd: vk::CommandBuffer, device: &ash::Device) {
+        unsafe {
+            device.cmd_bind_pipeline(
+                cmd,
+                self.pipeline_bind_point,
+                self.pipeline,
+            );
+        }
+    }
+
+    pub fn bind_desc_sets(
+        &self,
+        cmd: vk::CommandBuffer,
+        device: &ash::Device,
+        set_number: u32,
+        desc_sets: &[vk::DescriptorSet],
+        dynamic_offsets: &[u32],
+    ) {
+        unsafe {
+            device.cmd_bind_descriptor_sets(
+                cmd,
+                self.pipeline_bind_point,
+                self.pipeline_layout,
+                set_number,
+                desc_sets,
+                dynamic_offsets,
+            );
+        }
+    }
 }
 
-pub struct MaterialBuilder<'a> {
+pub struct GraphicsMaterialBuilder<'a> {
     device: &'a ash::Device,
 
     vertex_input_desc: VertexInputDescription,
@@ -47,16 +97,17 @@ pub struct MaterialBuilder<'a> {
     depth_stencil: vk::PipelineDepthStencilStateCreateInfo,
     color_attachment_format: vk::Format,
     rendering_info: vk::PipelineRenderingCreateInfo,
-    shader: Option<Shader>,
+    shader: Option<GraphicsShader>,
     pipeline_layout: Option<vk::PipelineLayout>,
 }
 
-impl<'a> MaterialBuilder<'a> {
+impl<'a> GraphicsMaterialBuilder<'a> {
     fn new(device: &'a ash::Device) -> Self {
         let vertex_input_desc = VertexInputDescription::default();
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::builder()
             .vertex_attribute_descriptions(&vertex_input_desc.attributes)
             .vertex_binding_descriptions(&vertex_input_desc.bindings)
+            .flags(vertex_input_desc.flags)
             .build();
         let input_assembly = Self::default_input_assembly_info();
         let rasterization = Self::default_rasterization_info();
@@ -85,7 +136,7 @@ impl<'a> MaterialBuilder<'a> {
         }
     }
 
-    pub fn shader(mut self, shader: Shader) -> Self {
+    pub fn shader(mut self, shader: GraphicsShader) -> Self {
         let old_shader = self.shader.replace(shader);
         if let Some(shader) = old_shader {
             shader.cleanup(self.device);
@@ -175,16 +226,12 @@ impl<'a> MaterialBuilder<'a> {
     }
 
     pub fn vertex_input(mut self, desc: VertexInputDescription) -> Self {
-        self.vertex_input = vk::PipelineVertexInputStateCreateInfo {
-            p_vertex_attribute_descriptions: desc.attributes.as_ptr(),
-            vertex_attribute_description_count: desc.attributes.len() as u32,
-            p_vertex_binding_descriptions: desc.bindings.as_ptr(),
-            vertex_binding_description_count: desc.bindings.len() as u32,
-            flags: desc.flags,
-            ..Default::default()
-        };
-        // Need to store description else the pointers will be invalid
         self.vertex_input_desc = desc;
+        self.vertex_input = vk::PipelineVertexInputStateCreateInfo::builder()
+            .vertex_attribute_descriptions(&self.vertex_input_desc.attributes)
+            .vertex_binding_descriptions(&self.vertex_input_desc.bindings)
+            .flags(self.vertex_input_desc.flags)
+            .build();
         self
     }
 
@@ -194,7 +241,7 @@ impl<'a> MaterialBuilder<'a> {
         let shader = self
             .shader
             .take()
-            .ok_or_eyre("No shader provided for MaterialBuilder")?;
+            .ok_or_eyre("No shader provided for GraphicsMaterialBuilder")?;
         let shader_main_fn_name = CString::new("main").unwrap();
         let shader_stages = vec![
             vk::PipelineShaderStageCreateInfo::builder()
@@ -209,10 +256,9 @@ impl<'a> MaterialBuilder<'a> {
                 .build(),
         ];
 
-        let pipeline_layout = self
-            .pipeline_layout
-            .take()
-            .ok_or_eyre("No pipeline layout provided for MaterialBuilder")?;
+        let pipeline_layout = self.pipeline_layout.take().ok_or_eyre(
+            "No pipeline layout provided for GraphicsMaterialBuilder",
+        )?;
 
         let viewport_state = vk::PipelineViewportStateCreateInfo {
             viewport_count: 1,
@@ -249,22 +295,22 @@ impl<'a> MaterialBuilder<'a> {
             .dynamic_state(&dynamic_info)
             .build();
 
-        let graphics_pipelines = unsafe {
+        let pipeline = unsafe {
             match device.create_graphics_pipelines(
                 vk::PipelineCache::null(),
                 &[pipeline_info],
                 None,
             ) {
                 Ok(pipelines) => Ok(pipelines),
-                Err(_) => Err(eyre!("Failed to create graphics pipelines")),
+                Err(_) => Err(eyre!("Failed to create graphic pipelines")),
             }
-        }?;
-
+        }?[0];
         shader.cleanup(device);
 
         Ok(Material {
-            pipeline: graphics_pipelines[0],
+            pipeline,
             pipeline_layout,
+            pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
         })
     }
 
@@ -326,7 +372,96 @@ impl<'a> MaterialBuilder<'a> {
     }
 }
 
-impl<'a> Drop for MaterialBuilder<'a> {
+impl<'a> Drop for GraphicsMaterialBuilder<'a> {
+    fn drop(&mut self) {
+        // Destroy pipeline layout in case it was never used
+        if let Some(layout) = self.pipeline_layout.take() {
+            unsafe {
+                self.device.destroy_pipeline_layout(layout, None);
+            }
+        }
+
+        // Destroy shader in case it was never used
+        if let Some(shader) = self.shader.take() {
+            shader.cleanup(self.device);
+        }
+    }
+}
+
+struct ComputeMaterialBuilder<'a> {
+    device: &'a ash::Device,
+    shader: Option<ComputeShader>,
+    pipeline_layout: Option<vk::PipelineLayout>,
+}
+
+impl<'a> ComputeMaterialBuilder<'a> {
+    pub fn new(device: &'a ash::Device) -> Self {
+        Self {
+            device,
+            shader: None,
+            pipeline_layout: None,
+        }
+    }
+
+    pub fn shader(mut self, shader: ComputeShader) -> Self {
+        let old_shader = self.shader.replace(shader);
+        if let Some(shader) = old_shader {
+            shader.cleanup(self.device);
+        }
+        self
+    }
+
+    pub fn pipeline_layout(mut self, layout: vk::PipelineLayout) -> Self {
+        let old_layout = self.pipeline_layout.replace(layout);
+        if let Some(layout) = old_layout {
+            unsafe {
+                self.device.destroy_pipeline_layout(layout, None);
+            }
+        }
+        self
+    }
+
+    pub fn build(mut self) -> Result<Material> {
+        let shader = self
+            .shader
+            .take()
+            .ok_or_eyre("No shader provided for ComputeMaterialBuilder")?;
+        let pipeline_layout = self.pipeline_layout.take().ok_or_eyre(
+            "No pipeline layout provided for ComputeMaterialBuilder",
+        )?;
+
+        let name = CString::new("main")?;
+        let stage_info = vk::PipelineShaderStageCreateInfo::builder()
+            .stage(vk::ShaderStageFlags::COMPUTE)
+            .module(shader.shader_mod)
+            .name(&name)
+            .build();
+
+        let pipeline_info = vk::ComputePipelineCreateInfo::builder()
+            .layout(pipeline_layout)
+            .stage(stage_info)
+            .build();
+        let pipeline = unsafe {
+            match self.device.create_compute_pipelines(
+                vk::PipelineCache::null(),
+                &[pipeline_info],
+                None,
+            ) {
+                Ok(pipelines) => Ok(pipelines),
+                Err(_) => Err(eyre!("Failed to create compute pipeline")),
+            }
+        }?[0];
+        shader.cleanup(self.device);
+
+        Ok(Material {
+            pipeline,
+            pipeline_layout,
+            pipeline_bind_point: vk::PipelineBindPoint::COMPUTE,
+        })
+    }
+}
+
+impl<'a> Drop for ComputeMaterialBuilder<'a> {
     fn drop(&mut self) {
         // Destroy pipeline layout in case it was never used
         if let Some(layout) = self.pipeline_layout.take() {
