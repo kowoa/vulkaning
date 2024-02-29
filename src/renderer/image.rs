@@ -101,6 +101,7 @@ impl AllocatedImage {
 
     pub fn load_from_file(
         filename: &str,
+        flipv: bool,
         device: &ash::Device,
         allocator: &mut Allocator,
         upload_context: &UploadContext,
@@ -113,7 +114,10 @@ impl AllocatedImage {
                 path
             };
             let img = image::open(filepath)?.into_rgba8();
-            let img = image::DynamicImage::ImageRgba8(img).flipv();
+            let mut img = image::DynamicImage::ImageRgba8(img);
+            if flipv {
+                img = img.flipv();
+            }
             let img_width = img.width();
             let img_height = img.height();
             let data = img.as_bytes();

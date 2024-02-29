@@ -99,6 +99,7 @@ impl Resources {
         let textures = {
             let empire = Texture::load_from_file(
                 "lost_empire-RGBA.png",
+                false,
                 &core.device,
                 &mut allocator,
                 desc_allocator,
@@ -106,6 +107,7 @@ impl Resources {
             )?;
             let backpack = Texture::load_from_file(
                 "backpack/diffuse.jpg",
+                true,
                 &core.device,
                 &mut allocator,
                 desc_allocator,

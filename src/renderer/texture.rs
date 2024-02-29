@@ -14,6 +14,7 @@ pub struct Texture {
 impl Texture {
     pub fn load_from_file(
         filename: &str,
+        flipv: bool,
         device: &ash::Device,
         allocator: &mut Allocator,
         desc_allocator: &mut DescriptorAllocator,
@@ -24,6 +25,7 @@ impl Texture {
 
         let image = AllocatedImage::load_from_file(
             filename,
+            flipv,
             device,
             allocator,
             upload_context,
