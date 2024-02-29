@@ -60,7 +60,8 @@ impl Resources {
             let mut monkey_model = Model::load_from_obj("monkey_smooth.obj")?;
             let mut triangle_model = Model::new(vec![Mesh::new_triangle()]);
             let mut empire_model = Model::load_from_obj("lost_empire.obj")?;
-            let mut backpack_model = Model::load_from_obj("backpack.obj")?;
+            let mut backpack_model =
+                Model::load_from_obj("backpack/backpack.obj")?;
 
             // Upload models onto GPU immediately
             {
@@ -103,9 +104,17 @@ impl Resources {
                 desc_allocator,
                 upload_context,
             )?;
+            let backpack = Texture::load_from_file(
+                "backpack/diffuse.jpg",
+                &core.device,
+                &mut allocator,
+                desc_allocator,
+                upload_context,
+            )?;
 
             let mut textures = HashMap::new();
-            textures.insert("empire-diffuse".to_string(), Arc::new(empire));
+            textures.insert("empire-diffuse".into(), Arc::new(empire));
+            textures.insert("backpack-diffuse".into(), Arc::new(backpack));
             textures
         };
 
@@ -144,16 +153,15 @@ impl Resources {
                 Some(textures["empire-diffuse"].clone()),
                 Mat4::IDENTITY,
             );
-            render_objs.push(empire);
+            //render_objs.push(empire);
 
-            /*
             let backpack = RenderObject::new(
                 models["backpack"].clone(),
-                pipelines["default-lit"].clone(),
-                Mat4::IDENTITY,
+                materials["textured-lit"].clone(),
+                Some(textures["backpack-diffuse"].clone()),
+                Mat4::from_translation(Vec3::new(0.0, 20.0, -20.0)),
             );
-            */
-            //render_objs.push(backpack);
+            render_objs.push(backpack);
 
             render_objs
         };

@@ -112,7 +112,8 @@ impl AllocatedImage {
                 path.push(filename);
                 path
             };
-            let img = image::open(filepath)?;
+            let img = image::open(filepath)?.into_rgba8();
+            let img = image::DynamicImage::ImageRgba8(img).flipv();
             let img_width = img.width();
             let img_height = img.height();
             let data = img.as_bytes();

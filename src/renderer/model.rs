@@ -35,6 +35,21 @@ impl Model {
         }
     }
 
+    /*
+    pub fn load_from_gltf(filename: &str) -> Result<Self> {
+        let filepath = unsafe {
+            let mut path = PathBuf::from(
+                ASSETS_DIR
+                    .as_ref()
+                    .ok_or_eyre("Assets directory not specified")?
+                    .clone(),
+            );
+            path.push(filename);
+            path
+        };
+    }
+    */
+
     pub fn load_from_obj(filename: &str) -> Result<Self> {
         let filepath = unsafe {
             let mut path = PathBuf::from(
@@ -64,14 +79,6 @@ impl Model {
         for model in models {
             let mesh = &model.mesh;
             let mut vertices = Vec::new();
-
-            /*
-            const COLORS: [Vec3; 3] = [
-                Vec3::new(1.0, 0.0, 0.0),
-                Vec3::new(0.0, 1.0, 0.0),
-                Vec3::new(0.0, 0.0, 1.0),
-            ];
-            */
 
             for i in &mesh.indices {
                 let pos = &mesh.positions;
