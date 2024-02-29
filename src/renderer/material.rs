@@ -10,8 +10,8 @@ use super::{
 
 #[derive(PartialEq, Clone)]
 pub struct Material {
-    pipeline: vk::Pipeline,
-    pipeline_layout: vk::PipelineLayout,
+    pub pipeline: vk::Pipeline,
+    pub pipeline_layout: vk::PipelineLayout,
     pipeline_bind_point: vk::PipelineBindPoint,
 }
 
@@ -388,7 +388,7 @@ impl<'a> Drop for GraphicsMaterialBuilder<'a> {
     }
 }
 
-struct ComputeMaterialBuilder<'a> {
+pub struct ComputeMaterialBuilder<'a> {
     device: &'a ash::Device,
     shader: Option<ComputeShader>,
     pipeline_layout: Option<vk::PipelineLayout>,

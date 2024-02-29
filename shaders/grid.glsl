@@ -9,7 +9,7 @@ layout (location = 3) in vec2 v_texcoord;
 layout (location = 0) out vec3 out_color;
 layout (location = 1) out vec2 out_texcoord;
 
-layout (binding = 1) uniform Camera {
+layout (set = 0, binding = 1) uniform Camera {
     mat4 viewproj;
 };
 
@@ -30,6 +30,15 @@ void main() {
 layout (location = 0) in vec3 in_color;
 layout (location = 1) in vec2 in_texcoord;
 layout (location = 0) out vec4 f_color;
+
+// Scene uniform buffer block
+layout (set = 0, binding = 0) uniform GpuSceneData {
+    vec4 fogColor; // w is the exponent
+    vec4 fogDistances; // x for min, y for max, zw unused
+    vec4 ambientColor;
+    vec4 sunlightDirection; // w for sun power
+    vec4 sunlightColor;
+} sceneData;
 
 void main() {
     f_color = vec4(in_color, 1.0);

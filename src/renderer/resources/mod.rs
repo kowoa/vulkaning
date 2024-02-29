@@ -63,6 +63,7 @@ impl Resources {
             let mut empire_model = Model::load_from_obj("lost_empire.obj")?;
             let mut backpack_model =
                 Model::load_from_obj("backpack/backpack.obj")?;
+            let mut quad_model = Model::new(vec![Mesh::new_quad()]);
 
             // Upload models onto GPU immediately
             {
@@ -86,6 +87,11 @@ impl Resources {
                     &mut allocator,
                     upload_context,
                 )?;
+                quad_model.upload(
+                    &core.device,
+                    &mut allocator,
+                    upload_context,
+                )?;
             }
 
             // Create HashMap with model name as keys and model as values
@@ -94,6 +100,7 @@ impl Resources {
             models.insert("triangle".into(), Arc::new(triangle_model));
             models.insert("empire".into(), Arc::new(empire_model));
             models.insert("backpack".into(), Arc::new(backpack_model));
+            models.insert("quad".into(), Arc::new(quad_model));
             models
         };
 
@@ -290,6 +297,28 @@ impl Resources {
                 .build()?
         };
 
+        let grid_mat = {
+            let push_constant_ranges = [vk::PushConstantRange::builder()
+                .offset(0)
+                .size(std::mem::size_of::<Mat4>() as u32)
+                .stage_flags(vk::ShaderStageFlags::VERTEX)
+                .build()];
+            let set_layouts = [*global_desc_set_layout];
+            let layout_info = vk::PipelineLayoutCreateInfo::builder()
+                .push_constant_ranges(&push_constant_ranges)
+                .set_layouts(&set_layouts)
+                .build();
+            // Create pipeline layout
+            let layout =
+                unsafe { device.create_pipeline_layout(&layout_info, None)? };
+            let shader = GraphicsShader::new("grid", device)?;
+            Material::builder_graphics(device)
+                .pipeline_layout(layout)
+                .shader(shader)
+                .color_attachment_format(draw_image.format)
+                .build()?
+        };
+
         let gradient_mat = {
             let pipeline_layout = {
                 let layouts = [*draw_image_desc_set_layout];
@@ -357,6 +386,7 @@ impl Resources {
         map.insert("textured-lit".into(), Arc::new(textured_lit_mat));
         map.insert("gradient".into(), Arc::new(gradient_mat));
         map.insert("sky".into(), Arc::new(sky_mat));
+        map.insert("grid".into(), Arc::new(grid_mat));
         Ok(map)
     }
 }

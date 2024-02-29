@@ -16,7 +16,7 @@ use super::{
     camera::Camera,
     core::Core,
     descriptors::{
-        DescriptorAllocator, DescriptorLayoutBuilder, PoolSizeRatio,
+        DescriptorAllocator, DescriptorSetLayoutBuilder, PoolSizeRatio,
     },
     frame::Frame,
     image::{AllocatedImage, AllocatedImageCreateInfo},
@@ -204,7 +204,11 @@ impl RendererInner {
         }
     }
 
-    fn draw_grid(&mut self, cmd: vk::CommandBuffer) -> Result<()> {
+    fn draw_grid(
+        &mut self,
+        cmd: vk::CommandBuffer,
+        frame_index: u32,
+    ) -> Result<()> {
         self.draw_image.transition_layout(
             cmd,
             vk::ImageLayout::GENERAL,
@@ -218,7 +222,6 @@ impl RendererInner {
             .load_op(vk::AttachmentLoadOp::LOAD)
             .store_op(vk::AttachmentStoreOp::STORE)
             .build()];
-
         let rendering_info = vk::RenderingInfo::builder()
             .render_area(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
@@ -239,10 +242,32 @@ impl RendererInner {
         }
 
         let grid_mat = self.resources.materials["grid"].as_ref();
-        let grid_model = self.resources.models["grid"].as_ref();
+        let grid_model = self.resources.models["quad"].as_ref();
         grid_mat.bind_pipeline(cmd, device);
-        grid_mat.bind_desc_sets();
-        grid_model.draw(cmd, device);
+
+        let frame = self.get_current_frame()?;
+        let scene_start_offset =
+            self.scene_camera_buffer.offsets.as_ref().unwrap()
+                [frame_index as usize];
+        let camera_start_offset =
+            self.scene_camera_buffer.offsets.as_ref().unwrap()
+                [frame_index as usize + 2];
+        grid_mat.bind_desc_sets(
+            cmd,
+            device,
+            0,
+            &[frame.global_desc_set],
+            &[scene_start_offset, camera_start_offset],
+        );
+        grid_mat.update_push_constants(
+            cmd,
+            device,
+            vk::ShaderStageFlags::VERTEX,
+            bytemuck::cast_slice(&[Mat4::from_scale(Vec3::new(
+                10.0, 10.0, 10.0,
+            ))]),
+        );
+        grid_model.draw(cmd, device)?;
 
         // End the renderpass
         unsafe {
@@ -253,12 +278,14 @@ impl RendererInner {
     }
 
     fn draw_geometry(&mut self, cmd: vk::CommandBuffer) -> Result<()> {
-        self.draw_image.transition_layout(
-            cmd,
-            vk::ImageLayout::GENERAL,
-            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            &self.core.device,
-        );
+        /*
+                self.draw_image.transition_layout(
+                    cmd,
+                    vk::ImageLayout::GENERAL,
+                    vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                    &self.core.device,
+                );
+        */
 
         let color_attachments = [vk::RenderingAttachmentInfo::builder()
             .image_view(self.draw_image.view)
@@ -297,32 +324,6 @@ impl RendererInner {
         // Begin a render pass connected to the draw image
         unsafe {
             self.core.device.cmd_begin_rendering(cmd, &rendering_info);
-        }
-
-        // Set dynamic viewport and scissor
-        {
-            let viewport = vk::Viewport::builder()
-                .x(0.0)
-                .y(0.0)
-                .width(self.draw_image.extent.width as f32)
-                .height(self.draw_image.extent.height as f32)
-                .min_depth(0.0)
-                .max_depth(1.0)
-                .build();
-            unsafe {
-                self.core.device.cmd_set_viewport(cmd, 0, &[viewport]);
-            }
-
-            let scissor = vk::Rect2D::builder()
-                .offset(vk::Offset2D { x: 0, y: 0 })
-                .extent(vk::Extent2D {
-                    width: self.draw_image.extent.width,
-                    height: self.draw_image.extent.height,
-                })
-                .build();
-            unsafe {
-                self.core.device.cmd_set_scissor(cmd, 0, &[scissor]);
-            }
         }
 
         // RENDERING COMMANDS START
@@ -425,7 +426,34 @@ impl RendererInner {
             }
         }
 
+        // Set dynamic viewport and scissor
+        {
+            let viewport = vk::Viewport::builder()
+                .x(0.0)
+                .y(0.0)
+                .width(self.draw_image.extent.width as f32)
+                .height(self.draw_image.extent.height as f32)
+                .min_depth(0.0)
+                .max_depth(1.0)
+                .build();
+            unsafe {
+                self.core.device.cmd_set_viewport(cmd, 0, &[viewport]);
+            }
+
+            let scissor = vk::Rect2D::builder()
+                .offset(vk::Offset2D { x: 0, y: 0 })
+                .extent(vk::Extent2D {
+                    width: self.draw_image.extent.width,
+                    height: self.draw_image.extent.height,
+                })
+                .build();
+            unsafe {
+                self.core.device.cmd_set_scissor(cmd, 0, &[scissor]);
+            }
+        }
+
         self.draw_background(cmd);
+        self.draw_grid(cmd, self.frame_number % FRAME_OVERLAP)?;
         self.draw_geometry(cmd)?;
 
         // Copy draw image to swapchain image
@@ -745,7 +773,7 @@ impl RendererInner {
         desc_allocator: &mut DescriptorAllocator,
     ) -> Result<AllocatedImage> {
         let draw_image_desc_set = {
-            let layout = DescriptorLayoutBuilder::new()
+            let layout = DescriptorSetLayoutBuilder::new()
                 .add_binding(
                     0,
                     vk::DescriptorType::STORAGE_IMAGE,

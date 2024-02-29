@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use ash::vk;
 use color_eyre::eyre::{OptionExt, Result};
 
-pub struct DescriptorLayoutBuilder {
+pub struct DescriptorSetLayoutBuilder {
     bindings: Vec<vk::DescriptorSetLayoutBinding>,
 }
 
-impl DescriptorLayoutBuilder {
+impl DescriptorSetLayoutBuilder {
     pub fn new() -> Self {
         Self {
             bindings: Vec::new(),
