@@ -3,7 +3,7 @@
 The beginning of a Vulkan engine ...
 
 ![Textures GIF](textures.gif)
-![Multiple Renderpasses PNG](multiple_renderpasses.png)
+![Multiple Renderpasses PNG](multiple-renderpasses.png)
 
 ## Crates
 
