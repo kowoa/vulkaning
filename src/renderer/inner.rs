@@ -209,38 +209,7 @@ impl RendererInner {
         cmd: vk::CommandBuffer,
         frame_index: u32,
     ) -> Result<()> {
-        self.draw_image.transition_layout(
-            cmd,
-            vk::ImageLayout::GENERAL,
-            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            &self.core.device,
-        );
-
-        let color_attachments = [vk::RenderingAttachmentInfo::builder()
-            .image_view(self.draw_image.view)
-            .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .load_op(vk::AttachmentLoadOp::LOAD)
-            .store_op(vk::AttachmentStoreOp::STORE)
-            .build()];
-        let rendering_info = vk::RenderingInfo::builder()
-            .render_area(vk::Rect2D {
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent: vk::Extent2D {
-                    width: self.draw_image.extent.width,
-                    height: self.draw_image.extent.height,
-                },
-            })
-            .layer_count(1)
-            .color_attachments(&color_attachments)
-            .build();
-
         let device = &self.core.device;
-
-        // Begin a render pass connected to the draw image
-        unsafe {
-            device.cmd_begin_rendering(cmd, &rendering_info);
-        }
-
         let grid_mat = self.resources.materials["grid"].as_ref();
         let grid_model = self.resources.models["quad"].as_ref();
         grid_mat.bind_pipeline(cmd, device);
@@ -269,23 +238,16 @@ impl RendererInner {
         );
         grid_model.draw(cmd, device)?;
 
-        // End the renderpass
-        unsafe {
-            self.core.device.cmd_end_rendering(cmd);
-        }
-
         Ok(())
     }
 
     fn draw_geometry(&mut self, cmd: vk::CommandBuffer) -> Result<()> {
-        /*
-                self.draw_image.transition_layout(
-                    cmd,
-                    vk::ImageLayout::GENERAL,
-                    vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                    &self.core.device,
-                );
-        */
+        self.draw_image.transition_layout(
+            cmd,
+            vk::ImageLayout::GENERAL,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            &self.core.device,
+        );
 
         let color_attachments = [vk::RenderingAttachmentInfo::builder()
             .image_view(self.draw_image.view)
@@ -328,6 +290,7 @@ impl RendererInner {
 
         // RENDERING COMMANDS START
 
+        self.draw_grid(cmd, self.frame_number % FRAME_OVERLAP)?;
         self.draw_render_objects(
             self.draw_image.extent.width,
             self.draw_image.extent.height,
@@ -453,7 +416,6 @@ impl RendererInner {
         }
 
         self.draw_background(cmd);
-        self.draw_grid(cmd, self.frame_number % FRAME_OVERLAP)?;
         self.draw_geometry(cmd)?;
 
         // Copy draw image to swapchain image
