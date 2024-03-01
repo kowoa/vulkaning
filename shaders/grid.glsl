@@ -9,6 +9,7 @@ layout (location = 3) in vec2 v_texcoord;
 
 layout (location = 0) out vec3 near_world_point;
 layout (location = 1) out vec3 far_world_point;
+layout (location = 2) out mat4 viewproj;
 
 layout (set = 0, binding = 1) uniform CameraUniforms {
     mat4 view;
@@ -33,6 +34,9 @@ void main() {
     near_world_point = clip_to_world(vec3(clip_pos.xy, 0.0));
     // Get the world space position on the far plane
     far_world_point = clip_to_world(vec3(clip_pos.xy, 1.0));
+
+    viewproj = Camera.viewproj;
+
     gl_Position = vec4(clip_pos, 1.0);
 }
 
@@ -42,6 +46,8 @@ void main() {
 
 layout (location = 0) in vec3 near_world_point;
 layout (location = 1) in vec3 far_world_point;
+layout (location = 2) in mat4 viewproj;
+
 layout (location = 0) out vec4 f_color;
 
 // Scene uniform buffer block
@@ -64,28 +70,36 @@ vec4 grid_color(vec3 frag_pos_world, float scale) {
     // A proximity of 1 means the fragment is exactly in the middle of two grid lines
     vec2 grid = abs(fract(coord - 0.5) - 0.5) / derivative;
     float line = min(grid.x, grid.y);
-    vec4 color = vec4(0.2, 0.2, 0.2, 1.0 - min(line, 1.0));
+    vec4 color = vec4(0.05, 0.05, 0.05, 1.0 - min(line, 1.0));
 
     // Color the x-axis blue
     float minz = min(derivative.y, 1);
-    if (abs(frag_pos_world.z) < 0.1 * minz) {
+    if (abs(frag_pos_world.z) < 0.4 * minz) {
         color.b = 1.0;
     }
 
     // Color the z-axis red
     float minx = min(derivative.x, 1);
-    if (abs(frag_pos_world.x) < 0.1 * minx) {
+    if (abs(frag_pos_world.x) < 0.4 * minx) {
         color.r = 1.0;
     }
 
     return color;
 }
 
+float compute_depth(vec3 pos) {
+    vec4 clip_pos = viewproj * vec4(pos.xyz, 1.0);
+    return (clip_pos.z / clip_pos.w);
+}
+
 void main() {
     float t = -near_world_point.y / (far_world_point.y - near_world_point.y);
     // Lerp between near and far points to get the world position of the fragment
     vec3 frag_pos_world = near_world_point + t * (far_world_point - near_world_point);
+
+    gl_FragDepth = compute_depth(frag_pos_world);
+
     // If t > 0, the fragment is on the XZ plane and therefore on the grid
-    f_color = grid_color(frag_pos_world, 10.0) * float(t > 0);
+    f_color = grid_color(frag_pos_world, 1.0) * float(t > 0);
 }
 

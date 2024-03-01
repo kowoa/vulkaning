@@ -552,7 +552,7 @@ impl RendererInner {
         // Write into camera section of scene-camera uniform buffer
         {
             let mut cam = Camera::default();
-            cam.set_position(Vec3::new(8.0, 4.0, 10.0));
+            cam.set_position(Vec3::new(0.0, 4.0, 10.0));
             cam.look_at(Vec3::ZERO);
 
             // Fill a GpuCameraData struct

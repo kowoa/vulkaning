@@ -141,25 +141,15 @@ impl Resources {
                 None,
                 Mat4::IDENTITY,
             );
-            render_objs.push(monkey);
+            //render_objs.push(monkey);
 
-            /*
-            for x in -20..=20 {
-                for y in -20..=20 {
-                    let translation = Mat4::from_translation(Vec3::new(
-                        x as f32, 0.0, y as f32,
-                    ));
-                    let scale = Mat4::from_scale(Vec3::new(0.2, 0.2, 0.2));
-                    let transform = translation * scale;
-                    let triangle = RenderObject::new(
-                        Arc::clone(&models["triangle"]),
-                        Arc::clone(&pipelines["default-lit"]),
-                        transform,
-                    );
-                    render_objs.push(triangle);
-                }
-            }
-            */
+            let quad = RenderObject::new(
+                models["quad"].clone(),
+                materials["default-lit"].clone(),
+                None,
+                Mat4::from_rotation_x(90f32.to_radians()),
+            );
+            render_objs.push(quad);
 
             /*
                         let empire = RenderObject::new(
