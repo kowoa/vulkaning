@@ -552,16 +552,14 @@ impl RendererInner {
         // Write into camera section of scene-camera uniform buffer
         {
             let mut cam = Camera::default();
-            cam.set_position(Vec3::new(0.0, 4.0, 10.0));
+            cam.set_position(Vec3::new(-3.0, 4.0, 10.0));
             cam.look_at(Vec3::ZERO);
 
             // Fill a GpuCameraData struct
-            let view = cam.view_mat();
-            let proj = cam.proj_mat(width as f32, height as f32);
             let cam_data = GpuCameraData {
-                view,
-                proj,
-                viewproj: proj * view,
+                viewproj: cam.viewproj_mat(width as f32, height as f32),
+                near: cam.near,
+                far: cam.far,
             };
 
             // Copy GpuCameraData struct to buffer
@@ -679,7 +677,7 @@ impl RendererInner {
             // Binding 1 for GpuCameraData
             let camera_bind = vkinit::descriptor_set_layout_binding(
                 vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-                vk::ShaderStageFlags::VERTEX,
+                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
                 1,
             );
             let bindings = [scene_bind, camera_bind];

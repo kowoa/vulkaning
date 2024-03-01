@@ -11,9 +11,9 @@ layout (location = 1) out vec2 outTexcoord;
 
 // Camera uniform buffer block
 layout(set = 0, binding = 1) uniform GpuCameraData {
-    mat4 view;
-    mat4 proj;
     mat4 viewproj;
+    float near;
+    float far;
 } cameraData;
 
 // Object data and storage buffer block

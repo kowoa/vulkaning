@@ -3,9 +3,9 @@ use glam::{Mat4, Vec3};
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct GpuCameraData {
-    pub view: Mat4,
-    pub proj: Mat4,
     pub viewproj: Mat4,
+    pub near: f32,
+    pub far: f32,
 }
 
 pub struct Camera {
@@ -15,6 +15,8 @@ pub struct Camera {
     pub right: Vec3,
     pub world_up: Vec3,
     pub zoom_deg: f32,
+    pub near: f32,
+    pub far: f32,
 }
 
 impl Default for Camera {
@@ -26,6 +28,8 @@ impl Default for Camera {
             right: Vec3::X,
             world_up: Vec3::Y,
             zoom_deg: Self::DEFAULT_ZOOM_DEG,
+            near: 0.1,
+            far: 100.0,
         }
     }
 }
@@ -66,8 +70,8 @@ impl Camera {
         let mut proj = Mat4::perspective_rh(
             self.zoom_deg.to_radians(),
             viewport_width / viewport_height,
-            0.1,
-            100.0,
+            self.near,
+            self.far,
         );
         proj.y_axis.y *= -1.0;
         proj

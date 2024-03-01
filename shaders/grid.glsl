@@ -9,12 +9,11 @@ layout (location = 3) in vec2 v_texcoord;
 
 layout (location = 0) out vec3 near_world_point;
 layout (location = 1) out vec3 far_world_point;
-layout (location = 2) out mat4 viewproj;
 
 layout (set = 0, binding = 1) uniform CameraUniforms {
-    mat4 view;
-    mat4 proj;
     mat4 viewproj;
+    float near;
+    float far;
 } Camera;
 
 layout (push_constant) uniform ModelUniforms {
@@ -35,8 +34,6 @@ void main() {
     // Get the world space position on the far plane
     far_world_point = clip_to_world(vec3(clip_pos.xy, 1.0));
 
-    viewproj = Camera.viewproj;
-
     gl_Position = vec4(clip_pos, 1.0);
 }
 
@@ -46,18 +43,14 @@ void main() {
 
 layout (location = 0) in vec3 near_world_point;
 layout (location = 1) in vec3 far_world_point;
-layout (location = 2) in mat4 viewproj;
 
 layout (location = 0) out vec4 f_color;
 
-// Scene uniform buffer block
-layout (set = 0, binding = 0) uniform GpuSceneData {
-    vec4 fogColor; // w is the exponent
-    vec4 fogDistances; // x for min, y for max, zw unused
-    vec4 ambientColor;
-    vec4 sunlightDirection; // w for sun power
-    vec4 sunlightColor;
-} sceneData;
+layout (set = 0, binding = 1) uniform CameraUniforms {
+    mat4 viewproj;
+    float near;
+    float far;
+} Camera;
 
 // frag_pos_world is the position of the fragment in world space
 // lines_per_unit is the number of grid lines per world space unit
@@ -88,9 +81,21 @@ vec4 grid_color(vec3 frag_pos_world, float lines_per_unit) {
     return color;
 }
 
-float compute_depth(vec3 pos) {
-    vec4 clip_pos = viewproj * vec4(pos.xyz, 1.0);
+// Compute the depth of the fragment from the camera's perspective in clip space
+float clip_pos_depth(vec3 world_pos) {
+    vec4 clip_pos = Camera.viewproj * vec4(world_pos.xyz, 1.0);
     return (clip_pos.z / clip_pos.w);
+}
+
+// Linear depth is the depth that is linearly interpolated between the near and far planes
+float clip_pos_linear_depth(vec3 world_pos) {
+    // Transform world pos to clip space
+    vec4 clip_pos = Camera.viewproj * vec4(world_pos.xyz, 1.0);
+    // Calculate clip space depth and scale to range [-1, 1]
+    float clip_depth = (clip_pos.z / clip_pos.w) * 2.0 - 1.0;
+    // Get linear depth value between near and far
+    float linear_depth = (2.0 * Camera.near * Camera.far) / (Camera.far + Camera.near - clip_depth * (Camera.far - Camera.near));
+    return linear_depth / Camera.far; // Normalize
 }
 
 void main() {
@@ -98,9 +103,14 @@ void main() {
     // Lerp between near and far points to get the world position of the fragment
     vec3 frag_pos_world = near_world_point + t * (far_world_point - near_world_point);
 
-    gl_FragDepth = compute_depth(frag_pos_world);
+    gl_FragDepth = clip_pos_depth(frag_pos_world);
+
+    float linear_depth = clip_pos_linear_depth(frag_pos_world);
+    float fading = max(0, (0.5 - linear_depth));
 
     // If t > 0, the fragment is on the XZ plane and therefore on the grid
-    f_color = grid_color(frag_pos_world, 1.0) * float(t > 0);
+    vec4 grid = grid_color(frag_pos_world, 1.0);
+    f_color = grid * float(t > 0);
+    f_color.a *= fading;
 }
 
