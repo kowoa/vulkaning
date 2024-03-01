@@ -60,9 +60,10 @@ layout (set = 0, binding = 0) uniform GpuSceneData {
 } sceneData;
 
 // frag_pos_world is the position of the fragment in world space
-// scale determines the distance between the grid lines
-vec4 grid_color(vec3 frag_pos_world, float scale) {
-    vec2 coord = frag_pos_world.xz * scale;
+// lines_per_unit is the number of grid lines per world space unit
+// lines_per_unit determines the spacing between grid lines
+vec4 grid_color(vec3 frag_pos_world, float lines_per_unit) {
+    vec2 coord = frag_pos_world.xz * lines_per_unit;
     vec2 derivative = fwidth(coord);
     // grid.x represents the proxity from the fragment to the nearest z grid line
     // grid.y represents the proxity from the fragment to the nearest x grid line
@@ -74,13 +75,13 @@ vec4 grid_color(vec3 frag_pos_world, float scale) {
 
     // Color the x-axis blue
     float minz = min(derivative.y, 1);
-    if (abs(frag_pos_world.z) < 0.4 * minz) {
+    if (abs(frag_pos_world.z) < minz) {
         color.b = 1.0;
     }
 
     // Color the z-axis red
     float minx = min(derivative.x, 1);
-    if (abs(frag_pos_world.x) < 0.4 * minx) {
+    if (abs(frag_pos_world.x) < minx) {
         color.r = 1.0;
     }
 
