@@ -58,8 +58,8 @@ layout (set = 0, binding = 1) uniform CameraUniforms {
 vec4 grid_color(vec3 frag_pos_world, float lines_per_unit) {
     vec2 coord = frag_pos_world.xz * lines_per_unit;
     vec2 derivative = fwidth(coord);
-    // grid.x represents the proxity from the fragment to the nearest z grid line
-    // grid.y represents the proxity from the fragment to the nearest x grid line
+    // grid.x represents the proximity from the fragment to the nearest z grid line
+    // grid.y represents the proximity from the fragment to the nearest x grid line
     // A proximity of 0 means the fragment is on the grid line
     // A proximity of 1 means the fragment is exactly in the middle of two grid lines
     vec2 grid = abs(fract(coord - 0.5) - 0.5) / derivative;
@@ -109,7 +109,7 @@ void main() {
     float fading = max(0, (0.5 - linear_depth));
 
     // If t > 0, the fragment is on the XZ plane and therefore on the grid
-    vec4 grid = grid_color(frag_pos_world, 1.0);
+    vec4 grid = grid_color(frag_pos_world, 1.0) + grid_color(frag_pos_world, 0.1);
     f_color = grid * float(t > 0);
     f_color.a *= fading;
 }
