@@ -3,6 +3,8 @@ use glam::{Mat4, Vec3};
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct GpuCameraData {
+    pub view: Mat4,
+    pub proj: Mat4,
     pub viewproj: Mat4,
 }
 
@@ -56,11 +58,11 @@ impl Camera {
         self.proj_mat(viewport_width, viewport_height) * self.view_mat()
     }
 
-    fn view_mat(&self) -> Mat4 {
+    pub fn view_mat(&self) -> Mat4 {
         Mat4::look_to_rh(self.position, self.forward, self.up)
     }
 
-    fn proj_mat(&self, viewport_width: f32, viewport_height: f32) -> Mat4 {
+    pub fn proj_mat(&self, viewport_width: f32, viewport_height: f32) -> Mat4 {
         let mut proj = Mat4::perspective_rh(
             self.zoom_deg.to_radians(),
             viewport_width / viewport_height,

@@ -63,38 +63,38 @@ impl Mesh {
         let vertices = vec![
             // Top left triangle
             Vertex {
-                position: [-0.5, 0.0, -0.5].into(),
+                position: [1.0, 1.0, 0.0].into(),
                 normal: [0.0, 1.0, 0.0].into(),
                 color: [1.0, 0.0, 0.0].into(),
                 texcoord: [0.0, 0.0].into(),
             },
             Vertex {
-                position: [0.5, 0.0, -0.5].into(),
+                position: [-1.0, -1.0, 0.0].into(),
                 normal: [0.0, 1.0, 0.0].into(),
                 color: [0.0, 1.0, 0.0].into(),
                 texcoord: [1.0, 0.0].into(),
             },
             Vertex {
-                position: [-0.5, 0.0, 0.5].into(),
+                position: [-1.0, 1.0, 0.0].into(),
                 normal: [0.0, 1.0, 0.0].into(),
                 color: [0.0, 0.0, 1.0].into(),
                 texcoord: [0.0, 1.0].into(),
             },
             // Bottom right triangle
             Vertex {
-                position: [0.5, 0.0, -0.5].into(),
+                position: [-1.0, -1.0, 0.0].into(),
                 normal: [0.0, 1.0, 0.0].into(),
                 color: [0.0, 1.0, 0.0].into(),
                 texcoord: [1.0, 0.0].into(),
             },
             Vertex {
-                position: [0.5, 0.0, 0.5].into(),
+                position: [1.0, 1.0, 0.0].into(),
                 normal: [0.0, 1.0, 0.0].into(),
                 color: [1.0, 0.0, 1.0].into(),
                 texcoord: [1.0, 1.0].into(),
             },
             Vertex {
-                position: [-0.5, 0.0, 0.5].into(),
+                position: [1.0, -1.0, 0.0].into(),
                 normal: [0.0, 1.0, 0.0].into(),
                 color: [0.0, 0.0, 1.0].into(),
                 texcoord: [0.0, 1.0].into(),

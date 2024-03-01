@@ -204,6 +204,7 @@ impl RendererInner {
         }
     }
 
+    // MAKE SURE TO CALL THIS FUNCTION AFTER DRAWING EVERY OBJECT
     fn draw_grid(
         &mut self,
         cmd: vk::CommandBuffer,
@@ -232,9 +233,7 @@ impl RendererInner {
             cmd,
             device,
             vk::ShaderStageFlags::VERTEX,
-            bytemuck::cast_slice(&[Mat4::from_scale(Vec3::new(
-                10.0, 10.0, 10.0,
-            ))]),
+            bytemuck::cast_slice(&[Mat4::IDENTITY]),
         );
         grid_model.draw(cmd, device)?;
 
@@ -244,15 +243,20 @@ impl RendererInner {
     fn draw_geometry(&mut self, cmd: vk::CommandBuffer) -> Result<()> {
         self.draw_image.transition_layout(
             cmd,
-            vk::ImageLayout::GENERAL,
+            vk::ImageLayout::UNDEFINED,
             vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             &self.core.device,
         );
         let color_attachments = [vk::RenderingAttachmentInfo::builder()
             .image_view(self.draw_image.view)
             .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .load_op(vk::AttachmentLoadOp::LOAD)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::STORE)
+            .clear_value(vk::ClearValue {
+                color: vk::ClearColorValue {
+                    float32: [0.0, 0.0, 0.0, 1.0],
+                },
+            })
             .build()];
 
         let depth_clear = vk::ClearValue {
@@ -289,13 +293,13 @@ impl RendererInner {
 
         // RENDERING COMMANDS START
 
-        self.draw_grid(cmd, self.frame_number % FRAME_OVERLAP)?;
         self.draw_render_objects(
             self.draw_image.extent.width,
             self.draw_image.extent.height,
             0,
             self.resources.render_objs.len(),
         )?;
+        self.draw_grid(cmd, self.frame_number % FRAME_OVERLAP)?;
 
         // RENDERING COMMANDS END
 
@@ -414,7 +418,6 @@ impl RendererInner {
             }
         }
 
-        self.draw_background(cmd);
         self.draw_geometry(cmd)?;
 
         // Copy draw image to swapchain image
@@ -550,11 +553,16 @@ impl RendererInner {
         {
             let mut cam = Camera::default();
             cam.set_position(Vec3::new(0.0, 10.0, 10.0));
-            cam.look_at(Vec3::ZERO);
+            cam.look_to(Vec3::NEG_Z);
+            //cam.look_at(Vec3::ZERO);
 
             // Fill a GpuCameraData struct
+            let view = cam.view_mat();
+            let proj = cam.proj_mat(width as f32, height as f32);
             let cam_data = GpuCameraData {
-                viewproj: cam.viewproj_mat(width as f32, height as f32),
+                view,
+                proj,
+                viewproj: proj * view,
             };
 
             // Copy GpuCameraData struct to buffer

@@ -58,30 +58,32 @@ impl Resources {
 
         let models = {
             // Create models
-            let mut monkey_model = Model::load_from_obj("monkey_smooth.obj")?;
-            let mut triangle_model = Model::new(vec![Mesh::new_triangle()]);
-            let mut empire_model = Model::load_from_obj("lost_empire.obj")?;
+            //let mut monkey_model = Model::load_from_obj("monkey_smooth.obj")?;
+            //let mut triangle_model = Model::new(vec![Mesh::new_triangle()]);
+            //let mut empire_model = Model::load_from_obj("lost_empire.obj")?;
             let mut backpack_model =
                 Model::load_from_obj("backpack/backpack.obj")?;
             let mut quad_model = Model::new(vec![Mesh::new_quad()]);
 
             // Upload models onto GPU immediately
             {
-                monkey_model.upload(
-                    &core.device,
-                    &mut allocator,
-                    upload_context,
-                )?;
-                triangle_model.upload(
-                    &core.device,
-                    &mut allocator,
-                    upload_context,
-                )?;
-                empire_model.upload(
-                    &core.device,
-                    &mut allocator,
-                    upload_context,
-                )?;
+                /*
+                                monkey_model.upload(
+                                    &core.device,
+                                    &mut allocator,
+                                    upload_context,
+                                )?;
+                                triangle_model.upload(
+                                    &core.device,
+                                    &mut allocator,
+                                    upload_context,
+                                )?;
+                                empire_model.upload(
+                                    &core.device,
+                                    &mut allocator,
+                                    upload_context,
+                                )?;
+                */
                 backpack_model.upload(
                     &core.device,
                     &mut allocator,
@@ -96,23 +98,25 @@ impl Resources {
 
             // Create HashMap with model name as keys and model as values
             let mut models = HashMap::new();
-            models.insert("monkey".into(), Arc::new(monkey_model));
-            models.insert("triangle".into(), Arc::new(triangle_model));
-            models.insert("empire".into(), Arc::new(empire_model));
+            //models.insert("monkey".into(), Arc::new(monkey_model));
+            //models.insert("triangle".into(), Arc::new(triangle_model));
+            //models.insert("empire".into(), Arc::new(empire_model));
             models.insert("backpack".into(), Arc::new(backpack_model));
             models.insert("quad".into(), Arc::new(quad_model));
             models
         };
 
         let textures = {
-            let empire = Texture::load_from_file(
-                "lost_empire-RGBA.png",
-                false,
-                &core.device,
-                &mut allocator,
-                desc_allocator,
-                upload_context,
-            )?;
+            /*
+                        let empire = Texture::load_from_file(
+                            "lost_empire-RGBA.png",
+                            false,
+                            &core.device,
+                            &mut allocator,
+                            desc_allocator,
+                            upload_context,
+                        )?;
+            */
             let backpack = Texture::load_from_file(
                 "backpack/diffuse.jpg",
                 true,
@@ -123,7 +127,7 @@ impl Resources {
             )?;
 
             let mut textures = HashMap::new();
-            textures.insert("empire-diffuse".into(), Arc::new(empire));
+            //textures.insert("empire-diffuse".into(), Arc::new(empire));
             textures.insert("backpack-diffuse".into(), Arc::new(backpack));
             textures
         };
@@ -131,12 +135,14 @@ impl Resources {
         // Scene/render objects
         let render_objs = {
             let mut render_objs = Vec::new();
-            let monkey = RenderObject::new(
-                models["monkey"].clone(),
-                materials["default-lit"].clone(),
-                None,
-                Mat4::from_translation(Vec3::new(0.0, 20.0, -20.0)),
-            );
+            /*
+                        let monkey = RenderObject::new(
+                            models["monkey"].clone(),
+                            materials["default-lit"].clone(),
+                            None,
+                            Mat4::from_translation(Vec3::new(0.0, 20.0, -20.0)),
+                        );
+            */
             //render_objs.push(monkey);
 
             /*
@@ -157,19 +163,21 @@ impl Resources {
             }
             */
 
-            let empire = RenderObject::new(
-                models["empire"].clone(),
-                materials["textured-lit"].clone(),
-                Some(textures["empire-diffuse"].clone()),
-                Mat4::IDENTITY,
-            );
+            /*
+                        let empire = RenderObject::new(
+                            models["empire"].clone(),
+                            materials["textured-lit"].clone(),
+                            Some(textures["empire-diffuse"].clone()),
+                            Mat4::IDENTITY,
+                        );
+            */
             //render_objs.push(empire);
 
             let backpack = RenderObject::new(
                 models["backpack"].clone(),
                 materials["textured-lit"].clone(),
                 Some(textures["backpack-diffuse"].clone()),
-                Mat4::IDENTITY,
+                Mat4::from_translation(Vec3::new(0.0, 10.0, -5.0)),
             );
             render_objs.push(backpack);
 

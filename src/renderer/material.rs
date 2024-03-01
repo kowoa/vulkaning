@@ -196,6 +196,20 @@ impl<'a> GraphicsMaterialBuilder<'a> {
         self
     }
 
+    // Make sure the transparent object is rendered AFTER the opaque ones
+    pub fn enable_alpha_blending(mut self) -> Self {
+        let blend = &mut self.color_blend_attachment;
+        blend.color_write_mask = vk::ColorComponentFlags::RGBA;
+        blend.blend_enable = vk::TRUE;
+        blend.src_color_blend_factor = vk::BlendFactor::SRC_ALPHA;
+        blend.dst_color_blend_factor = vk::BlendFactor::ONE_MINUS_SRC_ALPHA;
+        blend.color_blend_op = vk::BlendOp::ADD;
+        blend.src_alpha_blend_factor = vk::BlendFactor::ONE;
+        blend.dst_alpha_blend_factor = vk::BlendFactor::ZERO;
+        blend.alpha_blend_op = vk::BlendOp::ADD;
+        self
+    }
+
     pub fn color_attachment_format(mut self, format: vk::Format) -> Self {
         self.color_attachment_format = format;
         // Connect the format to the rendering_info struct
@@ -342,9 +356,16 @@ impl<'a> GraphicsMaterialBuilder<'a> {
     }
 
     fn default_color_blend_state() -> vk::PipelineColorBlendAttachmentState {
+        // Enable alpha blending by default
         vk::PipelineColorBlendAttachmentState::builder()
             .color_write_mask(vk::ColorComponentFlags::RGBA)
-            .blend_enable(false)
+            .blend_enable(true)
+            .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
+            .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+            .color_blend_op(vk::BlendOp::ADD)
+            .src_alpha_blend_factor(vk::BlendFactor::ONE)
+            .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
+            .alpha_blend_op(vk::BlendOp::ADD)
             .build()
     }
 
