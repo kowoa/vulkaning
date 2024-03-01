@@ -58,7 +58,7 @@ impl Resources {
 
         let models = {
             // Create models
-            //let mut monkey_model = Model::load_from_obj("monkey_smooth.obj")?;
+            let mut monkey_model = Model::load_from_obj("monkey_smooth.obj")?;
             //let mut triangle_model = Model::new(vec![Mesh::new_triangle()]);
             //let mut empire_model = Model::load_from_obj("lost_empire.obj")?;
             let mut backpack_model =
@@ -67,12 +67,12 @@ impl Resources {
 
             // Upload models onto GPU immediately
             {
+                monkey_model.upload(
+                    &core.device,
+                    &mut allocator,
+                    upload_context,
+                )?;
                 /*
-                                monkey_model.upload(
-                                    &core.device,
-                                    &mut allocator,
-                                    upload_context,
-                                )?;
                                 triangle_model.upload(
                                     &core.device,
                                     &mut allocator,
@@ -98,7 +98,7 @@ impl Resources {
 
             // Create HashMap with model name as keys and model as values
             let mut models = HashMap::new();
-            //models.insert("monkey".into(), Arc::new(monkey_model));
+            models.insert("monkey".into(), Arc::new(monkey_model));
             //models.insert("triangle".into(), Arc::new(triangle_model));
             //models.insert("empire".into(), Arc::new(empire_model));
             models.insert("backpack".into(), Arc::new(backpack_model));
@@ -135,15 +135,13 @@ impl Resources {
         // Scene/render objects
         let render_objs = {
             let mut render_objs = Vec::new();
-            /*
-                        let monkey = RenderObject::new(
-                            models["monkey"].clone(),
-                            materials["default-lit"].clone(),
-                            None,
-                            Mat4::from_translation(Vec3::new(0.0, 20.0, -20.0)),
-                        );
-            */
-            //render_objs.push(monkey);
+            let monkey = RenderObject::new(
+                models["monkey"].clone(),
+                materials["default-lit"].clone(),
+                None,
+                Mat4::IDENTITY,
+            );
+            render_objs.push(monkey);
 
             /*
             for x in -20..=20 {
@@ -177,7 +175,7 @@ impl Resources {
                 models["backpack"].clone(),
                 materials["textured-lit"].clone(),
                 Some(textures["backpack-diffuse"].clone()),
-                Mat4::from_translation(Vec3::new(0.0, 10.0, -5.0)),
+                Mat4::from_translation(Vec3::new(0.0, 0.0, -5.0)),
             );
             render_objs.push(backpack);
 
