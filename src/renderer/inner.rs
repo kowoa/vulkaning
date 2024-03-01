@@ -248,7 +248,6 @@ impl RendererInner {
             vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             &self.core.device,
         );
-
         let color_attachments = [vk::RenderingAttachmentInfo::builder()
             .image_view(self.draw_image.view)
             .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)

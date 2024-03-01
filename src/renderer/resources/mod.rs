@@ -316,6 +316,7 @@ impl Resources {
                 .pipeline_layout(layout)
                 .shader(shader)
                 .color_attachment_format(draw_image.format)
+                .depth_attachment_format(swapchain.depth_image.format)
                 .build()?
         };
 
