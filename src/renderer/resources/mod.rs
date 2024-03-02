@@ -179,7 +179,7 @@ impl Resources {
             textures,
             render_objs: ManuallyDrop::new(render_objs),
             background_effects,
-            current_background_effects_index: 0,
+            current_background_effects_index: 1,
         })
     }
 

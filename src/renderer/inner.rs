@@ -202,6 +202,13 @@ impl RendererInner {
                 1,
             );
         }
+
+        self.draw_image.transition_layout(
+            cmd,
+            vk::ImageLayout::GENERAL,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            &self.core.device,
+        );
     }
 
     // MAKE SURE TO CALL THIS FUNCTION AFTER DRAWING EVERY OBJECT
@@ -241,16 +248,10 @@ impl RendererInner {
     }
 
     fn draw_geometry(&mut self, cmd: vk::CommandBuffer) -> Result<()> {
-        self.draw_image.transition_layout(
-            cmd,
-            vk::ImageLayout::UNDEFINED,
-            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            &self.core.device,
-        );
         let color_attachments = [vk::RenderingAttachmentInfo::builder()
             .image_view(self.draw_image.view)
             .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .load_op(vk::AttachmentLoadOp::LOAD)
             .store_op(vk::AttachmentStoreOp::STORE)
             .clear_value(vk::ClearValue {
                 color: vk::ClearColorValue {
@@ -420,6 +421,7 @@ impl RendererInner {
             }
         }
 
+        self.draw_background(cmd);
         self.draw_geometry(cmd)?;
 
         // Copy draw image to swapchain image
