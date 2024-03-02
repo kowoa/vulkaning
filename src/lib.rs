@@ -1,25 +1,46 @@
-use bevy::prelude::*;
+use bevy::{
+    log,
+    prelude::*,
+    window::{PrimaryWindow, Window},
+    winit::{WinitSettings, WinitWindows},
+};
 use color_eyre::eyre::{eyre, Result};
 use renderer::{ASSETS_DIR, SHADERBUILD_DIR};
 use std::process::ExitCode;
+use winit::{monitor::VideoMode, window::Fullscreen};
 
 mod egui_app;
 mod renderer;
 
 pub fn run() -> Result<ExitCode> {
     color_eyre::install()?;
-    env_logger::init();
 
     set_directories()?;
 
-    App::new().add_systems(Startup, hello_world).run();
-    let exit_code = egui_app::run()?;
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .insert_resource(WinitSettings::game())
+        .add_systems(Startup, set_up_winit)
+        .run();
 
-    Ok(exit_code)
+    //let exit_code = egui_app::run()?;
+    //Ok(exit_code)
+    Ok(ExitCode::SUCCESS)
 }
 
-fn hello_world() {
-    println!("Hello, world!");
+fn set_up_winit(
+    mut winit_windows: NonSendMut<WinitWindows>,
+    mut window_ents: Query<Entity, With<PrimaryWindow>>,
+) {
+    let window_ent = window_ents.single();
+    let winit_window = winit_windows.get_window(window_ent).unwrap();
+    //winit_window.set_fullscreen(Some(Fullscreen::Borderless(None)));
+    log::info!("did not panic!");
+    /*
+        for (entity, mut window) in &mut windows {
+            let winit_window = winit_windows.get_window(entity).unwrap();
+        }
+    */
 }
 
 fn set_directories() -> Result<()> {

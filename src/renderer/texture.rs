@@ -1,3 +1,4 @@
+use bevy::log;
 use crate::renderer::{
     descriptors::DescriptorAllocator, image::AllocatedImage,
     upload_context::UploadContext, vkinit,

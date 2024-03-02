@@ -1,3 +1,4 @@
+use bevy::log;
 use ash::vk;
 use bytemuck::{offset_of, Pod, Zeroable};
 use glam::{Vec2, Vec3};

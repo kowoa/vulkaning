@@ -1,3 +1,4 @@
+use bevy::log;
 use std::{path::PathBuf, sync::MutexGuard};
 
 use ash::vk;

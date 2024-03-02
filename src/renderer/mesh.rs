@@ -1,3 +1,4 @@
+use bevy::log;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use bytemuck::{Pod, Zeroable};

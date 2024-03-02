@@ -1,3 +1,4 @@
+use bevy::log;
 pub mod object;
 pub mod renderpass;
 pub mod scene;

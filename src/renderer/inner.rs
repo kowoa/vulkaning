@@ -1,3 +1,4 @@
+use bevy::log;
 use std::{
     ffi::CString,
     sync::{Arc, Mutex, MutexGuard},

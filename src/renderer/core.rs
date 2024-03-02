@@ -1,3 +1,4 @@
+use bevy::log;
 use color_eyre::eyre::{eyre, Result};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use std::{

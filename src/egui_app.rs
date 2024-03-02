@@ -166,7 +166,7 @@ impl egui_ash::App for EguiApp {
         match event {
             egui_ash::event::Event::AppEvent { event } => match event {
                 egui_ash::event::AppEvent::LoopExiting => {
-                    log::info!("Loop exiting ...");
+                    bevy::log::info!("Loop exiting ...");
                 }
                 _ => {}
             },

@@ -1,3 +1,4 @@
+use bevy::log;
 mod vkinit;
 mod vkutils;
 
