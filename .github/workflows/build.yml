@@ -18,6 +18,9 @@ jobs:
 
     - name: Install rust toolchain
       run: rustup toolchain install nightly --profile minimal
+    
+    - name: Install mold linker
+      run: sudo apt-get install -y mold clang
 
     - name: Prepare Vulkan SDK
       uses: humbletim/setup-vulkan-sdk@v1.2.0
@@ -47,6 +50,11 @@ jobs:
     - name: Install ninja
       run: choco install ninja
 
+    - name: Install latest cargo-binutils
+      run:
+        - cargo install -f cargo-binutils
+        - rustup component add llvm-tools-preview
+
     - name: Prepare Vulkan SDK
       uses: humbletim/setup-vulkan-sdk@v1.2.0
       with:
@@ -74,6 +82,9 @@ jobs:
 
     - name: Install ninja
       run: brew install ninja
+
+    - name: Install lld linker
+      run: brew install llvm
     
     - name: Install Vulkan SDK
       uses: humbletim/install-vulkan-sdk@v1.1.1
