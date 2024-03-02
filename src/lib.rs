@@ -1,4 +1,4 @@
-#[allow(unused_imports)]
+use bevy::prelude::*;
 use color_eyre::eyre::{eyre, Result};
 use renderer::{ASSETS_DIR, SHADERBUILD_DIR};
 use std::process::ExitCode;
@@ -12,9 +12,14 @@ pub fn run() -> Result<ExitCode> {
 
     set_directories()?;
 
+    App::new().add_systems(Startup, hello_world).run();
     let exit_code = egui_app::run()?;
 
     Ok(exit_code)
+}
+
+fn hello_world() {
+    println!("Hello, world!");
 }
 
 fn set_directories() -> Result<()> {

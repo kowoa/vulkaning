@@ -3,6 +3,14 @@ name = "vulkaning"
 version = "0.1.0"
 edition = "2021"
 
+# Enable small amount of optimizations in debug mode
+[profile.dev]
+opt-level = 1
+
+# Enable high optimizations for dependencies
+[profile.dev.package."*"]
+opt-level = 3
+
 [dependencies]
 ash = { version = "0.37.3", features = ["linked"] }
 ash-window = "0.12.0"
@@ -23,6 +31,9 @@ tobj = { version = "4.0.0", features = ["async", "reordering"] }
 [dependencies.winit]
 version = "0.29"
 features = ["rwh_05"]
+
+[dependencies.bevy]
+version = "0.13.0"
 
 [build-dependencies]
 color-eyre = "0.6.2"
