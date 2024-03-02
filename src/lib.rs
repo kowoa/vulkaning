@@ -11,11 +11,8 @@ pub fn run() -> Result<ExitCode> {
 
     set_directories()?;
 
-    //App::new().add_plugins((DefaultPlugins, RenderPlugin)).run();
-    App::new().add_plugins((RenderPlugin)).run();
+    App::new().add_plugins((DefaultPlugins, RenderPlugin)).run();
 
-    //let exit_code = egui_app::run()?;
-    //Ok(exit_code)
     Ok(ExitCode::SUCCESS)
 }
 

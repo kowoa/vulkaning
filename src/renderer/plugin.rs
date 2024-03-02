@@ -1,33 +1,34 @@
-use bevy::log;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy::winit::WinitWindows;
 
-use crate::egui_app;
+use super::Renderer;
 
 pub struct RenderPlugin;
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
-        //app.add_systems(Startup, set_up_winit);
-        app.add_systems(Startup, start_app);
+        app.add_systems(Startup, start_renderer)
+            .add_systems(Update, draw_frame);
     }
 }
 
-fn set_up_winit(
-    mut winit_windows: NonSendMut<WinitWindows>,
-    mut window_ents: Query<Entity, With<PrimaryWindow>>,
-) {
-    let window_ent = window_ents.single();
+fn start_renderer(world: &mut World) {
+    let mut window_ents = world.query_filtered::<Entity, With<PrimaryWindow>>();
+    let winit_windows = world.get_non_send_resource::<WinitWindows>().unwrap();
+    let window_ent = window_ents.single(world);
     let winit_window = winit_windows.get_window(window_ent).unwrap();
-    //winit_window.set_fullscreen(Some(Fullscreen::Borderless(None)));
-    log::info!("did not panic!");
-    /*
-        for (entity, mut window) in &mut windows {
-            let winit_window = winit_windows.get_window(entity).unwrap();
-        }
-    */
+
+    let renderer = Renderer::new(winit_window).unwrap();
+    world.insert_non_send_resource(renderer);
 }
 
-fn start_app() {
-    let _ = egui_app::run().unwrap();
+fn draw_frame(
+    windows: Query<&Window, With<PrimaryWindow>>,
+    renderer: NonSendMut<Renderer>,
+) {
+    let window = windows.single();
+    let swapchain_image_index = renderer
+        .draw_frame(window.width() as u32, window.height() as u32)
+        .unwrap();
+    renderer.present_frame(swapchain_image_index).unwrap();
 }

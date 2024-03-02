@@ -182,7 +182,7 @@ impl egui_ash::App for EguiApp {
             let renderer = self.renderer.clone();
             move |size, egui_cmd| {
                 let swapchain_image_index = renderer
-                    .draw_frame(size.width, size.height, Some(egui_cmd))
+                    .draw_frame(size.width, size.height) //, Some(egui_cmd))
                     .unwrap();
                 renderer.present_frame(swapchain_image_index).unwrap();
             }

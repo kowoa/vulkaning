@@ -22,6 +22,7 @@ mod texture;
 mod upload_context;
 mod vertex;
 
+use bevy::ecs::system::Resource;
 use color_eyre::eyre::{eyre, Result};
 use egui_ash::{AshRenderState, EguiCommand};
 use gpu_allocator::vulkan::Allocator;
@@ -35,7 +36,7 @@ use self::inner::RendererInner;
 pub static mut ASSETS_DIR: Option<String> = None;
 pub static mut SHADERBUILD_DIR: Option<String> = None;
 
-#[derive(Clone)]
+#[derive(Clone, Resource)]
 pub struct Renderer {
     inner: Option<Arc<Mutex<RendererInner>>>,
 }
@@ -51,10 +52,10 @@ impl Renderer {
         &self,
         width: u32,
         height: u32,
-        egui_cmd: Option<EguiCommand>,
+        //egui_cmd: Option<EguiCommand>,
     ) -> Result<u32> {
         if let Some(inner) = &self.inner {
-            inner.lock().unwrap().draw_frame(width, height, egui_cmd)
+            inner.lock().unwrap().draw_frame(width, height) //, egui_cmd)
         } else {
             Err(eyre!("Failed to draw frame because renderer has already been destroyed"))
         }

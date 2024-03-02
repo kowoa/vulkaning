@@ -316,8 +316,9 @@ impl RendererInner {
         &mut self,
         width: u32,
         height: u32,
-        mut egui_cmd: Option<EguiCommand>,
+        //mut egui_cmd: Option<EguiCommand>,
     ) -> Result<u32> {
+        /*
         if self.first_draw {
             self.first_draw = false;
             // Update swapchain if it needs to be recreated
@@ -332,6 +333,7 @@ impl RendererInner {
                 egui_cmd = Some(cmd);
             }
         }
+        */
 
         let (
             swapchain_image_index,
@@ -456,15 +458,18 @@ impl RendererInner {
                 swapchain_image,
                 vk::ImageAspectFlags::COLOR,
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                //vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                vk::ImageLayout::PRESENT_SRC_KHR,
                 device,
             );
         }
 
         // Record egui commands
+        /*
         if let Some(egui_cmd) = egui_cmd {
             egui_cmd.record(cmd, swapchain_image_index as usize);
         }
+        */
 
         unsafe {
             // Finalize the main command buffer
