@@ -33,7 +33,7 @@ features = ["rwh_05"]
 [dependencies.bevy]
 version = "0.13.0"
 default-features = false
-features = ["bevy_winit"]
+features = ["bevy_asset", "bevy_winit"]
 
 [build-dependencies]
 color-eyre = "0.6.2"

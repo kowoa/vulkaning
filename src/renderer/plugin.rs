@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
+use bevy::window::{PrimaryWindow, WindowCloseRequested};
 use bevy::winit::WinitWindows;
 
 use super::Renderer;
@@ -8,7 +8,9 @@ pub struct RenderPlugin;
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, start_renderer)
-            .add_systems(Update, draw_frame);
+            .add_systems(Update, draw_frame)
+            .add_systems(Update, request_close_on_esc)
+            .add_systems(PostUpdate, cleanup);
     }
 }
 
@@ -31,4 +33,25 @@ fn draw_frame(
         .draw_frame(window.width() as u32, window.height() as u32)
         .unwrap();
     renderer.present_frame(swapchain_image_index).unwrap();
+}
+
+fn request_close_on_esc(
+    windows: Query<Entity, With<PrimaryWindow>>,
+    mut window_close_evts: EventWriter<WindowCloseRequested>,
+    input: Res<ButtonInput<KeyCode>>,
+) {
+    if input.pressed(KeyCode::Escape) {
+        window_close_evts.send(WindowCloseRequested {
+            window: windows.single(),
+        });
+    }
+}
+
+fn cleanup(
+    mut window_close_evts: EventReader<WindowCloseRequested>,
+    mut renderer: NonSendMut<Renderer>,
+) {
+    for _evt in window_close_evts.read() {
+        renderer.cleanup();
+    }
 }
