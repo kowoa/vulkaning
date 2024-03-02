@@ -1,4 +1,5 @@
-use bevy::log;
+pub mod plugin;
+
 mod vkinit;
 mod vkutils;
 
@@ -40,17 +41,9 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(
-        window: &winit::window::Window,
-        window_req_instance_exts: Vec<CString>,
-        window_req_device_exts: Vec<CString>,
-    ) -> Result<Self> {
+    pub fn new(window: &winit::window::Window) -> Result<Self> {
         Ok(Self {
-            inner: Some(Arc::new(Mutex::new(RendererInner::new(
-                window,
-                window_req_instance_exts,
-                window_req_device_exts,
-            )?))),
+            inner: Some(Arc::new(Mutex::new(RendererInner::new(window)?))),
         })
     }
 

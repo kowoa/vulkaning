@@ -50,18 +50,10 @@ pub struct RendererInner {
 }
 
 impl RendererInner {
-    pub fn new(
-        window: &winit::window::Window,
-        window_req_instance_exts: Vec<CString>,
-        window_req_device_exts: Vec<CString>,
-    ) -> Result<Self> {
+    pub fn new(window: &winit::window::Window) -> Result<Self> {
         log::info!("Initializing renderer ...");
 
-        let mut core = Core::new(
-            window,
-            window_req_instance_exts,
-            window_req_device_exts,
-        )?;
+        let mut core = Core::new(window)?;
         let swapchain = Swapchain::new(&mut core, window)?;
 
         let mut desc_allocator = Self::create_desc_allocator(&core.device)?;

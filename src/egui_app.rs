@@ -215,12 +215,7 @@ impl egui_ash::AppCreator<Arc<Mutex<gpu_allocator::vulkan::Allocator>>>
             egui_ash::Theme::Light
         };
 
-        let renderer = Renderer::new(
-            cc.main_window,
-            cc.required_instance_extensions,
-            cc.required_device_extensions,
-        )
-        .unwrap();
+        let renderer = Renderer::new(cc.main_window).unwrap();
         let ash_render_state = renderer.ash_render_state();
         let app = EguiApp {
             renderer,

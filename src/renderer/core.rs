@@ -3,7 +3,7 @@ use color_eyre::eyre::{eyre, Result};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use std::{
     collections::HashSet,
-    ffi::{c_void, CString},
+    ffi::{c_void, CStr, CString},
     mem::ManuallyDrop,
     sync::{Arc, Mutex, MutexGuard},
 };
@@ -46,16 +46,14 @@ impl Core {
     const REQUIRED_VALIDATION_LAYERS: [&'static str; 1] =
         ["VK_LAYER_KHRONOS_validation"];
 
-    pub fn new(
-        window: &winit::window::Window,
-        window_req_instance_exts: Vec<CString>,
-        window_req_device_exts: Vec<CString>,
-    ) -> Result<Self> {
-        let mut req_instance_exts = Self::create_required_instance_extensions();
-        req_instance_exts.extend(window_req_instance_exts);
+    pub fn new(window: &winit::window::Window) -> Result<Self> {
+        let req_instance_exts = Self::get_required_instance_extensions(window)?;
 
-        let mut req_device_exts = Self::create_required_device_extensions();
-        req_device_exts.extend(window_req_device_exts);
+        println!("{:#?}", req_instance_exts);
+
+        let req_device_exts = Self::get_required_device_extensions();
+
+        println!("{:#?}", req_device_exts);
 
         let entry = ash::Entry::linked();
         let instance = Self::create_instance(&entry, &req_instance_exts)?;
@@ -164,21 +162,31 @@ impl Core {
         )
     }
 
-    fn create_required_instance_extensions() -> Vec<CString> {
+    fn get_required_instance_extensions(
+        window: &winit::window::Window,
+    ) -> Result<Vec<CString>> {
         let mut exts = Vec::new();
+        let window_exts = ash_window::enumerate_required_extensions(
+            window.raw_display_handle(),
+        )?
+        .iter()
+        .map(|ext| unsafe { CStr::from_ptr(*ext).to_owned() })
+        .collect::<Vec<_>>();
+        exts.extend(window_exts);
         if Self::ENABLE_VALIDATION_LAYERS {
             exts.push(ash::extensions::ext::DebugUtils::name().to_owned());
         }
         #[cfg(target_os = "macos")]
         exts.push(vk::KhrGetPhysicalDeviceProperties2Fn::name().to_owned());
-        exts
+        Ok(exts)
     }
 
-    fn create_required_device_extensions() -> Vec<CString> {
+    fn get_required_device_extensions() -> Vec<CString> {
         #[allow(unused_mut)]
-        let mut exts =
-            vec![ash::extensions::khr::DynamicRendering::name().to_owned()];
-        log::info!("{:#?}", exts);
+        let mut exts = vec![
+            ash::extensions::khr::Swapchain::name().to_owned(),
+            ash::extensions::khr::DynamicRendering::name().to_owned(),
+        ];
         #[cfg(target_os = "macos")]
         exts.push(vk::KhrPortabilitySubsetFn::name().to_owned());
         exts
