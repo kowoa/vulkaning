@@ -1,4 +1,4 @@
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec2, Vec3};
 
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -6,6 +6,20 @@ pub struct GpuCameraData {
     pub viewproj: Mat4,
     pub near: f32,
     pub far: f32,
+}
+
+pub struct ArcballCamera {
+    camera: Camera,
+    pivot: Vec3,
+}
+
+impl Default for ArcballCamera {
+    fn default() -> Self {
+        Self {
+            camera: Camera::default(),
+            pivot: Vec3::ZERO,
+        }
+    }
 }
 
 pub struct Camera {

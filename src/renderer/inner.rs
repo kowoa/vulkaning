@@ -44,6 +44,8 @@ pub struct RendererInner {
     pub upload_context: UploadContext,
 
     pub first_draw: bool,
+
+    pub camera: Camera,
 }
 
 impl RendererInner {
@@ -136,6 +138,10 @@ impl RendererInner {
             frames
         };
 
+        let mut camera = Camera::default();
+        camera.set_position(Vec3::new(-3.0, 4.0, 10.0));
+        camera.look_at(Vec3::ZERO);
+
         Ok(Self {
             core,
             swapchain,
@@ -148,6 +154,7 @@ impl RendererInner {
             first_draw: true,
             draw_image,
             desc_allocator,
+            camera,
         })
     }
 
@@ -551,11 +558,8 @@ impl RendererInner {
 
         // Write into camera section of scene-camera uniform buffer
         {
-            let mut cam = Camera::default();
-            cam.set_position(Vec3::new(-3.0, 4.0, 10.0));
-            cam.look_at(Vec3::ZERO);
-
             // Fill a GpuCameraData struct
+            let cam = &self.camera;
             let cam_data = GpuCameraData {
                 viewproj: cam.viewproj_mat(width as f32, height as f32),
                 near: cam.near,
