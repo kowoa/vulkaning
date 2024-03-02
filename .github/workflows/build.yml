@@ -51,9 +51,9 @@ jobs:
       run: choco install ninja
 
     - name: Install latest cargo-binutils
-      run:
-        - cargo install -f cargo-binutils
-        - rustup component add llvm-tools-preview
+      run: |
+        cargo install -f cargo-binutils
+        rustup component add llvm-tools-preview
 
     - name: Prepare Vulkan SDK
       uses: humbletim/setup-vulkan-sdk@v1.2.0
