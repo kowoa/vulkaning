@@ -16,8 +16,6 @@ ash = { version = "0.37.3", features = ["linked"] }
 ash-window = "0.12.0"
 bytemuck = { version = "1.14.0", features = ["derive"] }
 color-eyre = "0.6.2"
-egui = "0.25.0"
-egui-ash = { version = "0.4.0", features = ["gpu-allocator"] }
 glam = { version = "0.25", features = ["bytemuck"] }
 gpu-allocator = { version = "0.25.0", features = ["egui", "egui_extras"] }
 image = "0.24"
@@ -41,6 +39,18 @@ features = [
   "bevy_asset",
   "bevy_debug_stepping",
   "bevy_scene",
+]
+
+[dependencies.bevy_egui]
+version = "0.25.0"
+default-features = false
+features = [
+  "arboard",
+  "default_fonts",
+  "manage_clipboard",
+  "open_url",
+  "thread_local",
+  "webbrowser",
 ]
 
 [build-dependencies]

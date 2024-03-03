@@ -24,7 +24,6 @@ mod vertex;
 
 use bevy::ecs::system::Resource;
 use color_eyre::eyre::{eyre, Result};
-use egui_ash::{AshRenderState, EguiCommand};
 use gpu_allocator::vulkan::Allocator;
 use std::{
     ffi::CString,
@@ -69,6 +68,7 @@ impl Renderer {
         }
     }
 
+    /*
     pub fn ash_render_state(&self) -> AshRenderState<Arc<Mutex<Allocator>>> {
         let inner = self.inner.as_ref().unwrap().lock().unwrap();
         AshRenderState {
@@ -88,6 +88,7 @@ impl Renderer {
             allocator: inner.core.get_allocator_ref(),
         }
     }
+    */
 
     pub fn cleanup(&mut self) {
         if let Some(inner) = self.inner.take() {

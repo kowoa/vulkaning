@@ -1,9 +1,9 @@
 use bevy::{prelude::*, window::WindowResolution};
+use bevy_egui::EguiPlugin;
 use color_eyre::eyre::{eyre, Result};
 use renderer::{plugin::RenderPlugin, ASSETS_DIR, SHADERBUILD_DIR};
 use std::process::ExitCode;
 
-mod egui_app;
 mod renderer;
 
 pub fn run() -> Result<ExitCode> {
@@ -22,6 +22,7 @@ pub fn run() -> Result<ExitCode> {
                 }),
                 ..Default::default()
             }),
+            EguiPlugin,
             RenderPlugin,
         ))
         .run();

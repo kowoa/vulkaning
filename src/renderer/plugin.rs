@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 use bevy::window::{PrimaryWindow, WindowCloseRequested};
 use bevy::winit::WinitWindows;
+use bevy_egui::{egui, EguiContexts, EguiRenderOutput};
+use color_eyre::eyre::eyre;
 
 use super::Renderer;
 
@@ -8,10 +10,17 @@ pub struct RenderPlugin;
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PreStartup, start_renderer)
-            .add_systems(Update, draw_frame)
             .add_systems(Update, request_close_on_esc)
+            .add_systems(Update, ui_example_system)
+            .add_systems(Update, draw_frame)
             .add_systems(PostUpdate, cleanup);
     }
+}
+
+fn ui_example_system(mut contexts: EguiContexts) {
+    egui::Window::new("Hello").show(contexts.ctx_mut(), |ui| {
+        ui.label("Hello World!");
+    });
 }
 
 fn start_renderer(world: &mut World) {

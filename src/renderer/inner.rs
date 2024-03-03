@@ -1,4 +1,5 @@
 use bevy::log;
+use bevy_egui::{egui, EguiRenderOutput};
 use std::{
     ffi::CString,
     sync::{Arc, Mutex, MutexGuard},
@@ -6,7 +7,6 @@ use std::{
 
 use ash::vk;
 use color_eyre::eyre::{eyre, Result};
-use egui_ash::EguiCommand;
 use glam::{Mat4, Vec3, Vec4};
 use gpu_allocator::vulkan::Allocator;
 
@@ -822,5 +822,25 @@ impl RendererInner {
             DescriptorAllocator::new(device, 10, &ratios)?;
 
         Ok(global_desc_allocator)
+    }
+
+    fn draw_egui(egui_output: EguiRenderOutput) {
+        let clipped_primitives = &egui_output.paint_jobs;
+        for egui::ClippedPrimitive {
+            clip_rect,
+            primitive,
+        } in clipped_primitives
+        {
+            let mesh = match primitive {
+                egui::epaint::Primitive::Mesh(mesh) => Ok(mesh),
+                egui::epaint::Primitive::Callback(callback) => {
+                    Err(eyre!("PaintCallback: {:#?}", callback))
+                }
+            }
+            .unwrap();
+            if mesh.vertices.is_empty() || mesh.indices.is_empty() {
+                continue;
+            }
+        }
     }
 }
