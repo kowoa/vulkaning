@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, window::WindowResolution};
 use color_eyre::eyre::{eyre, Result};
 use renderer::{plugin::RenderPlugin, ASSETS_DIR, SHADERBUILD_DIR};
 use std::process::ExitCode;
@@ -11,7 +11,20 @@ pub fn run() -> Result<ExitCode> {
 
     set_directories()?;
 
-    App::new().add_plugins((DefaultPlugins, RenderPlugin)).run();
+    App::new()
+        .add_plugins((
+            DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    resolution: WindowResolution::new(1600.0, 900.0),
+                    title: "vulkaning".into(),
+                    resizable: false,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            RenderPlugin,
+        ))
+        .run();
 
     Ok(ExitCode::SUCCESS)
 }

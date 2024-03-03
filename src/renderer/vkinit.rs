@@ -300,13 +300,6 @@ unsafe extern "system" fn debug_callback(
     p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
     _p_user_data: *mut c_void,
 ) -> vk::Bool32 {
-    let msg_severity = match message_severity {
-        vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => "[Verbose]",
-        vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => "[Warning]",
-        vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => "[Error]",
-        vk::DebugUtilsMessageSeverityFlagsEXT::INFO => "[Info]",
-        _ => "[Unknown]",
-    };
     let msg_type = match message_type {
         vk::DebugUtilsMessageTypeFlagsEXT::GENERAL => "[General]",
         vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE => "[Performance]",
@@ -314,7 +307,23 @@ unsafe extern "system" fn debug_callback(
         _ => "[Unknown]",
     };
     let msg = CStr::from_ptr((*p_callback_data).p_message);
-    log::debug!("{}{} {:?}", msg_severity, msg_type, msg);
+    match message_severity {
+        vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => {
+            log::trace!("[Verbose]{} {:?}", msg_type, msg);
+        }
+        vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => {
+            log::warn!("[Warning]{} {:?}", msg_type, msg);
+        }
+        vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => {
+            log::error!("[Error]{} {:?}", msg_type, msg);
+        }
+        vk::DebugUtilsMessageSeverityFlagsEXT::INFO => {
+            log::info!("[Info]{} {:?}", msg_type, msg);
+        }
+        _ => {
+            log::warn!("[Unknown]{} {:?}", msg_type, msg);
+        }
+    }
 
     vk::FALSE
 }
