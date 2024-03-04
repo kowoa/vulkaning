@@ -33,6 +33,10 @@ pub struct AllocatedImage {
 }
 
 impl AllocatedImage {
+    // NOTE: The `image` field of the AllocatedImage this function returns is GPU-only
+    // and is NOT yet populated with any data.
+    // This means that unless you are making a depth image, you will need to call
+    // `AllocatedImage::upload`
     pub fn new(
         create_info: &AllocatedImageCreateInfo,
         device: &ash::Device,
@@ -108,38 +112,23 @@ impl AllocatedImage {
         upload_context: &UploadContext,
         desc_set: Option<vk::DescriptorSet>,
     ) -> Result<Self> {
-        let (staging_buffer, img_width, img_height) = {
-            let filepath = unsafe {
-                let mut path = PathBuf::from(ASSETS_DIR.clone().unwrap());
-                path.push(filename);
-                path
-            };
-            let img = image::open(filepath)?.into_rgba8();
-            let mut img = image::DynamicImage::ImageRgba8(img);
-            if flipv {
-                img = img.flipv();
-            }
-            let img_width = img.width();
-            let img_height = img.height();
-            let data = img.as_bytes();
-
-            // Each component of rgba is 1 byte
-            // Multiply by 4 because there are 4 components (r, g, b, a)
-            let img_size = img_width * img_height * 4;
-            let mut staging_buffer = AllocatedBuffer::new(
-                device,
-                allocator,
-                img_size as u64,
-                vk::BufferUsageFlags::TRANSFER_SRC,
-                "Image staging buffer",
-                gpu_allocator::MemoryLocation::CpuToGpu,
-            )?;
-            let _ = staging_buffer.write(data, 0);
-
-            (staging_buffer, img_width, img_height)
+        // Read data from file
+        let filepath = unsafe {
+            let mut path = PathBuf::from(ASSETS_DIR.clone().unwrap());
+            path.push(filename);
+            path
         };
+        let img = image::open(filepath)?.into_rgba8();
+        let mut img = image::DynamicImage::ImageRgba8(img);
+        if flipv {
+            img = img.flipv();
+        }
+        let img_width = img.width();
+        let img_height = img.height();
+        let data = img.as_bytes();
 
-        let img = {
+        // Create an AllocatedImage with unitialized GPU-only data
+        let alloc_img = {
             let img_extent = vk::Extent3D {
                 width: img_width,
                 height: img_height,
@@ -159,6 +148,28 @@ impl AllocatedImage {
             Self::new(&create_info, device, allocator)?
         };
 
+        // Upload data from file read to image
+        alloc_img.upload(data, upload_context, device, allocator);
+
+        Ok(alloc_img)
+    }
+
+    pub fn upload(
+        &self,
+        data: &[u8],
+        upload_context: &UploadContext,
+        device: &ash::Device,
+        allocator: &mut Allocator,
+    ) -> Result<()> {
+        let mut staging_buffer = AllocatedBuffer::new(
+            device,
+            allocator,
+            data.len() as u64,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            "Image staging buffer",
+            gpu_allocator::MemoryLocation::CpuToGpu,
+        )?;
+        let _ = staging_buffer.write(data, 0);
         let _ = upload_context.immediate_submit(
             |cmd: &vk::CommandBuffer, device: &ash::Device| {
                 let range = vk::ImageSubresourceRange {
@@ -172,7 +183,7 @@ impl AllocatedImage {
                 let img_barrier_to_transfer = vk::ImageMemoryBarrier {
                     old_layout: vk::ImageLayout::UNDEFINED,
                     new_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    image: img.image,
+                    image: self.image,
                     subresource_range: range,
                     src_access_mask: vk::AccessFlags::empty(),
                     dst_access_mask: vk::AccessFlags::TRANSFER_WRITE,
@@ -204,7 +215,7 @@ impl AllocatedImage {
                         base_array_layer: 0,
                         layer_count: 1,
                     },
-                    image_extent: img.extent,
+                    image_extent: self.extent,
                     ..Default::default()
                 };
 
@@ -213,7 +224,7 @@ impl AllocatedImage {
                     device.cmd_copy_buffer_to_image(
                         *cmd,
                         staging_buffer.buffer,
-                        img.image,
+                        self.image,
                         vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                         &[copy_region],
                     );
@@ -244,10 +255,9 @@ impl AllocatedImage {
             },
             device,
         );
-
         staging_buffer.cleanup(device, allocator);
 
-        Ok(img)
+        Ok(())
     }
 
     pub fn transition_layout(

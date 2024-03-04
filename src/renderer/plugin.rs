@@ -36,10 +36,17 @@ fn start_renderer(world: &mut World) {
 fn draw_frame(
     windows: Query<&Window, With<PrimaryWindow>>,
     renderer: NonSendMut<Renderer>,
+    mut contexts: EguiContexts,
+    egui_output: Query<&EguiRenderOutput>,
 ) {
     let window = windows.single();
     let swapchain_image_index = renderer
-        .draw_frame(window.width() as u32, window.height() as u32)
+        .draw_frame(
+            window.width() as u32,
+            window.height() as u32,
+            contexts.ctx_mut(),
+            egui_output.single(),
+        )
         .unwrap();
     renderer.present_frame(swapchain_image_index).unwrap();
 }

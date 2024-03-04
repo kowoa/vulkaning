@@ -1,18 +1,40 @@
-use bevy::log;
 use crate::renderer::{
     descriptors::DescriptorAllocator, image::AllocatedImage,
     upload_context::UploadContext, vkinit,
 };
 use ash::vk;
+use bevy::log;
 use color_eyre::eyre::Result;
 use gpu_allocator::vulkan::Allocator;
 
 pub struct Texture {
-    image: AllocatedImage,
-    sampler: vk::Sampler,
+    pub image: AllocatedImage,
+    pub sampler: vk::Sampler,
 }
 
 impl Texture {
+    pub fn new(
+        image: AllocatedImage,
+        sampler: vk::Sampler,
+        device: &ash::Device,
+    ) -> Result<Self> {
+        // Update new descriptor set
+        let info = vk::DescriptorImageInfo {
+            sampler,
+            image_view: image.view,
+            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        };
+        let write = vkinit::write_descriptor_image(
+            vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            image.desc_set.unwrap(),
+            0,
+            &info,
+        );
+        unsafe { device.update_descriptor_sets(&[write], &[]) }
+
+        Ok(Self { image, sampler })
+    }
+
     pub fn load_from_file(
         filename: &str,
         flipv: bool,
@@ -42,21 +64,7 @@ impl Texture {
             unsafe { device.create_sampler(&info, None)? }
         };
 
-        // Update new descriptor set
-        let info = vk::DescriptorImageInfo {
-            sampler,
-            image_view: image.view,
-            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-        };
-        let write = vkinit::write_descriptor_image(
-            vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-            desc_set,
-            0,
-            &info,
-        );
-        unsafe { device.update_descriptor_sets(&[write], &[]) }
-
-        Ok(Self { image, sampler })
+        Self::new(image, sampler, device)
     }
 
     pub fn desc_set(&self) -> vk::DescriptorSet {
