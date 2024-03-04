@@ -38,4 +38,5 @@ layout (set = 0, binding = 0) uniform sampler2D font_texture;
 
 void main() {
     f_color = i_color * texture(font_texture, i_uv);
+    f_color.a = 1.0;
 }

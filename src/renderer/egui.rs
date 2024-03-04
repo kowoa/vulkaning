@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use ash::vk;
+use bevy::log;
 use bevy_egui::{egui, EguiRenderOutput};
 use color_eyre::eyre::{eyre, Result};
 use glam::Vec2;
@@ -280,14 +281,16 @@ impl EguiRenderer {
                     cmd,
                     mesh.indices.len() as u32,
                     1,
-                    index_base,
-                    vertex_base,
+                    //index_base,
+                    //vertex_base,
+                    0,
+                    0,
                     0,
                 );
             }
 
-            vertex_base += mesh.vertices.len() as i32;
-            index_base += mesh.indices.len() as u32;
+            //vertex_base += mesh.vertices.len() as i32;
+            //index_base += mesh.indices.len() as u32;
         }
     }
 
@@ -338,6 +341,13 @@ impl EguiRenderer {
 
     fn default_fragment_buffer_size() -> u64 {
         1024 * 1024 * 4
+    }
+
+    pub fn cleanup(mut self, device: &ash::Device, allocator: &mut Allocator) {
+        self.material.cleanup(device);
+        self.vertex_buffer.cleanup(device, allocator);
+        self.index_buffer.cleanup(device, allocator);
+        self.managed_textures.cleanup(device, allocator);
     }
 }
 

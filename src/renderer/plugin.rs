@@ -11,7 +11,7 @@ impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PreStartup, start_renderer)
             .add_systems(Update, request_close_on_esc)
-            .add_systems(Update, ui_example_system)
+            //.add_systems(Update, ui_example_system)
             .add_systems(Update, draw_frame)
             .add_systems(PostUpdate, cleanup);
     }

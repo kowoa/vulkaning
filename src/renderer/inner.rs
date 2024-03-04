@@ -258,7 +258,14 @@ impl RendererInner {
         Ok(())
     }
 
-    fn draw_geometry(&mut self, cmd: vk::CommandBuffer) -> Result<()> {
+    fn draw_geometry(
+        &mut self,
+        cmd: vk::CommandBuffer,
+        width: u32,
+        height: u32,
+        egui_context: &mut egui::Context,
+        egui_output: &EguiRenderOutput,
+    ) -> Result<()> {
         let color_attachments = [vk::RenderingAttachmentInfo::builder()
             .image_view(self.draw_image.view)
             .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
@@ -305,13 +312,27 @@ impl RendererInner {
 
         // RENDERING COMMANDS START
 
-        self.draw_render_objects(
-            self.draw_image.extent.width,
-            self.draw_image.extent.height,
-            0,
-            self.resources.render_objs.len(),
-        )?;
-        self.draw_grid(cmd, self.frame_number % FRAME_OVERLAP)?;
+        /*
+                self.draw_render_objects(
+                    self.draw_image.extent.width,
+                    self.draw_image.extent.height,
+                    0,
+                    self.resources.render_objs.len(),
+                )?;
+                self.draw_grid(cmd, self.frame_number % FRAME_OVERLAP)?;
+        */
+        // Record egui commands
+        self.egui_renderer.draw_egui(
+            width,
+            height,
+            egui_context,
+            egui_output,
+            cmd,
+            &self.core.device,
+            &self.upload_context,
+            &mut *self.core.get_allocator()?,
+            &mut self.desc_allocator,
+        );
 
         // RENDERING COMMANDS END
 
@@ -434,7 +455,7 @@ impl RendererInner {
         }
 
         self.draw_background(cmd);
-        self.draw_geometry(cmd)?;
+        self.draw_geometry(cmd, width, height, egui_context, egui_output)?;
 
         // Copy draw image to swapchain image
         {
@@ -477,19 +498,6 @@ impl RendererInner {
                 device,
             );
         }
-
-        // Record egui commands
-        self.egui_renderer.draw_egui(
-            width,
-            height,
-            egui_context,
-            egui_output,
-            cmd,
-            &self.core.device,
-            &self.upload_context,
-            &mut *self.core.get_allocator()?,
-            &mut self.desc_allocator,
-        );
 
         unsafe {
             // Finalize the main command buffer
@@ -639,6 +647,8 @@ impl RendererInner {
         {
             let device = &self.core.device;
             let mut allocator = self.core.get_allocator().unwrap();
+
+            self.egui_renderer.cleanup(device, &mut allocator);
 
             self.desc_allocator.cleanup(device);
             self.upload_context.cleanup(device);
