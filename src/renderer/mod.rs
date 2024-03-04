@@ -30,7 +30,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use self::inner::RendererInner;
+use self::{camera::Camera, inner::RendererInner};
 
 pub static mut ASSETS_DIR: Option<String> = None;
 pub static mut SHADERBUILD_DIR: Option<String> = None;
@@ -47,19 +47,11 @@ impl Renderer {
         })
     }
 
-    pub fn draw_frame(&self, width: u32, height: u32) -> Result<u32> {
+    pub fn draw_frame(&self, camera: &Camera) -> Result<()> {
         if let Some(inner) = &self.inner {
-            inner.lock().unwrap().draw_frame(width, height)
+            inner.lock().unwrap().draw_frame(camera)
         } else {
             Err(eyre!("Failed to draw frame because renderer has already been destroyed"))
-        }
-    }
-
-    pub fn present_frame(&self, swapchain_image_index: u32) -> Result<()> {
-        if let Some(inner) = &self.inner {
-            inner.lock().unwrap().present_frame(swapchain_image_index)
-        } else {
-            Err(eyre!("Failed to present frame because renderer has already been destroyed"))
         }
     }
 

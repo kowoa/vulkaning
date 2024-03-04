@@ -1,4 +1,4 @@
-use bevy::log;
+use bevy::{ecs::component::Component, log};
 use glam::{Mat4, Vec2, Vec3};
 
 #[derive(Copy, Clone)]
@@ -23,6 +23,7 @@ impl Default for ArcballCamera {
     }
 }
 
+#[derive(Component)]
 pub struct Camera {
     pub position: Vec3,
     pub forward: Vec3,

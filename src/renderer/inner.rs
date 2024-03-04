@@ -42,10 +42,6 @@ pub struct RendererInner {
     pub draw_image: AllocatedImage, // Image to render into
     pub scene_camera_buffer: AllocatedBuffer,
     pub upload_context: UploadContext,
-
-    pub first_draw: bool,
-
-    pub camera: Camera,
 }
 
 impl RendererInner {
@@ -130,10 +126,6 @@ impl RendererInner {
             frames
         };
 
-        let mut camera = Camera::default();
-        camera.set_position(Vec3::new(-3.0, 4.0, 10.0));
-        camera.look_at(Vec3::ZERO);
-
         Ok(Self {
             core,
             swapchain,
@@ -143,10 +135,8 @@ impl RendererInner {
             command_pool,
             scene_camera_buffer,
             upload_context,
-            first_draw: true,
             draw_image,
             desc_allocator,
-            camera,
         })
     }
 
@@ -246,7 +236,11 @@ impl RendererInner {
         Ok(())
     }
 
-    fn draw_geometry(&mut self, cmd: vk::CommandBuffer) -> Result<()> {
+    fn draw_geometry(
+        &mut self,
+        cmd: vk::CommandBuffer,
+        camera: &Camera,
+    ) -> Result<()> {
         let color_attachments = [vk::RenderingAttachmentInfo::builder()
             .image_view(self.draw_image.view)
             .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
@@ -298,6 +292,7 @@ impl RendererInner {
             self.draw_image.extent.height,
             0,
             self.resources.render_objs.len(),
+            camera,
         )?;
         self.draw_grid(cmd, self.frame_number % FRAME_OVERLAP)?;
 
@@ -312,24 +307,7 @@ impl RendererInner {
     }
 
     /// Returns the swapchain image index draw into
-    pub fn draw_frame(&mut self, width: u32, height: u32) -> Result<u32> {
-        /*
-        if self.first_draw {
-            self.first_draw = false;
-            // Update swapchain if it needs to be recreated
-            let egui_cmd_take = egui_cmd.take();
-            if let Some(mut cmd) = egui_cmd_take {
-                cmd.update_swapchain(egui_ash::SwapchainUpdateInfo {
-                    width,
-                    height,
-                    swapchain_images: self.swapchain.images.clone(),
-                    surface_format: self.swapchain.image_format,
-                });
-                egui_cmd = Some(cmd);
-            }
-        }
-        */
-
+    pub fn draw_frame(&mut self, camera: &Camera) -> Result<()> {
         let (
             swapchain_image_index,
             cmd,
@@ -416,7 +394,7 @@ impl RendererInner {
         }
 
         self.draw_background(cmd);
-        self.draw_geometry(cmd)?;
+        self.draw_geometry(cmd, camera)?;
 
         // Copy draw image to swapchain image
         {
@@ -483,10 +461,12 @@ impl RendererInner {
             )?;
         }
 
-        Ok(swapchain_image_index)
+        self.present_frame(swapchain_image_index)?;
+
+        Ok(())
     }
 
-    pub fn present_frame(&mut self, swapchain_image_index: u32) -> Result<()> {
+    fn present_frame(&mut self, swapchain_image_index: u32) -> Result<()> {
         {
             let frame = self.get_current_frame()?;
             let present_info = vk::PresentInfoKHR {
@@ -510,12 +490,13 @@ impl RendererInner {
         Ok(())
     }
 
-    pub fn draw_render_objects(
+    fn draw_render_objects(
         &mut self,
         width: u32,
         height: u32,
         first_index: usize,
         count: usize,
+        camera: &Camera,
     ) -> Result<()> {
         let core = &self.core;
         let frame_index = self.frame_number % FRAME_OVERLAP;
@@ -546,11 +527,10 @@ impl RendererInner {
         // Write into camera section of scene-camera uniform buffer
         {
             // Fill a GpuCameraData struct
-            let cam = &self.camera;
             let cam_data = GpuCameraData {
-                viewproj: cam.viewproj_mat(width as f32, height as f32),
-                near: cam.near,
-                far: cam.far,
+                viewproj: camera.viewproj_mat(width as f32, height as f32),
+                near: camera.near,
+                far: camera.far,
             };
 
             // Copy GpuCameraData struct to buffer

@@ -149,7 +149,7 @@ impl AllocatedImage {
         };
 
         // Upload data from file read to image
-        alloc_img.upload(data, upload_context, device, allocator);
+        let _ = alloc_img.upload(data, upload_context, device, allocator);
 
         Ok(alloc_img)
     }

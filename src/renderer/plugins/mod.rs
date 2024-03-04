@@ -1,16 +1,18 @@
 mod camera;
+mod misc;
 
 use bevy::prelude::*;
 use bevy::window::{PrimaryWindow, RequestRedraw, WindowCloseRequested};
 use bevy::winit::WinitWindows;
 use color_eyre::eyre::eyre;
 
+use super::camera::Camera;
 use super::Renderer;
 
 pub struct RenderPlugin;
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(camera::CameraPlugin)
+        app.add_plugins((camera::CameraPlugin, misc::MiscPlugin))
             .add_systems(PreStartup, start_renderer)
             .add_systems(Update, request_close_on_esc)
             .add_systems(Update, draw_frame)
@@ -28,15 +30,9 @@ fn start_renderer(world: &mut World) {
     world.insert_non_send_resource(renderer);
 }
 
-fn draw_frame(
-    windows: Query<&Window, With<PrimaryWindow>>,
-    renderer: NonSendMut<Renderer>,
-) {
-    let window = windows.single();
-    let swapchain_image_index = renderer
-        .draw_frame(window.width() as u32, window.height() as u32)
-        .unwrap();
-    renderer.present_frame(swapchain_image_index).unwrap();
+fn draw_frame(renderer: NonSendMut<Renderer>, camera: Query<&Camera>) {
+    let camera = camera.single();
+    renderer.draw_frame(camera).unwrap();
 }
 
 fn request_close_on_esc(
