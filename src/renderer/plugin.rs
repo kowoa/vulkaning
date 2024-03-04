@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy::window::{PrimaryWindow, WindowCloseRequested};
+use bevy::window::{PrimaryWindow, RequestRedraw, WindowCloseRequested};
 use bevy::winit::WinitWindows;
 use color_eyre::eyre::eyre;
 
@@ -52,7 +52,7 @@ fn cleanup(
     mut window_close_evts: EventReader<WindowCloseRequested>,
     mut renderer: NonSendMut<Renderer>,
 ) {
-    for _evt in window_close_evts.read() {
+    if window_close_evts.read().next().is_some() {
         renderer.cleanup();
     }
 }
