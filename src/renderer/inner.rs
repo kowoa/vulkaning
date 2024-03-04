@@ -19,7 +19,6 @@ use super::{
     descriptors::{
         DescriptorAllocator, DescriptorSetLayoutBuilder, PoolSizeRatio,
     },
-    egui::EguiRenderer,
     frame::Frame,
     image::{AllocatedImage, AllocatedImageCreateInfo},
     resources::Resources,
@@ -48,7 +47,6 @@ pub struct RendererInner {
     pub first_draw: bool,
 
     pub camera: Camera,
-    egui_renderer: EguiRenderer,
 }
 
 impl RendererInner {
@@ -137,14 +135,6 @@ impl RendererInner {
         camera.set_position(Vec3::new(-3.0, 4.0, 10.0));
         camera.look_at(Vec3::ZERO);
 
-        let egui_renderer = EguiRenderer::new(
-            &core.device,
-            &mut *core.get_allocator()?,
-            &mut desc_allocator,
-            &draw_image,
-            &swapchain,
-        )?;
-
         Ok(Self {
             core,
             swapchain,
@@ -158,7 +148,6 @@ impl RendererInner {
             draw_image,
             desc_allocator,
             camera,
-            egui_renderer,
         })
     }
 
@@ -312,27 +301,13 @@ impl RendererInner {
 
         // RENDERING COMMANDS START
 
-        /*
-                self.draw_render_objects(
-                    self.draw_image.extent.width,
-                    self.draw_image.extent.height,
-                    0,
-                    self.resources.render_objs.len(),
-                )?;
-                self.draw_grid(cmd, self.frame_number % FRAME_OVERLAP)?;
-        */
-        // Record egui commands
-        self.egui_renderer.draw_egui(
-            width,
-            height,
-            egui_context,
-            egui_output,
-            cmd,
-            &self.core.device,
-            &self.upload_context,
-            &mut *self.core.get_allocator()?,
-            &mut self.desc_allocator,
-        );
+        self.draw_render_objects(
+            self.draw_image.extent.width,
+            self.draw_image.extent.height,
+            0,
+            self.resources.render_objs.len(),
+        )?;
+        self.draw_grid(cmd, self.frame_number % FRAME_OVERLAP)?;
 
         // RENDERING COMMANDS END
 
@@ -647,8 +622,6 @@ impl RendererInner {
         {
             let device = &self.core.device;
             let mut allocator = self.core.get_allocator().unwrap();
-
-            self.egui_renderer.cleanup(device, &mut allocator);
 
             self.desc_allocator.cleanup(device);
             self.upload_context.cleanup(device);

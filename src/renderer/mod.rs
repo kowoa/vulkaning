@@ -7,7 +7,6 @@ mod buffer;
 mod camera;
 mod core;
 mod descriptors;
-mod egui;
 mod frame;
 mod image;
 mod inner;

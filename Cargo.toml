@@ -3,6 +3,10 @@ name = "vulkaning"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+resolver = "2"
+exclude = ["archive"]
+
 # Enable small amount of optimizations in debug mode
 [profile.dev]
 opt-level = 1
