@@ -1,4 +1,4 @@
-pub mod plugin;
+pub mod plugins;
 
 mod vkinit;
 mod vkutils;
@@ -62,28 +62,6 @@ impl Renderer {
             Err(eyre!("Failed to present frame because renderer has already been destroyed"))
         }
     }
-
-    /*
-    pub fn ash_render_state(&self) -> AshRenderState<Arc<Mutex<Allocator>>> {
-        let inner = self.inner.as_ref().unwrap().lock().unwrap();
-        AshRenderState {
-            entry: inner.core.entry.clone(),
-            instance: inner.core.instance.clone(),
-            physical_device: inner.core.physical_device,
-            device: inner.core.device.clone(),
-            surface_loader: inner.core.surface_loader.clone(),
-            swapchain_loader: inner.swapchain.swapchain_loader.clone(),
-            queue: inner.core.graphics_queue,
-            queue_family_index: inner
-                .core
-                .queue_family_indices
-                .get_graphics_family()
-                .unwrap(),
-            command_pool: inner.command_pool,
-            allocator: inner.core.get_allocator_ref(),
-        }
-    }
-    */
 
     pub fn cleanup(&mut self) {
         if let Some(inner) = self.inner.take() {

@@ -1,3 +1,5 @@
+mod camera;
+
 use bevy::prelude::*;
 use bevy::window::{PrimaryWindow, RequestRedraw, WindowCloseRequested};
 use bevy::winit::WinitWindows;
@@ -8,7 +10,8 @@ use super::Renderer;
 pub struct RenderPlugin;
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreStartup, start_renderer)
+        app.add_plugins(camera::CameraPlugin)
+            .add_systems(PreStartup, start_renderer)
             .add_systems(Update, request_close_on_esc)
             .add_systems(Update, draw_frame)
             .add_systems(PostUpdate, cleanup);
@@ -41,7 +44,7 @@ fn request_close_on_esc(
     mut window_close_evts: EventWriter<WindowCloseRequested>,
     input: Res<ButtonInput<KeyCode>>,
 ) {
-    if input.pressed(KeyCode::Escape) {
+    if input.just_released(KeyCode::Escape) {
         window_close_evts.send(WindowCloseRequested {
             window: windows.single(),
         });

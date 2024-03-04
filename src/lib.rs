@@ -1,6 +1,6 @@
 use bevy::{prelude::*, window::WindowResolution};
 use color_eyre::eyre::{eyre, Result};
-use renderer::{plugin::RenderPlugin, ASSETS_DIR, SHADERBUILD_DIR};
+use renderer::{plugins::RenderPlugin, ASSETS_DIR, SHADERBUILD_DIR};
 use std::process::ExitCode;
 
 mod renderer;
