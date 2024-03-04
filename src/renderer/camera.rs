@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use bevy::{ecs::component::Component, log};
 use glam::{Mat4, Vec2, Vec3, Vec4, Vec4Swizzles};
 
@@ -56,21 +58,41 @@ impl Camera {
         self.up = self.right.cross(self.forward).normalize();
     }
 
-    pub fn rotate(&mut self, delta_radians: Vec2) {
+    pub fn rotate(
+        &mut self,
+        last_mouse_pos: Vec2,
+        curr_mouse_pos: Vec2,
+        viewport_width: f32,
+        viewport_height: f32,
+    ) {
         // Get the homogeneous positions of the camera eye and pivot
         let pos =
             Vec4::new(self.position.x, self.position.y, self.position.z, 1.0);
         let piv = Vec4::new(self.pivot.x, self.pivot.y, self.pivot.z, 1.0);
 
+        // Calculate the amount of rotation given the mouse movement
+        let delta_angle_x = 2.0 * PI / viewport_width; // Left to right = 2*PI = 360deg
+        let delta_angle_y = PI / viewport_height; // Top to bottom = PI = 180deg
+        let angle_x = (last_mouse_pos.x - curr_mouse_pos.x) * delta_angle_x;
+        let angle_y = (last_mouse_pos.y - curr_mouse_pos.y) * delta_angle_y;
+
+        // Handle case where the camera's forward is the same as its up
+        let cos_angle = self.forward.dot(self.up);
+        let delta_angle_y = if cos_angle * delta_angle_y.signum() > 0.99 {
+            0.0
+        } else {
+            delta_angle_y
+        };
+
         // Rotate the camera around the pivot point on the up axis
-        let rot_x = Mat4::from_axis_angle(self.up, delta_radians.x);
+        let rot_x = Mat4::from_axis_angle(self.up, angle_x);
         let pos = (rot_x * (pos - piv)) + piv;
 
         // Rotate the camera around the pivot point on the right axis
-        let rot_y = Mat4::from_axis_angle(self.right, delta_radians.y);
+        let rot_y = Mat4::from_axis_angle(self.right, angle_y);
         let pos = (rot_y * (pos - piv)) + piv;
 
-        self.position = pos.xyz();
+        self.set_position(pos.xyz());
     }
 
     pub fn viewproj_mat(

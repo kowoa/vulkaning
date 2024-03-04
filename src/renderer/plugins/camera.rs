@@ -14,15 +14,27 @@ fn spawn_camera(mut commands: Commands) {
     commands.spawn(Camera::default());
 }
 
-const RADIANS_PER_DELTA: f32 = 1.0 / 180.0;
-
 fn rotate_camera(
     mut camera: Query<&mut Camera>,
-    mut mouse_motion_evts: EventReader<MouseMotion>,
+    mut cursor_moved_evts: EventReader<CursorMoved>,
+    mut window: Query<&Window>,
 ) {
-    for evt in mouse_motion_evts.read() {
-        let mouse_delta = evt.delta;
+    for evt in cursor_moved_evts.read() {
+        let window = window.get(evt.window).unwrap();
+        let viewport_width = window.width();
+        let viewport_height = window.height();
+        let last_mouse_pos = if let Some(delta) = evt.delta {
+            evt.position - delta
+        } else {
+            evt.position
+        };
+        let curr_mouse_pos = evt.position;
         let mut camera = camera.single_mut();
-        camera.rotate(evt.delta * RADIANS_PER_DELTA);
+        camera.rotate(
+            last_mouse_pos,
+            curr_mouse_pos,
+            viewport_width,
+            viewport_height,
+        );
     }
 }
