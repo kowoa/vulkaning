@@ -23,7 +23,6 @@ mod upload_context;
 mod vertex;
 
 use bevy::ecs::system::Resource;
-use bevy_egui::{egui::Context, EguiRenderOutput};
 use color_eyre::eyre::{eyre, Result};
 use gpu_allocator::vulkan::Allocator;
 use std::{
@@ -48,21 +47,9 @@ impl Renderer {
         })
     }
 
-    pub fn draw_frame(
-        &self,
-        width: u32,
-        height: u32,
-        egui_context: &mut Context,
-        egui_output: &EguiRenderOutput,
-        //egui_cmd: Option<EguiCommand>,
-    ) -> Result<u32> {
+    pub fn draw_frame(&self, width: u32, height: u32) -> Result<u32> {
         if let Some(inner) = &self.inner {
-            inner.lock().unwrap().draw_frame(
-                width,
-                height,
-                egui_context,
-                egui_output,
-            ) //, egui_cmd)
+            inner.lock().unwrap().draw_frame(width, height)
         } else {
             Err(eyre!("Failed to draw frame because renderer has already been destroyed"))
         }

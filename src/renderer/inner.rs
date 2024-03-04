@@ -1,5 +1,4 @@
 use bevy::log;
-use bevy_egui::{egui, EguiRenderOutput};
 use std::{
     ffi::CString,
     sync::{Arc, Mutex, MutexGuard},
@@ -247,14 +246,7 @@ impl RendererInner {
         Ok(())
     }
 
-    fn draw_geometry(
-        &mut self,
-        cmd: vk::CommandBuffer,
-        width: u32,
-        height: u32,
-        egui_context: &mut egui::Context,
-        egui_output: &EguiRenderOutput,
-    ) -> Result<()> {
+    fn draw_geometry(&mut self, cmd: vk::CommandBuffer) -> Result<()> {
         let color_attachments = [vk::RenderingAttachmentInfo::builder()
             .image_view(self.draw_image.view)
             .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
@@ -320,13 +312,7 @@ impl RendererInner {
     }
 
     /// Returns the swapchain image index draw into
-    pub fn draw_frame(
-        &mut self,
-        width: u32,
-        height: u32,
-        egui_context: &mut egui::Context,
-        egui_output: &EguiRenderOutput,
-    ) -> Result<u32> {
+    pub fn draw_frame(&mut self, width: u32, height: u32) -> Result<u32> {
         /*
         if self.first_draw {
             self.first_draw = false;
@@ -430,7 +416,7 @@ impl RendererInner {
         }
 
         self.draw_background(cmd);
-        self.draw_geometry(cmd, width, height, egui_context, egui_output)?;
+        self.draw_geometry(cmd)?;
 
         // Copy draw image to swapchain image
         {
