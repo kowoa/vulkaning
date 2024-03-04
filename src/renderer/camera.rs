@@ -13,15 +13,15 @@ pub struct GpuCameraData {
 
 #[derive(Component)]
 pub struct Camera {
-    pub position: Vec3,
-    pub forward: Vec3,
-    pub up: Vec3,
-    pub right: Vec3,
-    pub world_up: Vec3,
-    pub zoom_deg: f32,
+    position: Vec3,
+    forward: Vec3,
+    up: Vec3,
+    right: Vec3,
+    world_up: Vec3,
+    fov_y_deg: f32,
     pub near: f32,
     pub far: f32,
-    pub pivot: Vec3,
+    pivot: Vec3,
 }
 
 impl Default for Camera {
@@ -32,7 +32,7 @@ impl Default for Camera {
             up: Vec3::Y,
             right: Vec3::X,
             world_up: Vec3::Y,
-            zoom_deg: Self::DEFAULT_ZOOM_DEG,
+            fov_y_deg: Self::DEFAULT_FOV_Y_DEG,
             near: 0.1,
             far: 100.0,
             pivot: Vec3::ZERO,
@@ -41,7 +41,7 @@ impl Default for Camera {
 }
 
 impl Camera {
-    const DEFAULT_ZOOM_DEG: f32 = 45.0;
+    const DEFAULT_FOV_Y_DEG: f32 = 45.0;
 
     pub fn set_position(&mut self, position: Vec3) {
         self.position = position;
@@ -56,6 +56,11 @@ impl Camera {
         self.forward = (target - self.position).normalize();
         self.right = self.forward.cross(self.world_up).normalize();
         self.up = self.right.cross(self.forward).normalize();
+    }
+
+    pub fn zoom(&mut self, delta: f32) {
+        // Subtracting because lower FOV means zooming in
+        self.fov_y_deg = (self.fov_y_deg - delta).clamp(1.0, 179.0);
     }
 
     pub fn rotate(
@@ -109,7 +114,7 @@ impl Camera {
 
     pub fn proj_mat(&self, viewport_width: f32, viewport_height: f32) -> Mat4 {
         let mut proj = Mat4::perspective_rh(
-            self.zoom_deg.to_radians(),
+            self.fov_y_deg.to_radians(),
             viewport_width / viewport_height,
             self.near,
             self.far,
