@@ -20,6 +20,7 @@ static MESH_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 pub struct Mesh {
     pub id: usize,
     pub vertices: Vec<Vertex>,
+    pub indices: Vec<u32>,
 }
 
 impl PartialEq for Mesh {
@@ -29,9 +30,13 @@ impl PartialEq for Mesh {
 }
 
 impl Mesh {
-    pub fn new(vertices: Vec<Vertex>) -> Self {
+    pub fn new(vertices: Vec<Vertex>, indices: Vec<u32>) -> Self {
         let id = MESH_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
-        Self { id, vertices }
+        Self {
+            id,
+            vertices,
+            indices,
+        }
     }
 
     pub fn new_triangle() -> Self {
@@ -56,7 +61,9 @@ impl Mesh {
             },
         ];
 
-        Self::new(vertices)
+        let indices = vec![0, 1, 2];
+
+        Self::new(vertices, indices)
     }
 
     pub fn new_quad() -> Self {
@@ -102,6 +109,11 @@ impl Mesh {
             },
         ];
 
-        Self::new(vertices)
+        let indices = vec![
+            0, 1, 2, // Top left triangle
+            3, 4, 5, // Bottom right triangle
+        ];
+
+        Self::new(vertices, indices)
     }
 }

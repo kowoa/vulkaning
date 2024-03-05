@@ -1,4 +1,4 @@
-use bevy::log;
+use bevy::{asset::Asset, log, reflect::TypePath};
 use std::{path::PathBuf, sync::MutexGuard};
 
 use ash::vk;
@@ -13,7 +13,7 @@ use crate::renderer::{
 
 use super::mesh::Mesh;
 
-#[derive(Default)]
+#[derive(Asset, TypePath, Debug)]
 pub struct Model {
     pub meshes: Vec<Mesh>,
     pub vertex_buffer: Option<AllocatedBuffer>,
@@ -74,21 +74,6 @@ impl Model {
         Ok(())
     }
 
-    /*
-    pub fn load_from_gltf(filename: &str) -> Result<Self> {
-        let filepath = unsafe {
-            let mut path = PathBuf::from(
-                ASSETS_DIR
-                    .as_ref()
-                    .ok_or_eyre("Assets directory not specified")?
-                    .clone(),
-            );
-            path.push(filename);
-            path
-        };
-    }
-    */
-
     pub fn load_from_obj(filename: &str) -> Result<Self> {
         let filepath = unsafe {
             let mut path = PathBuf::from(
@@ -118,6 +103,7 @@ impl Model {
         for model in models {
             let mesh = &model.mesh;
             let mut vertices = Vec::new();
+            let mut indices = Vec::new();
 
             for i in &mesh.indices {
                 let pos = &mesh.positions;
@@ -143,6 +129,7 @@ impl Model {
                     color: n,
                     texcoord: t,
                 });
+                indices.push(i as u32);
             }
 
             // Process material
@@ -167,7 +154,7 @@ impl Model {
                 // NOTE: no height maps for now
             }
 
-            let mesh = Mesh::new(vertices);
+            let mesh = Mesh::new(vertices, indices);
             meshes.push(mesh);
         }
 

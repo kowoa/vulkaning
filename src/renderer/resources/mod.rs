@@ -28,6 +28,12 @@ use super::{
     vkinit,
 };
 
+/*
+pub struct RenderResources {
+    pub materials: HashMap<String, &Material>,
+}
+*/
+
 pub struct Resources {
     pub materials: HashMap<String, Arc<Material>>,
     pub models: HashMap<String, Arc<Model>>,
