@@ -11,12 +11,19 @@ use crate::renderer::vertex::Vertex;
 
 const OBJ_EXTENSIONS: &[&str] = &["obj"];
 
+#[derive(States, Debug, Hash, Eq, PartialEq, Clone, Copy)]
+pub enum ObjAssetsState {
+    NotLoaded,
+    Loaded,
+}
+
 pub struct ObjAssetsPlugin;
 impl Plugin for ObjAssetsPlugin {
     fn build(&self, app: &mut App) {
-        app.preregister_asset_loader::<ObjLoader>(OBJ_EXTENSIONS);
-        app.init_asset::<Model>();
-        app.init_resource::<ObjAssetsLoading>();
+        app.preregister_asset_loader::<ObjLoader>(OBJ_EXTENSIONS)
+            .insert_state(ObjAssetsState::NotLoaded) // Loaded when all obj assets get loaded
+            .init_asset::<Model>()
+            .init_resource::<ObjAssetsLoading>();
     }
 
     fn finish(&self, app: &mut App) {
@@ -25,7 +32,9 @@ impl Plugin for ObjAssetsPlugin {
 }
 
 #[derive(Resource, Default)]
-pub struct ObjAssetsLoading(pub HashMap<String, UntypedHandle>);
+pub struct ObjAssetsLoading(
+    pub HashMap<String, (UntypedHandle, ObjAssetsState)>,
+);
 
 struct ObjLoader;
 

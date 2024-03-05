@@ -18,6 +18,7 @@ use super::{
     mesh::{Mesh, MeshPushConstants},
     model::Model,
     render_object::RenderObject,
+    render_resources::RenderResources,
     shader::{
         ComputeEffect, ComputePushConstants, ComputeShader, GraphicsShader,
     },
@@ -28,18 +29,12 @@ use super::{
     vkinit,
 };
 
-/*
-pub struct RenderResources {
-    pub materials: HashMap<String, &Material>,
-}
-*/
-
-pub struct Resources {
+pub struct Resources<'a> {
     pub materials: HashMap<String, Arc<Material>>,
     pub models: HashMap<String, Arc<Model>>,
     textures: HashMap<String, Arc<Texture>>,
 
-    pub render_objs: ManuallyDrop<Vec<RenderObject>>,
+    pub render_objs: ManuallyDrop<Vec<RenderObject<'a>>>,
     pub background_effects: Vec<ComputeEffect>,
     pub current_background_effects_index: usize,
 }
@@ -51,6 +46,7 @@ impl Resources {
         upload_context: &UploadContext,
         desc_allocator: &mut DescriptorAllocator,
         draw_image: &AllocatedImage,
+        mut resources: RenderResources,
     ) -> Result<Self> {
         let mut allocator = core.get_allocator()?;
 
@@ -63,9 +59,10 @@ impl Resources {
             draw_image,
         )?;
 
+        let mut monkey_model: &mut Model = resources.models["monkey"];
         let models = {
             // Create models
-            let mut monkey_model = Model::load_from_obj("monkey_smooth.obj")?;
+            //let mut monkey_model = Model::load_from_obj("monkey_smooth.obj")?;
             //let mut triangle_model = Model::new(vec![Mesh::new_triangle()]);
             //let mut empire_model = Model::load_from_obj("lost_empire.obj")?;
             let mut backpack_model =
@@ -105,7 +102,7 @@ impl Resources {
 
             // Create HashMap with model name as keys and model as values
             let mut models = HashMap::new();
-            models.insert("monkey".into(), Arc::new(monkey_model));
+            //models.insert("monkey".into(), Arc::new(monkey_model));
             //models.insert("triangle".into(), Arc::new(triangle_model));
             //models.insert("empire".into(), Arc::new(empire_model));
             models.insert("backpack".into(), Arc::new(backpack_model));
@@ -143,15 +140,15 @@ impl Resources {
         let render_objs = {
             let mut render_objs = Vec::new();
             let monkey = RenderObject::new(
-                models["monkey"].clone(),
+                monkey_model,
                 materials["default-lit"].clone(),
                 None,
                 Mat4::IDENTITY,
             );
-            //render_objs.push(monkey);
+            render_objs.push(monkey);
 
             let quad = RenderObject::new(
-                models["quad"].clone(),
+                &models["quad"],
                 materials["default-lit"].clone(),
                 None,
                 Mat4::from_rotation_x(90f32.to_radians()),
@@ -169,7 +166,7 @@ impl Resources {
             //render_objs.push(empire);
 
             let backpack = RenderObject::new(
-                models["backpack"].clone(),
+                &models["backpack"],
                 materials["textured-lit"].clone(),
                 Some(textures["backpack-diffuse"].clone()),
                 Mat4::from_translation(Vec3::new(0.0, 0.0, -5.0)),

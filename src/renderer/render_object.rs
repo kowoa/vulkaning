@@ -1,5 +1,5 @@
-use bevy::log;
 use ash::vk;
+use bevy::log;
 use color_eyre::eyre::{OptionExt, Result};
 use std::sync::Arc;
 
@@ -12,16 +12,16 @@ use crate::renderer::{
 
 use super::{frame::Frame, texture::Texture};
 
-pub struct RenderObject {
-    pub model: Arc<Model>,
+pub struct RenderObject<'a> {
+    pub model: &'a Model,
     pub material: Arc<Material>,
     pub texture: Option<Arc<Texture>>,
     pub transform: Mat4,
 }
 
-impl RenderObject {
+impl<'a> RenderObject<'a> {
     pub fn new(
-        model: Arc<Model>,
+        model: &Model,
         material: Arc<Material>,
         texture: Option<Arc<Texture>>,
         transform: Mat4,

@@ -20,6 +20,7 @@ use super::{
     },
     frame::Frame,
     image::{AllocatedImage, AllocatedImageCreateInfo},
+    render_resources::RenderResources,
     resources::Resources,
     swapchain::Swapchain,
     upload_context::UploadContext,
@@ -29,10 +30,10 @@ use super::{
 pub const FRAME_OVERLAP: u32 = 2;
 pub const MAX_OBJECTS: u32 = 10000; // Max objects per frame
 
-pub struct RendererInner {
+pub struct RendererInner<'a> {
     pub core: Core,
     pub swapchain: Swapchain,
-    pub resources: Resources,
+    pub resources: Option<Resources<'a>>, // Needs to be initialized with init_resources()
     pub desc_allocator: DescriptorAllocator,
 
     pub frame_number: u32,
@@ -44,7 +45,7 @@ pub struct RendererInner {
     pub upload_context: UploadContext,
 }
 
-impl RendererInner {
+impl<'a> RendererInner<'a> {
     pub fn new(window: &winit::window::Window) -> Result<Self> {
         log::info!("Initializing renderer ...");
 
@@ -70,14 +71,6 @@ impl RendererInner {
                 &mut desc_allocator,
             )?
         };
-
-        let resources = Resources::new(
-            &mut core,
-            &swapchain,
-            &upload_context,
-            &mut desc_allocator,
-            &draw_image,
-        )?;
 
         let scene_camera_buffer = {
             let scene_size = core
@@ -129,7 +122,7 @@ impl RendererInner {
         Ok(Self {
             core,
             swapchain,
-            resources,
+            resources: None,
             frame_number: 0,
             frames,
             command_pool,
@@ -138,6 +131,21 @@ impl RendererInner {
             draw_image,
             desc_allocator,
         })
+    }
+
+    pub fn init_resources(&mut self, resources: RenderResources) -> Result<()> {
+        let resources = Resources::new(
+            &mut self.core,
+            &self.swapchain,
+            &self.upload_context,
+            &mut self.desc_allocator,
+            &self.draw_image,
+            resources,
+        )?;
+
+        self.resources = Some(resources);
+
+        Ok(())
     }
 
     fn get_current_frame(&self) -> Result<MutexGuard<Frame>> {
@@ -155,8 +163,11 @@ impl RendererInner {
             &self.core.device,
         );
 
-        let effect = &self.resources.background_effects
-            [self.resources.current_background_effects_index];
+        let effect = &self.resources.as_ref().unwrap().background_effects[self
+            .resources
+            .as_ref()
+            .unwrap()
+            .current_background_effects_index];
         let material = &effect.material;
         let device = &self.core.device;
 
@@ -207,8 +218,10 @@ impl RendererInner {
         frame_index: u32,
     ) -> Result<()> {
         let device = &self.core.device;
-        let grid_mat = self.resources.materials["grid"].as_ref();
-        let grid_model = self.resources.models["quad"].as_ref();
+        let grid_mat =
+            self.resources.as_ref().unwrap().materials["grid"].as_ref();
+        let grid_model =
+            self.resources.as_ref().unwrap().models["quad"].as_ref();
         grid_mat.bind_pipeline(cmd, device);
 
         let frame = self.get_current_frame()?;
@@ -291,7 +304,7 @@ impl RendererInner {
             self.draw_image.extent.width,
             self.draw_image.extent.height,
             0,
-            self.resources.render_objs.len(),
+            self.resources.as_ref().unwrap().render_objs.len(),
             camera,
         )?;
         self.draw_grid(cmd, self.frame_number % FRAME_OVERLAP)?;
@@ -544,6 +557,8 @@ impl RendererInner {
             let rot = Mat4::IDENTITY;
             let object_data = self
                 .resources
+                .as_ref()
+                .unwrap()
                 .render_objs
                 .iter()
                 .map(|obj| rot * obj.transform)
@@ -556,7 +571,8 @@ impl RendererInner {
         let mut last_material_drawn = None;
         for instance_index in first_index..(first_index + count) {
             let device = &core.device;
-            let render_obj = &self.resources.render_objs[instance_index];
+            let render_obj =
+                &self.resources.as_ref().unwrap().render_objs[instance_index];
             let frame = self.get_current_frame()?;
 
             render_obj.draw(
@@ -591,7 +607,7 @@ impl RendererInner {
 
             self.desc_allocator.cleanup(device);
             self.upload_context.cleanup(device);
-            self.resources.cleanup(device, &mut allocator);
+            self.resources.unwrap().cleanup(device, &mut allocator);
 
             // Destroy command pool
             unsafe {

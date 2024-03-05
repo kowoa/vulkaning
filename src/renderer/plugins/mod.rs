@@ -2,12 +2,18 @@ mod assets;
 mod camera;
 mod misc;
 
+use std::collections::HashMap;
+
 use bevy::prelude::*;
 use bevy::window::{PrimaryWindow, RequestRedraw, WindowCloseRequested};
 use bevy::winit::WinitWindows;
 use color_eyre::eyre::eyre;
 
+use self::assets::{ObjAssetsLoading, ObjAssetsState};
+
 use super::camera::Camera;
+use super::model::Model;
+use super::render_resources::RenderResources;
 use super::Renderer;
 
 pub struct RenderPlugin;
@@ -18,11 +24,21 @@ impl Plugin for RenderPlugin {
             misc::MiscPlugin,
             assets::AssetsPlugin,
         ))
+        //.insert_state(RenderResourcesState::NotLoaded)
         .add_systems(PreStartup, start_renderer)
-        .add_systems(Update, request_close_on_esc)
-        .add_systems(Update, draw_frame)
+        .add_systems(OnEnter(ObjAssetsState::Loaded), init_render_resources)
+        .add_systems(
+            Update,
+            draw_frame.run_if(in_state(ObjAssetsState::Loaded)),
+        )
         .add_systems(PostUpdate, cleanup);
     }
+}
+
+#[derive(States, Debug, Hash, Eq, PartialEq, Clone, Copy)]
+enum RenderResourcesState {
+    NotLoaded,
+    Loaded,
 }
 
 fn start_renderer(world: &mut World) {
@@ -35,21 +51,24 @@ fn start_renderer(world: &mut World) {
     world.insert_non_send_resource(renderer);
 }
 
-fn draw_frame(renderer: NonSendMut<Renderer>, camera: Query<&Camera>) {
-    let camera = camera.single();
-    renderer.draw_frame(camera).unwrap();
+fn init_render_resources(
+    renderer: NonSend<Renderer>,
+    mut loading: ResMut<ObjAssetsLoading>,
+    mut loaded_models: ResMut<Assets<Model>>,
+) {
+    let mut models = HashMap::new();
+    for (name, (handle, load_state)) in loading.0.drain() {
+        let model = loaded_models.get_mut(&handle.clone().typed()).unwrap();
+        models.insert(name, model);
+    }
+
+    let resources = RenderResources { models };
+    renderer.init_resources(resources).unwrap();
 }
 
-fn request_close_on_esc(
-    windows: Query<Entity, With<PrimaryWindow>>,
-    mut window_close_evts: EventWriter<WindowCloseRequested>,
-    input: Res<ButtonInput<KeyCode>>,
-) {
-    if input.just_released(KeyCode::Escape) {
-        window_close_evts.send(WindowCloseRequested {
-            window: windows.single(),
-        });
-    }
+fn draw_frame(renderer: NonSend<Renderer>, camera: Query<&Camera>) {
+    let camera = camera.single();
+    renderer.draw_frame(camera).unwrap();
 }
 
 fn cleanup(

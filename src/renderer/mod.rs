@@ -1,4 +1,5 @@
 pub mod plugins;
+pub mod render_resources;
 
 mod vkinit;
 mod vkutils;
@@ -30,7 +31,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use self::{camera::Camera, inner::RendererInner};
+use self::{
+    camera::Camera, inner::RendererInner, render_resources::RenderResources,
+};
 
 pub static mut ASSETS_DIR: Option<String> = None;
 pub static mut SHADERBUILD_DIR: Option<String> = None;
@@ -45,6 +48,14 @@ impl Renderer {
         Ok(Self {
             inner: Some(Arc::new(Mutex::new(RendererInner::new(window)?))),
         })
+    }
+
+    pub fn init_resources(&self, resources: RenderResources) -> Result<()> {
+        if let Some(inner) = &self.inner {
+            inner.lock().unwrap().init_resources(resources)
+        } else {
+            Err(eyre!("Failed to init resources because renderer has already been destroyed"))
+        }
     }
 
     pub fn draw_frame(&self, camera: &Camera) -> Result<()> {
@@ -76,6 +87,8 @@ impl Renderer {
             .lock()
             .unwrap()
             .resources
+            .as_ref()
+            .unwrap()
             .current_background_effects_index as u32
     }
 
@@ -86,6 +99,8 @@ impl Renderer {
             .lock()
             .unwrap()
             .resources
+            .as_mut()
+            .unwrap()
             .current_background_effects_index = new_index as usize;
     }
 }
