@@ -1,9 +1,10 @@
-use bevy::asset::RecursiveDependencyLoadState;
 use bevy::asset::{io::Reader, AssetLoader, AsyncReadExt, LoadContext};
+use bevy::asset::{AssetPath, RecursiveDependencyLoadState};
 use bevy::prelude::*;
 use bevy_utils::BoxedFuture;
 use color_eyre::eyre::Result;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::{fs::File, io::BufReader};
 use thiserror::Error;
 
@@ -101,29 +102,38 @@ impl Default for ObjLoader {
 }
 
 #[derive(Error, Debug)]
-enum ObjError {
+pub enum ObjError {
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
     #[error("Invalid OBJ file: {0}")]
-    InvalidFile(#[from] tobj::LoadError),
+    TobjError(#[from] tobj::LoadError),
+    #[error("Failed to load materials for {0}: {1}")]
+    MaterialError(PathBuf, #[source] tobj::LoadError),
+    #[error("Invalid image file for texture: {0}")]
+    InvalidImageFile(PathBuf),
+    #[error("Asset reading failed: {0}")]
+    AssetLoadError(#[from] bevy::asset::AssetLoadError),
 }
 
 async fn load_obj<'a, 'b>(
     bytes: &'a [u8],
-    _load_context: &'a mut LoadContext<'b>,
+    load_context: &'a mut LoadContext<'b>,
 ) -> Result<Model, ObjError> {
-    load_obj_from_bytes(bytes)
+    load_obj_model(bytes, load_context).await
 }
 
-fn load_obj_from_bytes(mut bytes: &[u8]) -> Result<Model, ObjError> {
-    let options = tobj::GPU_LOAD_OPTIONS;
-    let obj = tobj::load_obj_buf(&mut bytes, &options, |_| {
-        Err(tobj::LoadError::GenericFailure)
+async fn load_obj_model<'a, 'b>(
+    bytes: &'a [u8],
+    load_context: &'a mut LoadContext<'b>,
+) -> Result<Model, ObjError> {
+    let (models, materials) = load_obj_data(bytes, load_context).await?;
+    let materials = materials.map_err(|err| {
+        let obj_path = load_context.path().to_path_buf();
+        ObjError::MaterialError(obj_path, err)
     })?;
 
-    let materials = obj.1;
     let mut meshes = Vec::new();
-    for model in obj.0 {
+    for model in models {
         let mesh = &model.mesh;
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
@@ -156,6 +166,13 @@ fn load_obj_from_bytes(mut bytes: &[u8]) -> Result<Model, ObjError> {
         }
 
         /*
+        if let Some(material_id) = mesh.material_id {
+            let material = &materials[material_id];
+            bevy::log::info!("Material: {:#?}", material);
+        }
+        */
+
+        /*
         // Process material
         if let Some(material_id) = mesh.material_id {
             let material = &materials[material_id];
@@ -183,59 +200,27 @@ fn load_obj_from_bytes(mut bytes: &[u8]) -> Result<Model, ObjError> {
         meshes.push(mesh);
     }
 
-    let model = Model::new(meshes);
+    Ok(Model::new(meshes))
+}
 
-    /*
-    let mut indices = Vec::new();
-    let mut vertex_position = Vec::new();
-    let mut vertex_normal = Vec::new();
-    let mut vertex_texture = Vec::new();
-    for model in obj.0 {
-        let index_offset = vertex_position.len() as u32; // Offset of the indices
-        indices.reserve(model.mesh.indices.len());
-        vertex_position.reserve(model.mesh.positions.len() / 3);
-        vertex_normal.reserve(model.mesh.normals.len() / 3);
-        vertex_texture.reserve(model.mesh.texcoords.len() / 2);
-        vertex_position.extend(
-            model
-                .mesh
-                .positions
-                .chunks_exact(3)
-                .map(|v| [v[0], v[1], v[2]]),
-        );
-        vertex_normal.extend(
-            model
-                .mesh
-                .normals
-                .chunks_exact(3)
-                .map(|n| [n[0], n[1], n[2]]),
-        );
-        vertex_texture.extend(
-            model
-                .mesh
-                .texcoords
-                .chunks_exact(2)
-                .map(|t| [t[0], 1.0 - t[1]]),
-        );
-        indices.extend(model.mesh.indices.iter().map(|i| i + index_offset));
-    }
-
-    let vertices = {
-        let mut vertices = Vec::with_capacity(vertex_position.len());
-        for (i, pos) in vertex_position.iter().enumerate() {
-            vertices.push(Vertex {
-                position: (*pos).into(),
-                normal: vertex_normal[i].into(),
-                color: vertex_normal[i].into(),
-                texcoord: vertex_texture[i].into(),
-            });
-        }
-        vertices
-    };
-
-    let mesh = Mesh::new(vertices, indices);
-    let model = Model::new(vec![mesh]);
-    */
-
-    Ok(model)
+async fn load_obj_data<'a, 'b>(
+    mut bytes: &'a [u8],
+    load_context: &'a mut LoadContext<'b>,
+) -> tobj::LoadResult {
+    let options = tobj::GPU_LOAD_OPTIONS;
+    tobj::load_obj_buf_async(&mut bytes, &options, |p| async {
+        // We don't use the MTL material as an asset, just load the bytes of it.
+        // But we are unable to call ctx.finish() and feed the result back. (which is no new asset)
+        // Is this allowed?
+        let mut ctx = load_context.begin_labeled_asset();
+        let path =
+            PathBuf::from(ctx.asset_path().to_string()).with_file_name(p);
+        let asset_path = AssetPath::from(path.to_string_lossy().into_owned());
+        ctx.read_asset_bytes(&asset_path)
+            .await
+            .map_or(Err(tobj::LoadError::OpenFileFailed), |bytes| {
+                tobj::load_mtl_buf(&mut bytes.as_slice())
+            })
+    })
+    .await
 }
