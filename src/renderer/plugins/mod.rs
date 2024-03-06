@@ -31,7 +31,10 @@ impl Plugin for RenderPlugin {
             Update,
             draw_frame.run_if(in_state(ObjAssetsState::Loaded)),
         )
-        .add_systems(PostUpdate, cleanup);
+        .add_systems(
+            PostUpdate,
+            cleanup.run_if(in_state(ObjAssetsState::Loaded)),
+        );
     }
 }
 
@@ -79,10 +82,13 @@ fn draw_frame(
 }
 
 fn cleanup(
+    mut commands: Commands,
     mut window_close_evts: EventReader<WindowCloseRequested>,
     mut renderer: NonSendMut<Renderer>,
+    mut resources: ResMut<RenderResources>,
 ) {
     if window_close_evts.read().next().is_some() {
-        renderer.cleanup();
+        renderer.cleanup(&mut resources);
+        commands.remove_resource::<RenderResources>();
     }
 }

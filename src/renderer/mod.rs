@@ -73,7 +73,7 @@ impl Renderer {
         }
     }
 
-    pub fn cleanup(&mut self) {
+    pub fn cleanup(&mut self, resources: &mut RenderResources) {
         if let Some(inner) = self.inner.take() {
             let inner = match Arc::try_unwrap(inner) {
                 Ok(inner) => Ok(inner),
@@ -83,7 +83,7 @@ impl Renderer {
             }
             .unwrap();
             let inner = inner.into_inner().unwrap();
-            inner.cleanup();
+            inner.cleanup(resources);
         }
     }
 

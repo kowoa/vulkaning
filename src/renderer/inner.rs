@@ -313,6 +313,7 @@ impl RendererInner {
         // RENDERING COMMANDS START
 
         // Draw render resources
+        /*
         self.draw_render_objects(
             self.draw_image.extent.width,
             self.draw_image.extent.height,
@@ -320,18 +321,48 @@ impl RendererInner {
             self.resources.as_ref().unwrap().render_objs.len(),
             camera,
         )?;
+        */
         // -------------------------------------------------------------
         let frame_index = self.frame_number % FRAME_OVERLAP;
-        let monkey_mat =
-            self.resources.as_ref().unwrap().materials["default"].as_ref();
-        let monkey_model = &resources.models["monkey"];
-        monkey_mat.bind_pipeline(cmd, &self.core.device);
         let scene_start_offset =
             self.scene_camera_buffer.offsets.as_ref().unwrap()
                 [frame_index as usize];
         let camera_start_offset =
             self.scene_camera_buffer.offsets.as_ref().unwrap()
                 [frame_index as usize + 2];
+        // Write into scene section of scene-camera uniform buffer
+        {
+            // Fill a GpuSceneData struct
+            let framed = self.frame_number as f32 / 120.0;
+            let scene_data = GpuSceneData {
+                ambient_color: Vec4::new(framed.sin(), 0.0, framed.cos(), 1.0),
+                ..Default::default()
+            };
+
+            // Copy GpuSceneData struct to buffer
+            self.scene_camera_buffer
+                .write(&[scene_data], scene_start_offset as usize)?;
+        }
+        // Write into camera section of scene-camera uniform buffer
+        {
+            // Fill a GpuCameraData struct
+            let cam_data = GpuCameraData {
+                viewproj: camera.viewproj_mat(
+                    self.draw_image.extent.width as f32,
+                    self.draw_image.extent.height as f32,
+                ),
+                near: camera.near,
+                far: camera.far,
+            };
+
+            // Copy GpuCameraData struct to buffer
+            self.scene_camera_buffer
+                .write(&[cam_data], camera_start_offset as usize)?;
+        }
+        let monkey_mat =
+            self.resources.as_ref().unwrap().materials["default"].as_ref();
+        let monkey_model = &resources.models["monkey"];
+        monkey_mat.bind_pipeline(cmd, &self.core.device);
         monkey_mat.bind_desc_sets(
             cmd,
             &self.core.device,
@@ -628,7 +659,7 @@ impl RendererInner {
         Ok(())
     }
 
-    pub fn cleanup(mut self) {
+    pub fn cleanup(mut self, resources: &mut RenderResources) {
         // Wait until all frames have finished rendering
         for frame in &self.frames {
             let frame = frame.lock().unwrap();
@@ -643,6 +674,12 @@ impl RendererInner {
         {
             let device = &self.core.device;
             let mut allocator = self.core.get_allocator().unwrap();
+
+            // Clean up all models
+            resources
+                .models
+                .drain()
+                .for_each(|(_, model)| model.cleanup(device, &mut allocator));
 
             self.desc_allocator.cleanup(device);
             self.upload_context.cleanup(device);
