@@ -15,22 +15,27 @@ use crate::renderer::vertex::Vertex;
 const OBJ_EXTENSIONS: &[&str] = &["obj"];
 
 #[derive(States, Debug, Hash, Eq, PartialEq, Clone, Copy)]
-pub enum ObjAssetsState {
+pub enum ObjAssetsLoadState {
     NotLoaded,
     Loaded,
 }
+
+#[derive(Resource, Default)]
+pub struct ObjAssetsLoading(
+    pub HashMap<String, (Handle<Model>, ObjAssetsLoadState)>,
+);
 
 pub struct ObjAssetsPlugin;
 impl Plugin for ObjAssetsPlugin {
     fn build(&self, app: &mut App) {
         app.preregister_asset_loader::<ObjLoader>(OBJ_EXTENSIONS)
-            .insert_state(ObjAssetsState::NotLoaded) // Loaded when all obj assets get loaded
+            .insert_state(ObjAssetsLoadState::NotLoaded) // Loaded when all obj assets get loaded
             .init_asset::<Model>()
             .init_resource::<ObjAssetsLoading>()
             .add_systems(
                 Update,
-                check_all_obj_models_loaded
-                    .run_if(in_state(ObjAssetsState::NotLoaded)),
+                check_all_obj_assets_loaded
+                    .run_if(in_state(ObjAssetsLoadState::NotLoaded)),
             );
     }
 
@@ -39,23 +44,18 @@ impl Plugin for ObjAssetsPlugin {
     }
 }
 
-#[derive(Resource, Default)]
-pub struct ObjAssetsLoading(
-    pub HashMap<String, (UntypedHandle, ObjAssetsState)>,
-);
-
-fn check_all_obj_models_loaded(
+fn check_all_obj_assets_loaded(
     asset_server: Res<AssetServer>,
     mut loading: ResMut<ObjAssetsLoading>,
-    mut state: ResMut<NextState<ObjAssetsState>>,
+    mut state: ResMut<NextState<ObjAssetsLoadState>>,
 ) {
     for (name, (handle, load_state)) in loading.0.iter_mut() {
-        if *load_state == ObjAssetsState::Loaded {
+        if *load_state == ObjAssetsLoadState::Loaded {
             continue;
         }
         let state = asset_server.recursive_dependency_load_state(handle.id());
         if state == RecursiveDependencyLoadState::Loaded {
-            *load_state = ObjAssetsState::Loaded;
+            *load_state = ObjAssetsLoadState::Loaded;
         }
     }
 
@@ -63,9 +63,9 @@ fn check_all_obj_models_loaded(
     if loading
         .0
         .values()
-        .all(|(_, state)| *state == ObjAssetsState::Loaded)
+        .all(|(_, state)| *state == ObjAssetsLoadState::Loaded)
     {
-        state.set(ObjAssetsState::Loaded);
+        state.set(ObjAssetsLoadState::Loaded);
     }
 }
 
@@ -224,3 +224,19 @@ async fn load_obj_data<'a, 'b>(
     })
     .await
 }
+
+/*
+fn load_mat_texture(
+    texture: &Option<String>,
+    load_context: &mut LoadContext,
+) -> Option<Handle<Image>> {
+    if let Some(texture) = texture {
+        let path = PathBuf::from(load_context.asset_path().to_string())
+            .with_file_name(texture);
+        let asset_path = AssetPath::from(path.to_string_lossy().into_owned());
+        Some(load_context.load(&asset_path))
+    } else {
+        None
+    }
+}
+*/

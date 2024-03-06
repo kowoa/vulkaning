@@ -9,7 +9,7 @@ use bevy::window::{PrimaryWindow, RequestRedraw, WindowCloseRequested};
 use bevy::winit::WinitWindows;
 use color_eyre::eyre::eyre;
 
-use self::assets::{ObjAssetsLoading, ObjAssetsState};
+use self::assets::{ObjAssetsLoadState, ObjAssetsLoading};
 
 use super::camera::Camera;
 use super::model::Model;
@@ -24,22 +24,22 @@ impl Plugin for RenderPlugin {
             misc::MiscPlugin,
             assets::AssetsPlugin,
         ))
-        //.insert_state(RenderResourcesState::NotLoaded)
+        .insert_state(RenderResourcesLoadState::NotLoaded)
         .add_systems(PreStartup, start_renderer)
-        .add_systems(OnEnter(ObjAssetsState::Loaded), init_render_resources)
+        .add_systems(OnEnter(ObjAssetsLoadState::Loaded), init_render_resources)
         .add_systems(
             Update,
-            draw_frame.run_if(in_state(ObjAssetsState::Loaded)),
+            draw_frame.run_if(in_state(ObjAssetsLoadState::Loaded)),
         )
         .add_systems(
             PostUpdate,
-            cleanup.run_if(in_state(ObjAssetsState::Loaded)),
+            cleanup.run_if(in_state(ObjAssetsLoadState::Loaded)),
         );
     }
 }
 
 #[derive(States, Debug, Hash, Eq, PartialEq, Clone, Copy)]
-enum RenderResourcesState {
+enum RenderResourcesLoadState {
     NotLoaded,
     Loaded,
 }
@@ -62,7 +62,7 @@ fn init_render_resources(
 ) {
     let mut models = HashMap::new();
     for (name, (handle, load_state)) in loading.0.iter_mut() {
-        let model = loaded_models.remove(&handle.clone().typed()).unwrap();
+        let model = loaded_models.remove(handle.clone_weak()).unwrap();
         models.insert(name.to_owned(), model);
     }
     let mut resources = RenderResources { models };
