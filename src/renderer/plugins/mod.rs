@@ -25,15 +25,24 @@ impl Plugin for RenderPlugin {
             assets::AssetsPlugin,
         ))
         .insert_state(RenderResourcesLoadState::NotLoaded)
-        .add_systems(PreStartup, start_renderer)
-        .add_systems(OnEnter(ObjAssetsLoadState::Loaded), init_render_resources)
+        .init_resource::<RenderResources>()
+        .add_systems(PreStartup, create_renderer)
+        .add_systems(
+            OnEnter(RenderResourcesLoadState::Loaded),
+            init_render_resources,
+        )
         .add_systems(
             Update,
-            draw_frame.run_if(in_state(ObjAssetsLoadState::Loaded)),
+            check_all_assets_loaded
+                .run_if(in_state(RenderResourcesLoadState::NotLoaded)),
+        )
+        .add_systems(
+            Update,
+            draw_frame.run_if(in_state(RenderResourcesLoadState::Loaded)),
         )
         .add_systems(
             PostUpdate,
-            cleanup.run_if(in_state(ObjAssetsLoadState::Loaded)),
+            cleanup.run_if(in_state(RenderResourcesLoadState::Loaded)),
         );
     }
 }
@@ -44,7 +53,7 @@ enum RenderResourcesLoadState {
     Loaded,
 }
 
-fn start_renderer(world: &mut World) {
+fn create_renderer(world: &mut World) {
     let mut window_ents = world.query_filtered::<Entity, With<PrimaryWindow>>();
     let winit_windows = world.get_non_send_resource::<WinitWindows>().unwrap();
     let window_ent = window_ents.single(world);
@@ -54,10 +63,18 @@ fn start_renderer(world: &mut World) {
     world.insert_non_send_resource(renderer);
 }
 
+fn check_all_assets_loaded(
+    mut render_res_state: ResMut<NextState<RenderResourcesLoadState>>,
+    obj_assets_state: Res<State<ObjAssetsLoadState>>,
+) {
+    if *obj_assets_state.get() == ObjAssetsLoadState::Loaded {
+        render_res_state.set(RenderResourcesLoadState::Loaded);
+    }
+}
+
 fn init_render_resources(
     mut commands: Commands,
     renderer: NonSend<Renderer>,
-    mut loading: ResMut<ObjAssetsLoading>,
     mut loaded_models: ResMut<Assets<Model>>,
 ) {
     let mut models = HashMap::new();

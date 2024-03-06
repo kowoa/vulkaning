@@ -146,6 +146,15 @@ impl RendererInner {
             )?;
         }
 
+        // Upload all textures to the GPU
+        for (_, texture) in resources.textures.iter_mut() {
+            texture.upload(
+                &self.core.device,
+                &mut *self.core.get_allocator()?,
+                &self.upload_context,
+            )
+        }
+
         let resources = Resources::new(
             &mut self.core,
             &self.swapchain,
@@ -829,7 +838,6 @@ impl RendererInner {
                 usage_flags,
                 aspect_flags: vk::ImageAspectFlags::COLOR,
                 name: "Draw image".into(),
-                desc_set: Some(draw_image_desc_set),
             };
             AllocatedImage::new(&create_info, device, allocator)?
         };

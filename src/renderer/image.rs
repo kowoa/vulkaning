@@ -19,7 +19,6 @@ pub struct AllocatedImageCreateInfo {
     pub usage_flags: vk::ImageUsageFlags,
     pub aspect_flags: vk::ImageAspectFlags,
     pub name: String,
-    pub desc_set: Option<vk::DescriptorSet>,
 }
 
 pub struct AllocatedImage {
@@ -29,7 +28,7 @@ pub struct AllocatedImage {
     pub extent: vk::Extent3D,
     pub aspect: vk::ImageAspectFlags,
     pub allocation: Allocation,
-    pub desc_set: Option<vk::DescriptorSet>, // Some if accessible from shaders, None otherwise
+    pub uploaded: bool,
 }
 
 impl AllocatedImage {
@@ -37,7 +36,7 @@ impl AllocatedImage {
     // and is NOT yet populated with any data.
     // This means that unless you are making a depth image, you will need to call
     // `AllocatedImage::upload`
-    pub fn new(
+    pub fn new_color_image(
         create_info: &AllocatedImageCreateInfo,
         device: &ash::Device,
         allocator: &mut Allocator,
@@ -77,31 +76,32 @@ impl AllocatedImage {
             extent: create_info.extent,
             aspect: create_info.aspect_flags,
             allocation,
-            desc_set: create_info.desc_set,
+            uploaded: false,
         })
     }
 
-    pub fn new_depth_image(
-        width: u32,
-        height: u32,
-        device: &ash::Device,
-        allocator: &mut Allocator,
-    ) -> Result<Self> {
-        let create_info = AllocatedImageCreateInfo {
-            format: vk::Format::D32_SFLOAT,
-            extent: vk::Extent3D {
+    pub fn from_bytes(data: &[u8], width: u32, height: u32) -> Result<Self> {
+        // Create an AllocatedImage with uninitialized GPU-only data
+        let alloc_img = {
+            let img_extent = vk::Extent3D {
                 width,
                 height,
                 depth: 1,
-            },
-            usage_flags: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-            aspect_flags: vk::ImageAspectFlags::DEPTH,
-            name: "Depth image".into(),
-            desc_set: None,
-        };
-        let image = Self::new(&create_info, device, allocator)?;
+            };
 
-        Ok(image)
+            let create_info = AllocatedImageCreateInfo {
+                format: vk::Format::R8G8B8A8_SRGB,
+                extent: img_extent,
+                usage_flags: vk::ImageUsageFlags::SAMPLED
+                    | vk::ImageUsageFlags::TRANSFER_DST,
+                aspect_flags: vk::ImageAspectFlags::COLOR,
+                name: "Image from bytes".into(),
+            };
+
+            Self::new_color_image(&create_info, device, allocator)?
+        };
+
+        Ok(alloc_img)
     }
 
     pub fn load_from_file(
@@ -110,7 +110,6 @@ impl AllocatedImage {
         device: &ash::Device,
         allocator: &mut Allocator,
         upload_context: &UploadContext,
-        desc_set: Option<vk::DescriptorSet>,
     ) -> Result<Self> {
         // Read data from file
         let filepath = unsafe {
@@ -127,40 +126,22 @@ impl AllocatedImage {
         let img_height = img.height();
         let data = img.as_bytes();
 
-        // Create an AllocatedImage with unitialized GPU-only data
-        let alloc_img = {
-            let img_extent = vk::Extent3D {
-                width: img_width,
-                height: img_height,
-                depth: 1,
-            };
-
-            let create_info = AllocatedImageCreateInfo {
-                format: vk::Format::R8G8B8A8_SRGB,
-                extent: img_extent,
-                usage_flags: vk::ImageUsageFlags::SAMPLED
-                    | vk::ImageUsageFlags::TRANSFER_DST,
-                aspect_flags: vk::ImageAspectFlags::COLOR,
-                name: format!("Image from file: {}", filename),
-                desc_set,
-            };
-
-            Self::new(&create_info, device, allocator)?
-        };
-
-        // Upload data from file read to image
-        let _ = alloc_img.upload(data, upload_context, device, allocator);
+        let alloc_img = Self::from_bytes(data, img_width, img_height)?;
 
         Ok(alloc_img)
     }
 
+    /// Upload the image to the GPU. This image is assumed to be a color image.
     pub fn upload(
-        &self,
-        data: &[u8],
-        upload_context: &UploadContext,
+        &mut self,
         device: &ash::Device,
         allocator: &mut Allocator,
+        upload_context: &UploadContext,
     ) -> Result<()> {
+        if self.uploaded {
+            return Err(eyre!("Image already uploaded"));
+        }
+
         let mut staging_buffer = AllocatedBuffer::new(
             device,
             allocator,
@@ -257,7 +238,33 @@ impl AllocatedImage {
         );
         staging_buffer.cleanup(device, allocator);
 
+        self.uploaded = true;
+
         Ok(())
+    }
+
+    /// Special type of image used for depth buffer
+    pub fn new_depth_image(
+        width: u32,
+        height: u32,
+        device: &ash::Device,
+        allocator: &mut Allocator,
+    ) -> Result<Self> {
+        let create_info = AllocatedImageCreateInfo {
+            format: vk::Format::D32_SFLOAT,
+            extent: vk::Extent3D {
+                width,
+                height,
+                depth: 1,
+            },
+            usage_flags: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            aspect_flags: vk::ImageAspectFlags::DEPTH,
+            name: "Depth image".into(),
+        };
+        let mut image = Self::new(&create_info, device, allocator)?;
+        image.uploaded = true; // No need to upload depth image to GPU
+
+        Ok(image)
     }
 
     pub fn transition_layout(

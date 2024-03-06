@@ -10,7 +10,10 @@ use thiserror::Error;
 
 use crate::renderer::mesh::Mesh;
 use crate::renderer::model::Model;
+use crate::renderer::render_resources::RenderResources;
 use crate::renderer::vertex::Vertex;
+
+use super::AssetLoadState;
 
 const OBJ_EXTENSIONS: &[&str] = &["obj"];
 
@@ -21,9 +24,7 @@ pub enum ObjAssetsLoadState {
 }
 
 #[derive(Resource, Default)]
-pub struct ObjAssetsLoading(
-    pub HashMap<String, (Handle<Model>, ObjAssetsLoadState)>,
-);
+struct ObjAssetsLoading(pub HashMap<String, Handle<Model>>);
 
 pub struct ObjAssetsPlugin;
 impl Plugin for ObjAssetsPlugin {
@@ -46,25 +47,29 @@ impl Plugin for ObjAssetsPlugin {
 
 fn check_all_obj_assets_loaded(
     asset_server: Res<AssetServer>,
-    mut loading: ResMut<ObjAssetsLoading>,
+    mut loading_models: ResMut<ObjAssetsLoading>,
+    mut loaded_models: ResMut<Assets<Model>>,
     mut state: ResMut<NextState<ObjAssetsLoadState>>,
+    mut resources: ResMut<RenderResources>,
 ) {
-    for (name, (handle, load_state)) in loading.0.iter_mut() {
-        if *load_state == ObjAssetsLoadState::Loaded {
-            continue;
-        }
+    let mut to_remove = Vec::new();
+    for (name, handle) in loading_models.0.iter_mut() {
+        // Check if model has fully loaded
         let state = asset_server.recursive_dependency_load_state(handle.id());
         if state == RecursiveDependencyLoadState::Loaded {
-            *load_state = ObjAssetsLoadState::Loaded;
+            to_remove.push(name.clone());
+            // Insert model into render resources
+            let model = loaded_models.remove(handle.clone_weak()).unwrap();
+            resources.models.insert(name.to_owned(), model);
         }
     }
 
+    for name in to_remove {
+        loading_models.0.remove(&name);
+    }
+
     // If all models are loaded, change the state to Loaded
-    if loading
-        .0
-        .values()
-        .all(|(_, state)| *state == ObjAssetsLoadState::Loaded)
-    {
+    if loading_models.0.is_empty() {
         state.set(ObjAssetsLoadState::Loaded);
     }
 }

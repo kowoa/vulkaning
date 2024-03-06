@@ -11,12 +11,6 @@ use crate::renderer::{mesh::Mesh, model::Model, vertex::Vertex};
 pub use self::obj::ObjAssetsLoadState;
 pub use self::obj::ObjAssetsLoading;
 
-// Use this to track load state of individual assets
-enum AssetLoadState {
-    NotLoaded,
-    Loaded,
-}
-
 pub struct AssetsPlugin;
 impl Plugin for AssetsPlugin {
     fn build(&self, app: &mut App) {

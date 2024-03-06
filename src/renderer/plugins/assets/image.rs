@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 
+use crate::renderer::texture::Texture;
+
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "png"];
 
 #[derive(States, Debug, Hash, Eq, PartialEq, Clone, Copy)]
@@ -11,23 +13,19 @@ pub enum ImageAssetsLoadState {
 }
 
 #[derive(Resource, Default)]
-pub struct ImageAssetsLoading(
-    pub HashMap<String, (UntypedHandle, ImageAssetsLoadState)>,
-);
+struct ImageAssetsLoading(pub HashMap<String, Handle<Texture>>);
 
 pub struct ImageAssetsPlugin;
 impl Plugin for ImageAssetsPlugin {
     fn build(&self, app: &mut App) {
-        /*
-                app.preregister_asset_loader::<ImageLoader>(IMAGE_EXTENSIONS)
-                    .insert_state(ImageAssetsState::NotLoaded) // Loaded when all obj assets get loaded
-                    .init_resource::<ImageAssetsLoading>()
-                    .add_systems(
-                        Update,
-                        check_all_image_assets_loaded
-                            .run_if(in_state(ImageAssetsState::NotLoaded)),
-                    );
-        */
+        app.preregister_asset_loader::<ImageLoader>(IMAGE_EXTENSIONS)
+            .insert_state(ImageAssetsLoadState::NotLoaded) // Loaded when all obj assets get loaded
+            .init_resource::<ImageAssetsLoading>()
+            .add_systems(
+                Update,
+                check_all_image_assets_loaded
+                    .run_if(in_state(ImageAssetsLoadState::NotLoaded)),
+            );
     }
 
     fn finish(&self, app: &mut App) {
@@ -44,12 +42,12 @@ fn check_all_image_assets_loaded(
     mut state: ResMut<NextState<ObjAssetsState>>,
 ) {
     for (name, (handle, load_state)) in loading.0.iter_mut() {
-        if *load_state == ImageAssetsState::Loaded {
+        if *load_state == ImageAssetsLoadState::Loaded {
             continue;
         }
         let state = asset_server.recursive_dependency_load_state(handle.id());
         if state == RecursiveDependencyLoadState::Loaded {
-            *load_state = ImageAssetsState::Loaded;
+            *load_state = ImageAssetsLoadState::Loaded;
         }
     }
 
@@ -59,7 +57,7 @@ fn check_all_image_assets_loaded(
         .values()
         .all(|(_, state)| *state == ObjAssetsState::Loaded)
     {
-        state.set(ImageAssetsState::Loaded);
+        state.set(ImageAssetsLoadState::Loaded);
     }
 }
 

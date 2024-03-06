@@ -4,7 +4,7 @@ use bevy::ecs::system::Resource;
 
 use super::model::Model;
 
-#[derive(Resource)]
+#[derive(Resource, Default)]
 pub struct RenderResources {
     pub models: HashMap<String, Model>,
 }
