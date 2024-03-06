@@ -121,6 +121,71 @@ fn load_obj_from_bytes(mut bytes: &[u8]) -> Result<Model, ObjError> {
         Err(tobj::LoadError::GenericFailure)
     })?;
 
+    let materials = obj.1;
+    let mut meshes = Vec::new();
+    for model in obj.0 {
+        let mesh = &model.mesh;
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+
+        for i in &mesh.indices {
+            let pos = &mesh.positions;
+            let nor = &mesh.normals;
+            let tex = &mesh.texcoords;
+
+            let i = *i as usize;
+            let p = Vec3::new(pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]);
+            let n = if !nor.is_empty() {
+                Vec3::new(nor[3 * i], nor[3 * i + 1], nor[3 * i + 2])
+            } else {
+                Vec3::ZERO
+            };
+            let t = if !tex.is_empty() {
+                Vec2::new(tex[2 * i], 1.0 - tex[2 * i + 1])
+            } else {
+                Vec2::ZERO
+            };
+
+            vertices.push(Vertex {
+                position: p,
+                normal: n,
+                color: n,
+                texcoord: t,
+            });
+            indices.push(i as u32);
+        }
+
+        /*
+        // Process material
+        if let Some(material_id) = mesh.material_id {
+            let material = &materials[material_id];
+
+            // Diffuse map
+            if let Some(filename) = &material.diffuse_texture {
+                //log::info!("Diffuse map: {}", filename);
+            }
+
+            // Specular map
+            if let Some(filename) = &material.specular_texture {
+                //log::info!("Specular map: {}", filename);
+            }
+
+            // Normal map
+            if let Some(filename) = &material.normal_texture {
+                //log::info!("Normal map: {}", filename);
+            }
+
+            // NOTE: no height maps for now
+        }
+        */
+
+        let mesh = Mesh::new(vertices, indices);
+        meshes.push(mesh);
+    }
+
+    let model = Model::new(meshes);
+
+    /*
     let mut indices = Vec::new();
     let mut vertex_position = Vec::new();
     let mut vertex_normal = Vec::new();
@@ -170,6 +235,7 @@ fn load_obj_from_bytes(mut bytes: &[u8]) -> Result<Model, ObjError> {
 
     let mesh = Mesh::new(vertices, indices);
     let model = Model::new(vec![mesh]);
+    */
 
     Ok(model)
 }
