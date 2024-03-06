@@ -14,11 +14,7 @@ pub struct AssetsPlugin;
 impl Plugin for AssetsPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(obj::ObjAssetsPlugin)
-            .add_systems(Startup, load_obj_models)
-            .add_systems(
-                Update,
-                check_obj_models.run_if(in_state(ObjAssetsState::NotLoaded)),
-            );
+            .add_systems(Startup, load_obj_models);
     }
 }
 
@@ -31,29 +27,4 @@ fn load_obj_models(
         "monkey".into(),
         (monkey_handle.untyped(), ObjAssetsState::NotLoaded),
     );
-}
-
-fn check_obj_models(
-    asset_server: Res<AssetServer>,
-    mut loading: ResMut<ObjAssetsLoading>,
-    mut state: ResMut<NextState<ObjAssetsState>>,
-) {
-    for (name, (handle, load_state)) in loading.0.iter_mut() {
-        if *load_state == ObjAssetsState::Loaded {
-            continue;
-        }
-        let state = asset_server.recursive_dependency_load_state(handle.id());
-        if state == RecursiveDependencyLoadState::Loaded {
-            *load_state = ObjAssetsState::Loaded;
-        }
-    }
-
-    // If all models are loaded, change the state to Loaded
-    if loading
-        .0
-        .values()
-        .all(|(_, state)| *state == ObjAssetsState::Loaded)
-    {
-        state.set(ObjAssetsState::Loaded);
-    }
 }

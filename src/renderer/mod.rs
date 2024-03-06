@@ -50,17 +50,24 @@ impl Renderer {
         })
     }
 
-    pub fn init_resources(&self, resources: RenderResources) -> Result<()> {
+    pub fn upload_resources(
+        &self,
+        resources: &mut RenderResources,
+    ) -> Result<()> {
         if let Some(inner) = &self.inner {
-            inner.lock().unwrap().init_resources(resources)
+            inner.lock().unwrap().upload_resources(resources)
         } else {
             Err(eyre!("Failed to init resources because renderer has already been destroyed"))
         }
     }
 
-    pub fn draw_frame(&self, camera: &Camera) -> Result<()> {
+    pub fn draw_frame(
+        &self,
+        camera: &Camera,
+        resources: &RenderResources,
+    ) -> Result<()> {
         if let Some(inner) = &self.inner {
-            inner.lock().unwrap().draw_frame(camera)
+            inner.lock().unwrap().draw_frame(camera, resources)
         } else {
             Err(eyre!("Failed to draw frame because renderer has already been destroyed"))
         }

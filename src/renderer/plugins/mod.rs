@@ -52,23 +52,30 @@ fn start_renderer(world: &mut World) {
 }
 
 fn init_render_resources(
+    mut commands: Commands,
     renderer: NonSend<Renderer>,
     mut loading: ResMut<ObjAssetsLoading>,
     mut loaded_models: ResMut<Assets<Model>>,
 ) {
     let mut models = HashMap::new();
-    for (name, (handle, load_state)) in loading.0.drain() {
-        let model = loaded_models.get_mut(&handle.clone().typed()).unwrap();
-        models.insert(name, model);
+    for (name, (handle, load_state)) in loading.0.iter_mut() {
+        let model = loaded_models.remove(&handle.clone().typed()).unwrap();
+        models.insert(name.to_owned(), model);
     }
-
-    let resources = RenderResources { models };
-    renderer.init_resources(resources).unwrap();
+    let mut resources = RenderResources { models };
+    renderer.upload_resources(&mut resources).unwrap();
+    commands.insert_resource(resources);
+    // ObjAssetsLoading is now empty of all its models
+    commands.remove_resource::<ObjAssetsLoading>();
 }
 
-fn draw_frame(renderer: NonSend<Renderer>, camera: Query<&Camera>) {
+fn draw_frame(
+    renderer: NonSend<Renderer>,
+    camera: Query<&Camera>,
+    resources: Res<RenderResources>,
+) {
     let camera = camera.single();
-    renderer.draw_frame(camera).unwrap();
+    renderer.draw_frame(camera, &resources).unwrap();
 }
 
 fn cleanup(

@@ -44,13 +44,15 @@ impl Model {
         self.bind_vertex_buffer(cmd, device)?;
 
         // Draw this render object's model
-        let vertex_count = self
+        let vertex_count: u32 = self
             .meshes
             .iter()
             .map(|mesh| mesh.vertices.len() as u32)
             .sum();
+        let index_count = self.meshes[0].indices.len() as u32;
         unsafe {
             device.cmd_draw(cmd, vertex_count, 1, 0, 0);
+            //device.cmd_draw_indexed(cmd, index_count, 1, 0, 0, 0);
         }
 
         Ok(())
@@ -164,7 +166,7 @@ impl Model {
     pub fn upload(
         &mut self,
         device: &ash::Device,
-        allocator: &mut MutexGuard<Allocator>,
+        allocator: &mut Allocator,
         upload_context: &UploadContext,
     ) -> Result<()> {
         let vertices = self

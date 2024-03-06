@@ -29,12 +29,12 @@ use super::{
     vkinit,
 };
 
-pub struct Resources<'a> {
+pub struct Resources {
     pub materials: HashMap<String, Arc<Material>>,
     pub models: HashMap<String, Arc<Model>>,
     textures: HashMap<String, Arc<Texture>>,
 
-    pub render_objs: ManuallyDrop<Vec<RenderObject<'a>>>,
+    pub render_objs: ManuallyDrop<Vec<RenderObject>>,
     pub background_effects: Vec<ComputeEffect>,
     pub current_background_effects_index: usize,
 }
@@ -46,7 +46,6 @@ impl Resources {
         upload_context: &UploadContext,
         desc_allocator: &mut DescriptorAllocator,
         draw_image: &AllocatedImage,
-        mut resources: RenderResources,
     ) -> Result<Self> {
         let mut allocator = core.get_allocator()?;
 
@@ -59,7 +58,6 @@ impl Resources {
             draw_image,
         )?;
 
-        let mut monkey_model: &mut Model = resources.models["monkey"];
         let models = {
             // Create models
             //let mut monkey_model = Model::load_from_obj("monkey_smooth.obj")?;
@@ -71,22 +69,22 @@ impl Resources {
 
             // Upload models onto GPU immediately
             {
+                /*
                 monkey_model.upload(
                     &core.device,
                     &mut allocator,
                     upload_context,
                 )?;
-                /*
-                                triangle_model.upload(
-                                    &core.device,
-                                    &mut allocator,
-                                    upload_context,
-                                )?;
-                                empire_model.upload(
-                                    &core.device,
-                                    &mut allocator,
-                                    upload_context,
-                                )?;
+                triangle_model.upload(
+                    &core.device,
+                    &mut allocator,
+                    upload_context,
+                )?;
+                empire_model.upload(
+                    &core.device,
+                    &mut allocator,
+                    upload_context,
+                )?;
                 */
                 backpack_model.upload(
                     &core.device,
@@ -112,14 +110,14 @@ impl Resources {
 
         let textures = {
             /*
-                        let empire = Texture::load_from_file(
-                            "lost_empire-RGBA.png",
-                            false,
-                            &core.device,
-                            &mut allocator,
-                            desc_allocator,
-                            upload_context,
-                        )?;
+            let empire = Texture::load_from_file(
+                "lost_empire-RGBA.png",
+                false,
+                &core.device,
+                &mut allocator,
+                desc_allocator,
+                upload_context,
+            )?;
             */
             let backpack = Texture::load_from_file(
                 "backpack/diffuse.jpg",
@@ -139,16 +137,9 @@ impl Resources {
         // Scene/render objects
         let render_objs = {
             let mut render_objs = Vec::new();
-            let monkey = RenderObject::new(
-                monkey_model,
-                materials["default-lit"].clone(),
-                None,
-                Mat4::IDENTITY,
-            );
-            render_objs.push(monkey);
 
             let quad = RenderObject::new(
-                &models["quad"],
+                models["quad"].clone(),
                 materials["default-lit"].clone(),
                 None,
                 Mat4::from_rotation_x(90f32.to_radians()),
@@ -156,17 +147,17 @@ impl Resources {
             render_objs.push(quad);
 
             /*
-                        let empire = RenderObject::new(
-                            models["empire"].clone(),
-                            materials["textured-lit"].clone(),
-                            Some(textures["empire-diffuse"].clone()),
-                            Mat4::IDENTITY,
-                        );
+            let empire = RenderObject::new(
+                models["empire"].clone(),
+                materials["textured-lit"].clone(),
+                Some(textures["empire-diffuse"].clone()),
+                Mat4::IDENTITY,
+            );
             */
             //render_objs.push(empire);
 
             let backpack = RenderObject::new(
-                &models["backpack"],
+                models["backpack"].clone(),
                 materials["textured-lit"].clone(),
                 Some(textures["backpack-diffuse"].clone()),
                 Mat4::from_translation(Vec3::new(0.0, 0.0, -5.0)),
@@ -255,6 +246,38 @@ impl Resources {
 
             let default_lit_shader =
                 GraphicsShader::new("default-lit", device)?;
+            Material::builder_graphics(device)
+                .pipeline_layout(pipeline_layout)
+                .shader(default_lit_shader)
+                .vertex_input(Vertex::get_vertex_desc())
+                .color_attachment_format(draw_image.format)
+                .depth_attachment_format(swapchain.depth_image.format)
+                .build()?
+        };
+
+        let default_mat = {
+            let pipeline_layout = {
+                let mut layout_info = vkinit::pipeline_layout_create_info();
+
+                // Push constants setup
+                let push_constant = vk::PushConstantRange {
+                    offset: 0,
+                    size: std::mem::size_of::<MeshPushConstants>() as u32,
+                    stage_flags: vk::ShaderStageFlags::VERTEX,
+                };
+                layout_info.p_push_constant_ranges = &push_constant;
+                layout_info.push_constant_range_count = 1;
+
+                // Descriptor set layout setup
+                let set_layouts = [*global_desc_set_layout];
+                layout_info.set_layout_count = set_layouts.len() as u32;
+                layout_info.p_set_layouts = set_layouts.as_ptr();
+
+                // Create pipeline layout
+                unsafe { device.create_pipeline_layout(&layout_info, None)? }
+            };
+
+            let default_lit_shader = GraphicsShader::new("default", device)?;
             Material::builder_graphics(device)
                 .pipeline_layout(pipeline_layout)
                 .shader(default_lit_shader)
@@ -388,6 +411,7 @@ impl Resources {
         map.insert("gradient".into(), Arc::new(gradient_mat));
         map.insert("sky".into(), Arc::new(sky_mat));
         map.insert("grid".into(), Arc::new(grid_mat));
+        map.insert("default".into(), Arc::new(default_mat));
         Ok(map)
     }
 }

@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
+use bevy::ecs::system::Resource;
+
 use super::model::Model;
 
-pub struct RenderResources<'a> {
-    pub models: HashMap<String, &'a mut Model>,
+#[derive(Resource)]
+pub struct RenderResources {
+    pub models: HashMap<String, Model>,
 }

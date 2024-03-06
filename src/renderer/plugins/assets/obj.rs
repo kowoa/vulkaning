@@ -1,7 +1,9 @@
+use bevy::asset::RecursiveDependencyLoadState;
 use bevy::asset::{io::Reader, AssetLoader, AsyncReadExt, LoadContext};
 use bevy::prelude::*;
-use bevy_utils::{BoxedFuture, HashMap};
+use bevy_utils::BoxedFuture;
 use color_eyre::eyre::Result;
+use std::collections::HashMap;
 use std::{fs::File, io::BufReader};
 use thiserror::Error;
 
@@ -23,7 +25,12 @@ impl Plugin for ObjAssetsPlugin {
         app.preregister_asset_loader::<ObjLoader>(OBJ_EXTENSIONS)
             .insert_state(ObjAssetsState::NotLoaded) // Loaded when all obj assets get loaded
             .init_asset::<Model>()
-            .init_resource::<ObjAssetsLoading>();
+            .init_resource::<ObjAssetsLoading>()
+            .add_systems(
+                Update,
+                check_all_obj_models_loaded
+                    .run_if(in_state(ObjAssetsState::NotLoaded)),
+            );
     }
 
     fn finish(&self, app: &mut App) {
@@ -35,6 +42,31 @@ impl Plugin for ObjAssetsPlugin {
 pub struct ObjAssetsLoading(
     pub HashMap<String, (UntypedHandle, ObjAssetsState)>,
 );
+
+fn check_all_obj_models_loaded(
+    asset_server: Res<AssetServer>,
+    mut loading: ResMut<ObjAssetsLoading>,
+    mut state: ResMut<NextState<ObjAssetsState>>,
+) {
+    for (name, (handle, load_state)) in loading.0.iter_mut() {
+        if *load_state == ObjAssetsState::Loaded {
+            continue;
+        }
+        let state = asset_server.recursive_dependency_load_state(handle.id());
+        if state == RecursiveDependencyLoadState::Loaded {
+            *load_state = ObjAssetsState::Loaded;
+        }
+    }
+
+    // If all models are loaded, change the state to Loaded
+    if loading
+        .0
+        .values()
+        .all(|(_, state)| *state == ObjAssetsState::Loaded)
+    {
+        state.set(ObjAssetsState::Loaded);
+    }
+}
 
 struct ObjLoader;
 

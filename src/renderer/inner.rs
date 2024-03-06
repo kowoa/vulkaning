@@ -30,10 +30,10 @@ use super::{
 pub const FRAME_OVERLAP: u32 = 2;
 pub const MAX_OBJECTS: u32 = 10000; // Max objects per frame
 
-pub struct RendererInner<'a> {
+pub struct RendererInner {
     pub core: Core,
     pub swapchain: Swapchain,
-    pub resources: Option<Resources<'a>>, // Needs to be initialized with init_resources()
+    pub resources: Option<Resources>, // Needs to be initialized with init_resources()
     pub desc_allocator: DescriptorAllocator,
 
     pub frame_number: u32,
@@ -45,7 +45,7 @@ pub struct RendererInner<'a> {
     pub upload_context: UploadContext,
 }
 
-impl<'a> RendererInner<'a> {
+impl RendererInner {
     pub fn new(window: &winit::window::Window) -> Result<Self> {
         log::info!("Initializing renderer ...");
 
@@ -133,14 +133,25 @@ impl<'a> RendererInner<'a> {
         })
     }
 
-    pub fn init_resources(&mut self, resources: RenderResources) -> Result<()> {
+    pub fn upload_resources(
+        &mut self,
+        resources: &mut RenderResources,
+    ) -> Result<()> {
+        // Upload all models to the GPU
+        for (_, model) in resources.models.iter_mut() {
+            model.upload(
+                &self.core.device,
+                &mut *self.core.get_allocator()?,
+                &self.upload_context,
+            )?;
+        }
+
         let resources = Resources::new(
             &mut self.core,
             &self.swapchain,
             &self.upload_context,
             &mut self.desc_allocator,
             &self.draw_image,
-            resources,
         )?;
 
         self.resources = Some(resources);
@@ -253,6 +264,7 @@ impl<'a> RendererInner<'a> {
         &mut self,
         cmd: vk::CommandBuffer,
         camera: &Camera,
+        resources: &RenderResources,
     ) -> Result<()> {
         let color_attachments = [vk::RenderingAttachmentInfo::builder()
             .image_view(self.draw_image.view)
@@ -300,6 +312,7 @@ impl<'a> RendererInner<'a> {
 
         // RENDERING COMMANDS START
 
+        // Draw render resources
         self.draw_render_objects(
             self.draw_image.extent.width,
             self.draw_image.extent.height,
@@ -307,6 +320,28 @@ impl<'a> RendererInner<'a> {
             self.resources.as_ref().unwrap().render_objs.len(),
             camera,
         )?;
+        // -------------------------------------------------------------
+        let frame_index = self.frame_number % FRAME_OVERLAP;
+        let monkey_mat =
+            self.resources.as_ref().unwrap().materials["default"].as_ref();
+        let monkey_model = &resources.models["monkey"];
+        monkey_mat.bind_pipeline(cmd, &self.core.device);
+        let scene_start_offset =
+            self.scene_camera_buffer.offsets.as_ref().unwrap()
+                [frame_index as usize];
+        let camera_start_offset =
+            self.scene_camera_buffer.offsets.as_ref().unwrap()
+                [frame_index as usize + 2];
+        monkey_mat.bind_desc_sets(
+            cmd,
+            &self.core.device,
+            0,
+            &[self.get_current_frame()?.global_desc_set],
+            &[scene_start_offset, camera_start_offset],
+        );
+        monkey_model.draw(cmd, &self.core.device)?;
+        // ----------------------------------------------------------
+
         self.draw_grid(cmd, self.frame_number % FRAME_OVERLAP)?;
 
         // RENDERING COMMANDS END
@@ -320,7 +355,11 @@ impl<'a> RendererInner<'a> {
     }
 
     /// Returns the swapchain image index draw into
-    pub fn draw_frame(&mut self, camera: &Camera) -> Result<()> {
+    pub fn draw_frame(
+        &mut self,
+        camera: &Camera,
+        resources: &RenderResources,
+    ) -> Result<()> {
         let (
             swapchain_image_index,
             cmd,
@@ -407,7 +446,7 @@ impl<'a> RendererInner<'a> {
         }
 
         self.draw_background(cmd);
-        self.draw_geometry(cmd, camera)?;
+        self.draw_geometry(cmd, camera, resources)?;
 
         // Copy draw image to swapchain image
         {
