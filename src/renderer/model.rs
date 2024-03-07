@@ -344,5 +344,8 @@ impl Model {
         if let Some(vertex_buffer) = self.vertex_buffer {
             vertex_buffer.cleanup(device, allocator);
         }
+        if let Some(index_buffer) = self.index_buffer {
+            index_buffer.cleanup(device, allocator);
+        }
     }
 }

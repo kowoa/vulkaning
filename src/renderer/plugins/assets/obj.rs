@@ -136,75 +136,53 @@ async fn load_obj_model<'a, 'b>(
         ObjError::MaterialError(obj_path, err)
     })?;
 
-    let mut meshes = Vec::new();
+    let mut indices = Vec::new();
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut texcoords = Vec::new();
     for model in models {
-        let mesh = &model.mesh;
-        let mut vertices = Vec::new();
-
-        for i in &mesh.indices {
-            let pos = &mesh.positions;
-            let nor = &mesh.normals;
-            let tex = &mesh.texcoords;
-
-            let i = *i as usize;
-            let p = Vec3::new(pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]);
-            let n = if !nor.is_empty() {
-                Vec3::new(nor[3 * i], nor[3 * i + 1], nor[3 * i + 2])
-            } else {
-                Vec3::ZERO
-            };
-            let t = if !tex.is_empty() {
-                Vec2::new(tex[2 * i], 1.0 - tex[2 * i + 1])
-            } else {
-                Vec2::ZERO
-            };
-
-            vertices.push(Vertex {
-                position: p,
-                normal: n,
-                color: n,
-                texcoord: t,
-            });
-        }
-
-        let indices = (0..vertices.len() as u32).collect();
-
-        /*
-        if let Some(material_id) = mesh.material_id {
-            let material = &materials[material_id];
-            bevy::log::info!("Material: {:#?}", material);
-        }
-        */
-
-        /*
-        // Process material
-        if let Some(material_id) = mesh.material_id {
-            let material = &materials[material_id];
-
-            // Diffuse map
-            if let Some(filename) = &material.diffuse_texture {
-                //log::info!("Diffuse map: {}", filename);
-            }
-
-            // Specular map
-            if let Some(filename) = &material.specular_texture {
-                //log::info!("Specular map: {}", filename);
-            }
-
-            // Normal map
-            if let Some(filename) = &material.normal_texture {
-                //log::info!("Normal map: {}", filename);
-            }
-
-            // NOTE: no height maps for now
-        }
-        */
-
-        let mesh = Mesh::new(vertices, indices);
-        meshes.push(mesh);
+        let index_offset = positions.len() as u32; // Offset of the indices
+        indices.reserve(model.mesh.indices.len());
+        positions.reserve(model.mesh.positions.len() / 3);
+        normals.reserve(model.mesh.normals.len() / 3);
+        texcoords.reserve(model.mesh.texcoords.len() / 2);
+        positions.extend(
+            model
+                .mesh
+                .positions
+                .chunks_exact(3)
+                .map(|v| [v[0], v[1], v[2]]),
+        );
+        normals.extend(
+            model
+                .mesh
+                .normals
+                .chunks_exact(3)
+                .map(|n| [n[0], n[1], n[2]]),
+        );
+        texcoords.extend(
+            model
+                .mesh
+                .texcoords
+                .chunks_exact(2)
+                .map(|t| [t[0], 1.0 - t[1]]),
+        );
+        indices.extend(model.mesh.indices.iter().map(|i| i + index_offset));
     }
 
-    Ok(Model::new(meshes))
+    let vertices = positions
+        .iter()
+        .zip(normals.iter())
+        .zip(texcoords.iter())
+        .map(|((&position, &normal), &texcoord)| Vertex {
+            position: position.into(),
+            normal: normal.into(),
+            texcoord: texcoord.into(),
+            color: normal.into(),
+        })
+        .collect();
+    let mesh = Mesh::new(vertices, indices);
+    Ok(Model::new(vec![mesh]))
 }
 
 async fn load_obj_data<'a, 'b>(
