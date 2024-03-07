@@ -51,7 +51,7 @@ layout (set = 0, binding = 1) uniform CameraUniforms {
 // frag_pos_world is the position of the fragment in world space
 // lines_per_unit is the number of grid lines per world space unit
 // lines_per_unit determines the spacing between grid lines
-vec4 grid_color(vec3 frag_pos_world, float lines_per_unit) {
+vec4 grid_color(vec3 frag_pos_world, float lines_per_unit, float line_weight) {
     vec2 coord = frag_pos_world.xz * lines_per_unit;
     vec2 derivative = fwidth(coord);
     // grid.x represents the proximity from the fragment to the nearest z grid line
@@ -60,7 +60,7 @@ vec4 grid_color(vec3 frag_pos_world, float lines_per_unit) {
     // A proximity of 1 means the fragment is exactly in the middle of two grid lines
     vec2 grid = abs(fract(coord - 0.5) - 0.5) / derivative;
     float line = min(grid.x, grid.y);
-    vec4 color = vec4(0.05, 0.05, 0.05, 1.0 - min(line, 1.0));
+    vec4 color = vec4(vec3(0.05), 1.0 - min(line, 1.0));
 
     // Color the x-axis blue
     float minz = min(derivative.y, 1);
@@ -74,7 +74,7 @@ vec4 grid_color(vec3 frag_pos_world, float lines_per_unit) {
         color.r = 1.0;
     }
 
-    return color;
+    return color * line_weight;
 }
 
 // Compute the depth of the fragment from the camera's perspective in clip space
@@ -105,7 +105,7 @@ void main() {
     float fading = max(0, (0.5 - linear_depth));
 
     // If t > 0, the fragment is on the XZ plane and therefore on the grid
-    vec4 grid = grid_color(frag_pos_world, 1.0) + grid_color(frag_pos_world, 0.1);
+    vec4 grid = grid_color(frag_pos_world, 1.0, 1.0) + grid_color(frag_pos_world, 0.1, 4.0);
     f_color = grid * float(t > 0);
     f_color.a *= fading;
 }
