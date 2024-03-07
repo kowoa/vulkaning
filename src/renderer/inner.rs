@@ -202,13 +202,6 @@ impl RendererInner {
             );
         }
         */
-
-        self.background_texture.image_mut().transition_layout(
-            cmd,
-            vk::ImageLayout::GENERAL,
-            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            &self.core.device,
-        );
     }
 
     // MAKE SURE TO CALL THIS FUNCTION AFTER DRAWING EVERYTHING ELSE
@@ -290,10 +283,22 @@ impl RendererInner {
         }
     }
 
-    fn end_renderpass(&self, cmd: vk::CommandBuffer) {
+    fn end_renderpass(
+        &self,
+        cmd: vk::CommandBuffer,
+        swapchain_image: vk::Image,
+    ) {
         unsafe {
             self.core.device.cmd_end_rendering(cmd);
         }
+        vkutils::transition_image_layout(
+            cmd,
+            swapchain_image,
+            vk::ImageAspectFlags::COLOR,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            vk::ImageLayout::PRESENT_SRC_KHR,
+            &self.core.device,
+        );
     }
 
     fn begin_command_buffer(&self, cmd: vk::CommandBuffer) -> Result<()> {
@@ -476,7 +481,10 @@ impl RendererInner {
         );
         self.draw_geometry(cmd, camera, resources)?;
         self.draw_grid(cmd, resources, self.frame_number % FRAME_OVERLAP)?;
-        self.end_renderpass(cmd);
+        self.end_renderpass(
+            cmd,
+            self.swapchain.images[swapchain_image_index as usize],
+        );
 
         self.end_command_buffer(
             cmd,
@@ -615,11 +623,7 @@ impl RendererInner {
             let device = &self.core.device;
             let mut allocator = self.core.get_allocator().unwrap();
 
-            // Clean up all models
-            resources
-                .models
-                .drain()
-                .for_each(|(_, model)| model.cleanup(device, &mut allocator));
+            resources.cleanup(device, &mut allocator);
 
             self.desc_allocator.cleanup(device);
             self.upload_context.cleanup(device);
@@ -690,7 +694,7 @@ impl RendererInner {
         // Transition the draw image and swapchain image into their correct transfer layouts
         self.background_texture.image_mut().transition_layout(
             cmd,
-            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            vk::ImageLayout::GENERAL,
             vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
             device,
         );
@@ -711,15 +715,14 @@ impl RendererInner {
             device,
         );
 
-        // Transition swapchain image to COLOR_ATTACHMENT_OPTIMAL for use with egui
+        // Transition the swapchain image to color attachment optimal layout for more drawing
         vkutils::transition_image_layout(
             cmd,
             swapchain_image,
             vk::ImageAspectFlags::COLOR,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            //vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            vk::ImageLayout::PRESENT_SRC_KHR,
-            device,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            &self.core.device,
         );
     }
 
@@ -775,6 +778,7 @@ impl RendererInner {
             .build(device)?;
         desc_allocator.add_layout("scene-camera buffer", scene_camera_layout);
 
+        /*
         let object_desc_set_layout = {
             // Binding 0 for GpuObjectData
             let object_bind = vkinit::descriptor_set_layout_binding(
@@ -792,6 +796,7 @@ impl RendererInner {
         };
 
         desc_allocator.add_layout("object", object_desc_set_layout);
+        */
 
         Ok(())
     }

@@ -69,12 +69,14 @@ impl Frame {
                 range: std::mem::size_of::<GpuCameraData>() as u64,
             };
             // Point descriptor set to object buffer
+            /*
             let object_info = vk::DescriptorBufferInfo {
                 buffer: object_buffer.buffer,
                 offset: 0,
                 range: std::mem::size_of::<GpuObjectData>() as u64
                     * MAX_OBJECTS as u64,
             };
+            */
 
             // Scene data is in binding 0
             let scene_write = vkinit::write_descriptor_buffer(
@@ -90,14 +92,17 @@ impl Frame {
                 1,
                 &camera_info,
             );
+            /*
             let object_write = vkinit::write_descriptor_buffer(
                 vk::DescriptorType::STORAGE_BUFFER,
                 scene_camera_desc_set,
                 0,
                 &object_info,
             );
+            */
 
-            let writes = [scene_write, camera_write, object_write];
+            //let writes = [scene_write, camera_write, object_write];
+            let writes = [scene_write, camera_write];
             unsafe { device.update_descriptor_sets(&writes, &[]) }
         }
 
