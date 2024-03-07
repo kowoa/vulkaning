@@ -16,10 +16,6 @@ layout (set = 0, binding = 1) uniform CameraUniforms {
     float far;
 } Camera;
 
-layout (push_constant) uniform ModelUniforms {
-    mat4 model;
-} Model;
-
 vec3 clip_to_world(vec3 clip_pos) {
     mat4 viewproj_inv = inverse(Camera.viewproj);
     vec4 world_pos = viewproj_inv * vec4(clip_pos, 1.0);

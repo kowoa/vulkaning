@@ -1,11 +1,9 @@
-use bevy::log;
 use ash::vk;
-use bytemuck::{Pod, Zeroable};
+use bevy::log;
 use color_eyre::eyre::{Context, OptionExt, Result};
-use glam::Vec4;
 use std::{fs::File, io::Read, path::PathBuf};
 
-use super::{material::Material, SHADERBUILD_DIR};
+use super::SHADERBUILD_DIR;
 
 pub struct GraphicsShader {
     pub vert_shader_mod: vk::ShaderModule,
@@ -55,32 +53,6 @@ impl GraphicsShader {
         unsafe {
             device.destroy_shader_module(self.vert_shader_mod, None);
             device.destroy_shader_module(self.frag_shader_mod, None);
-        }
-    }
-}
-
-pub struct ComputeEffect {
-    pub name: String,
-    pub material: Material,
-    pub data: ComputePushConstants,
-}
-
-#[repr(C)]
-#[derive(Pod, Zeroable, Clone, Copy)]
-pub struct ComputePushConstants {
-    pub data1: Vec4,
-    pub data2: Vec4,
-    pub data3: Vec4,
-    pub data4: Vec4,
-}
-
-impl Default for ComputePushConstants {
-    fn default() -> Self {
-        Self {
-            data1: Vec4::ZERO,
-            data2: Vec4::ZERO,
-            data3: Vec4::ZERO,
-            data4: Vec4::ZERO,
         }
     }
 }

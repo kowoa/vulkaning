@@ -1,4 +1,3 @@
-use bevy::log;
 use ash::vk;
 use color_eyre::eyre::Result;
 use gpu_allocator::vulkan::Allocator;
@@ -10,7 +9,7 @@ use crate::renderer::{
 
 use super::{
     camera::GpuCameraData,
-    resources::{object::GpuObjectData, scene::GpuSceneData},
+    inner::{GpuObjectData, GpuSceneData},
 };
 
 #[derive(Debug)]
@@ -20,8 +19,7 @@ pub struct Frame {
     pub render_fence: vk::Fence,
     pub command_buffer: vk::CommandBuffer,
 
-    pub global_desc_set: vk::DescriptorSet,
-    pub object_desc_set: vk::DescriptorSet,
+    pub scene_camera_desc_set: vk::DescriptorSet,
 
     pub object_buffer: AllocatedBuffer,
 }
@@ -42,12 +40,9 @@ impl Frame {
         let (present_semaphore, render_semaphore, render_fence) =
             Self::create_sync_objs(device)?;
 
-        // Allocate descriptor set using the global descriptor set layout
-        let global_desc_set =
-            desc_allocator.allocate(&core.device, "global")?;
-        // Allocate descriptor set using the object descriptor set layout
-        let object_desc_set =
-            desc_allocator.allocate(&core.device, "object")?;
+        // Allocate descriptor set for the scene and camera data
+        let scene_camera_desc_set =
+            desc_allocator.allocate(&core.device, "scene-camera buffer")?;
 
         // Create object buffer
         let mut allocator = core.get_allocator()?;
@@ -84,20 +79,20 @@ impl Frame {
             // Scene data is in binding 0
             let scene_write = vkinit::write_descriptor_buffer(
                 vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-                global_desc_set,
+                scene_camera_desc_set,
                 0,
                 &scene_info,
             );
             // Camera data is in binding 1
             let camera_write = vkinit::write_descriptor_buffer(
                 vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-                global_desc_set,
+                scene_camera_desc_set,
                 1,
                 &camera_info,
             );
             let object_write = vkinit::write_descriptor_buffer(
                 vk::DescriptorType::STORAGE_BUFFER,
-                object_desc_set,
+                scene_camera_desc_set,
                 0,
                 &object_info,
             );
@@ -111,8 +106,7 @@ impl Frame {
             render_semaphore,
             render_fence,
             command_buffer,
-            global_desc_set,
-            object_desc_set,
+            scene_camera_desc_set,
             object_buffer,
         })
     }

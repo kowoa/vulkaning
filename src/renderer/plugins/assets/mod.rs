@@ -3,7 +3,7 @@ mod obj;
 
 use bevy::prelude::*;
 
-use crate::renderer::model::Model;
+use crate::renderer::{model::Model, texture::Texture};
 
 pub use self::obj::{ObjAssetsLoadState, ObjAssetsLoading};
 
@@ -12,6 +12,7 @@ impl Plugin for AssetsPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(obj::ObjAssetsPlugin)
             .init_asset::<Model>()
+            .init_asset::<Texture>()
             .add_systems(Startup, load_obj_models);
     }
 }

@@ -16,7 +16,6 @@ mod mesh;
 mod model;
 mod queue_family_indices;
 mod render_object;
-mod resources;
 mod shader;
 mod swapchain;
 mod texture;
@@ -81,29 +80,5 @@ impl Renderer {
             let inner = inner.into_inner().unwrap();
             inner.cleanup(resources);
         }
-    }
-
-    pub fn get_background_index(&self) -> u32 {
-        self.inner
-            .as_ref()
-            .unwrap()
-            .lock()
-            .unwrap()
-            .resources
-            .as_ref()
-            .unwrap()
-            .current_background_effects_index as u32
-    }
-
-    pub fn set_background_index(&mut self, new_index: u32) {
-        self.inner
-            .as_ref()
-            .unwrap()
-            .lock()
-            .unwrap()
-            .resources
-            .as_mut()
-            .unwrap()
-            .current_background_effects_index = new_index as usize;
     }
 }

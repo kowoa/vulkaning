@@ -5,9 +5,7 @@ use ash::vk;
 use color_eyre::eyre::{eyre, Result};
 use glam::{Mat4, Vec4};
 
-use crate::renderer::{
-    camera::GpuCameraData, resources::scene::GpuSceneData, texture::Texture,
-};
+use crate::renderer::{camera::GpuCameraData, texture::Texture};
 
 use super::{
     buffer::AllocatedBuffer,
@@ -17,12 +15,28 @@ use super::{
         DescriptorAllocator, DescriptorSetLayoutBuilder, PoolSizeRatio,
     },
     frame::Frame,
+    material::Material,
     render_resources::RenderResources,
-    resources::Resources,
+    shader::GraphicsShader,
     swapchain::Swapchain,
     upload_context::UploadContext,
     vkinit, vkutils,
 };
+
+#[derive(Default, Copy, Clone)]
+#[repr(C)]
+pub struct GpuSceneData {
+    pub fog_color: Vec4,     // w for exponent
+    pub fog_distances: Vec4, // x for min, y for max, zw unused
+    pub ambient_color: Vec4,
+    pub sunlight_direction: Vec4, // w for sun power
+    pub sunlight_color: Vec4,
+}
+
+#[repr(C)]
+pub struct GpuObjectData {
+    pub model_mat: Mat4,
+}
 
 pub const FRAME_OVERLAP: u32 = 2;
 pub const MAX_OBJECTS: u32 = 10000; // Max objects per frame
@@ -30,7 +44,6 @@ pub const MAX_OBJECTS: u32 = 10000; // Max objects per frame
 pub struct RendererInner {
     pub core: Core,
     pub swapchain: Swapchain,
-    pub resources: Option<Resources>, // Needs to be initialized with init_resources()
     pub desc_allocator: DescriptorAllocator,
 
     pub frame_number: u32,
@@ -120,7 +133,6 @@ impl RendererInner {
         Ok(Self {
             core,
             swapchain,
-            resources: None,
             frame_number: 0,
             frames,
             command_pool,
@@ -135,34 +147,9 @@ impl RendererInner {
         &mut self,
         resources: &mut RenderResources,
     ) -> Result<()> {
-        // Upload all models to the GPU
-        for (_, model) in resources.models.iter_mut() {
-            model.upload(
-                &self.core.device,
-                &mut *self.core.get_allocator()?,
-                &self.upload_context,
-            )?;
-        }
-
-        // Upload all textures to the GPU
-        for (_, texture) in resources.textures.iter_mut() {
-            texture.init_graphics_texture(
-                &self.core.device,
-                &mut *self.core.get_allocator()?,
-                &mut self.desc_allocator,
-                &self.upload_context,
-            )?;
-        }
-
-        let resources = Resources::new(
-            &mut self.core,
-            &self.swapchain,
-            &self.upload_context,
-            &mut self.desc_allocator,
-            self.background_texture.image(),
-        )?;
-
-        self.resources = Some(resources);
+        self.init_models(resources)?;
+        self.init_textures(resources)?;
+        self.init_materials(resources)?;
 
         Ok(())
     }
@@ -182,34 +169,25 @@ impl RendererInner {
             &self.core.device,
         );
 
-        let effect = &self.resources.as_ref().unwrap().background_effects[self
-            .resources
-            .as_ref()
-            .unwrap()
-            .current_background_effects_index];
-        let material = &effect.material;
-        let device = &self.core.device;
+        unsafe {
+            self.core.device.cmd_clear_color_image(
+                cmd,
+                self.background_texture.image().image,
+                vk::ImageLayout::GENERAL,
+                &vk::ClearColorValue {
+                    float32: [0.0, 0.0, 0.0, 1.0],
+                },
+                &[vk::ImageSubresourceRange {
+                    aspect_mask: self.background_texture.image().aspect,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                }],
+            );
+        }
 
-        // Bind the gradient drawing compute pipeline
-        material.bind_pipeline(cmd, device);
-
-        // Bind the descriptor set containing the draw image to the compute pipeline
-        material.bind_desc_sets(
-            cmd,
-            device,
-            0,
-            &[self.background_texture.desc_set()],
-            &[],
-        );
-
-        // Update push constants
-        material.update_push_constants(
-            cmd,
-            device,
-            vk::ShaderStageFlags::COMPUTE,
-            bytemuck::cast_slice(&[effect.data]),
-        );
-
+        /*
         // Execute the compute pipeline dispatch
         // The gradient compute shader uses a 16x16 workgroup, so divide by 16
         // The compute shader will write to the draw image
@@ -221,6 +199,7 @@ impl RendererInner {
                 1,
             );
         }
+        */
 
         self.background_texture.image_mut().transition_layout(
             cmd,
@@ -230,52 +209,44 @@ impl RendererInner {
         );
     }
 
-    // MAKE SURE TO CALL THIS FUNCTION AFTER DRAWING EVERY OBJECT
+    // MAKE SURE TO CALL THIS FUNCTION AFTER DRAWING EVERYTHING ELSE
     fn draw_grid(
         &mut self,
         cmd: vk::CommandBuffer,
+        resources: &RenderResources,
         frame_index: u32,
     ) -> Result<()> {
         let device = &self.core.device;
-        let grid_mat =
-            self.resources.as_ref().unwrap().materials["grid"].as_ref();
-        let grid_model =
-            self.resources.as_ref().unwrap().models["quad"].as_ref();
-        grid_mat.bind_pipeline(cmd, device);
+        let grid_mat = &resources.materials["grid"];
+        let grid_model = &resources.models["quad"];
 
         let frame = self.get_current_frame()?;
-        let scene_start_offset =
-            self.scene_camera_buffer.offsets.as_ref().unwrap()
-                [frame_index as usize];
-        let camera_start_offset =
-            self.scene_camera_buffer.offsets.as_ref().unwrap()
-                [frame_index as usize + 2];
+
+        grid_mat.bind_pipeline(cmd, device);
         grid_mat.bind_desc_sets(
             cmd,
             device,
             0,
-            &[frame.global_desc_set],
-            &[scene_start_offset, camera_start_offset],
-        );
-        grid_mat.update_push_constants(
-            cmd,
-            device,
-            vk::ShaderStageFlags::VERTEX,
-            bytemuck::cast_slice(&[Mat4::IDENTITY]),
+            &[frame.scene_camera_desc_set],
+            &[
+                self.scene_camera_buffer.get_offset(frame_index)?,
+                self.scene_camera_buffer.get_offset(frame_index + 2)?,
+            ],
         );
         grid_model.draw(cmd, device)?;
 
         Ok(())
     }
 
-    fn draw_geometry(
-        &mut self,
+    fn begin_renderpass(
+        &self,
         cmd: vk::CommandBuffer,
-        camera: &Camera,
-        resources: &RenderResources,
-    ) -> Result<()> {
+        image_view: vk::ImageView,
+        image_width: u32,
+        image_height: u32,
+    ) {
         let color_attachments = [vk::RenderingAttachmentInfo::builder()
-            .image_view(self.background_texture.image().view)
+            .image_view(image_view)
             .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .load_op(vk::AttachmentLoadOp::LOAD)
             .store_op(vk::AttachmentStoreOp::STORE)
@@ -285,27 +256,25 @@ impl RendererInner {
                 },
             })
             .build()];
-
-        let depth_clear = vk::ClearValue {
-            depth_stencil: vk::ClearDepthStencilValue {
-                depth: 1.0,
-                stencil: 0,
-            },
-        };
         let depth_attachment = vk::RenderingAttachmentInfo::builder()
             .image_view(self.swapchain.depth_image.view)
             .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::STORE)
-            .clear_value(depth_clear)
+            .clear_value(vk::ClearValue {
+                depth_stencil: vk::ClearDepthStencilValue {
+                    depth: 1.0,
+                    stencil: 0,
+                },
+            })
             .build();
 
         let rendering_info = vk::RenderingInfo::builder()
             .render_area(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
                 extent: vk::Extent2D {
-                    width: self.background_texture.width(),
-                    height: self.background_texture.height(),
+                    width: image_width,
+                    height: image_height,
                 },
             })
             .layer_count(1)
@@ -317,27 +286,81 @@ impl RendererInner {
         unsafe {
             self.core.device.cmd_begin_rendering(cmd, &rendering_info);
         }
+    }
 
-        // RENDERING COMMANDS START
+    fn end_renderpass(&self, cmd: vk::CommandBuffer) {
+        unsafe {
+            self.core.device.cmd_end_rendering(cmd);
+        }
+    }
 
-        // Draw render resources
-        /*
-        self.draw_render_objects(
-            self.draw_image.extent.width,
-            self.draw_image.extent.height,
-            0,
-            self.resources.as_ref().unwrap().render_objs.len(),
-            camera,
-        )?;
-        */
-        // -------------------------------------------------------------
+    fn begin_command_buffer(&self, cmd: vk::CommandBuffer) -> Result<()> {
+        // Reset the command buffer to begin recording
+        unsafe {
+            self.core.device.reset_command_buffer(
+                cmd,
+                vk::CommandBufferResetFlags::empty(),
+            )?;
+        }
+
+        // Begin command buffer recording
+        let cmd_begin_info = vk::CommandBufferBeginInfo {
+            flags: vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
+            ..Default::default()
+        };
+        unsafe {
+            self.core
+                .device
+                .begin_command_buffer(cmd, &cmd_begin_info)?;
+        }
+
+        Ok(())
+    }
+
+    fn end_command_buffer(
+        &self,
+        cmd: vk::CommandBuffer,
+        render_semaphore: vk::Semaphore,
+        present_semaphore: vk::Semaphore,
+        render_fence: vk::Fence,
+    ) -> Result<()> {
+        unsafe {
+            // Finalize the main command buffer
+            self.core.device.end_command_buffer(cmd)?;
+
+            // Prepare submission to the graphics queue
+            let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+            let submit_info = vk::SubmitInfo {
+                p_wait_dst_stage_mask: wait_stages.as_ptr(),
+                wait_semaphore_count: 1,
+                p_wait_semaphores: &present_semaphore,
+                signal_semaphore_count: 1,
+                p_signal_semaphores: &render_semaphore,
+                command_buffer_count: 1,
+                p_command_buffers: &cmd,
+                ..Default::default()
+            };
+            self.core.device.queue_submit(
+                self.core.graphics_queue,
+                &[submit_info],
+                render_fence,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn draw_geometry(
+        &mut self,
+        cmd: vk::CommandBuffer,
+        camera: &Camera,
+        resources: &RenderResources,
+    ) -> Result<()> {
         let frame_index = self.frame_number % FRAME_OVERLAP;
         let scene_start_offset =
-            self.scene_camera_buffer.offsets.as_ref().unwrap()
-                [frame_index as usize];
+            self.scene_camera_buffer.get_offset(frame_index)?;
         let camera_start_offset =
-            self.scene_camera_buffer.offsets.as_ref().unwrap()
-                [frame_index as usize + 2];
+            self.scene_camera_buffer.get_offset(frame_index + 2)?;
+
         // Write into scene section of scene-camera uniform buffer
         {
             // Fill a GpuSceneData struct
@@ -367,28 +390,17 @@ impl RendererInner {
             self.scene_camera_buffer
                 .write(&[cam_data], camera_start_offset as usize)?;
         }
-        let monkey_mat =
-            self.resources.as_ref().unwrap().materials["default"].as_ref();
+        let monkey_mat = &resources.materials["monkey"];
         let monkey_model = &resources.models["monkey"];
         monkey_mat.bind_pipeline(cmd, &self.core.device);
         monkey_mat.bind_desc_sets(
             cmd,
             &self.core.device,
             0,
-            &[self.get_current_frame()?.global_desc_set],
+            &[self.get_current_frame()?.scene_camera_desc_set],
             &[scene_start_offset, camera_start_offset],
         );
         monkey_model.draw(cmd, &self.core.device)?;
-        // ----------------------------------------------------------
-
-        self.draw_grid(cmd, self.frame_number % FRAME_OVERLAP)?;
-
-        // RENDERING COMMANDS END
-
-        // End the renderpass
-        unsafe {
-            self.core.device.cmd_end_rendering(cmd);
-        }
 
         Ok(())
     }
@@ -401,17 +413,16 @@ impl RendererInner {
     ) -> Result<()> {
         let (
             cmd,
-            swapchain_image,
             swapchain_image_index,
             render_semaphore,
             present_semaphore,
             render_fence,
         ) = {
             let frame = self.get_current_frame()?;
-            let fences = [frame.render_fence];
 
             // Wait until GPU has finished rendering last frame (1 sec timeout)
             unsafe {
+                let fences = [frame.render_fence];
                 self.core
                     .device
                     .wait_for_fences(&fences, true, 1000000000)?;
@@ -419,18 +430,22 @@ impl RendererInner {
             }
 
             // Request image from swapchain (1 sec timeout)
-            let (swapchain_image_index, _) = unsafe {
-                self.swapchain.swapchain_loader.acquire_next_image(
-                    self.swapchain.swapchain,
-                    1000000000,
-                    frame.present_semaphore,
-                    vk::Fence::null(),
-                )?
+            let swapchain_image_index = unsafe {
+                let (index, suboptimal) =
+                    self.swapchain.swapchain_loader.acquire_next_image(
+                        self.swapchain.swapchain,
+                        1000000000,
+                        frame.present_semaphore,
+                        vk::Fence::null(),
+                    )?;
+                if suboptimal {
+                    log::warn!("Swapchain image is suboptimal");
+                }
+                index
             };
 
             (
                 frame.command_buffer,
-                self.swapchain.images[swapchain_image_index as usize],
                 swapchain_image_index,
                 frame.render_semaphore,
                 frame.present_semaphore,
@@ -438,151 +453,58 @@ impl RendererInner {
             )
         };
 
-        // Begin command buffer recording
-        {
-            // Reset the command buffer to begin recording
-            unsafe {
-                self.core.device.reset_command_buffer(
-                    cmd,
-                    vk::CommandBufferResetFlags::empty(),
-                )?;
-            }
-
-            // Begin command buffer recording
-            let cmd_begin_info = vk::CommandBufferBeginInfo {
-                flags: vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
-                ..Default::default()
-            };
-            unsafe {
-                self.core
-                    .device
-                    .begin_command_buffer(cmd, &cmd_begin_info)?;
-            }
-        }
-
-        // Set dynamic viewport and scissor
-        {
-            let viewport = vk::Viewport::builder()
-                .x(0.0)
-                .y(0.0)
-                //.width(swapchain_image.extent.width as f32)
-                //.height(swapchain_image.extent.height as f32)
-                .width(self.background_texture.width() as f32)
-                .height(self.background_texture.height() as f32)
-                .min_depth(0.0)
-                .max_depth(1.0)
-                .build();
-            unsafe {
-                self.core.device.cmd_set_viewport(cmd, 0, &[viewport]);
-            }
-
-            let scissor = vk::Rect2D::builder()
-                .offset(vk::Offset2D { x: 0, y: 0 })
-                .extent(vk::Extent2D {
-                    width: self.background_texture.width(),
-                    height: self.background_texture.height(),
-                })
-                .build();
-            unsafe {
-                self.core.device.cmd_set_scissor(cmd, 0, &[scissor]);
-            }
-        }
+        self.begin_command_buffer(cmd)?;
 
         self.draw_background(cmd);
+        self.copy_background_texture_to_swapchain(
+            cmd,
+            self.swapchain.images[swapchain_image_index as usize],
+        );
+
+        self.begin_renderpass(
+            cmd,
+            self.swapchain.image_views[swapchain_image_index as usize],
+            self.swapchain.image_extent.width,
+            self.swapchain.image_extent.height,
+        );
         self.draw_geometry(cmd, camera, resources)?;
+        self.draw_grid(cmd, resources, self.frame_number % FRAME_OVERLAP)?;
+        self.end_renderpass(cmd);
 
-        // Copy draw image to swapchain image
-        {
-            let device = &self.core.device;
-
-            // Transition the draw image and swapchain image into their correct transfer layouts
-            self.background_texture.image_mut().transition_layout(
-                cmd,
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                device,
-            );
-            vkutils::transition_image_layout(
-                cmd,
-                swapchain_image,
-                vk::ImageAspectFlags::COLOR,
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                device,
-            );
-
-            // Execute a copy from the draw image into the swapchain
-            self.background_texture.image_mut().copy_to_image(
-                cmd,
-                swapchain_image,
-                self.swapchain.image_extent,
-                device,
-            );
-
-            // Transition swapchain image to COLOR_ATTACHMENT_OPTIMAL for use with egui
-            vkutils::transition_image_layout(
-                cmd,
-                swapchain_image,
-                vk::ImageAspectFlags::COLOR,
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                //vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                vk::ImageLayout::PRESENT_SRC_KHR,
-                device,
-            );
-        }
-
-        unsafe {
-            // Finalize the main command buffer
-            self.core.device.end_command_buffer(cmd)?;
-
-            // Prepare submission to the graphics queue
-            let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-            let submit_info = vk::SubmitInfo {
-                p_wait_dst_stage_mask: wait_stages.as_ptr(),
-                wait_semaphore_count: 1,
-                p_wait_semaphores: &present_semaphore,
-                signal_semaphore_count: 1,
-                p_signal_semaphores: &render_semaphore,
-                command_buffer_count: 1,
-                p_command_buffers: &cmd,
-                ..Default::default()
-            };
-            self.core.device.queue_submit(
-                self.core.graphics_queue,
-                &[submit_info],
-                render_fence,
-            )?;
-        }
-
-        self.present_frame(swapchain_image_index)?;
-
-        Ok(())
-    }
-
-    fn present_frame(&mut self, swapchain_image_index: u32) -> Result<()> {
-        {
-            let frame = self.get_current_frame()?;
-            let present_info = vk::PresentInfoKHR {
-                p_swapchains: &self.swapchain.swapchain,
-                swapchain_count: 1,
-                p_wait_semaphores: &frame.render_semaphore,
-                wait_semaphore_count: 1,
-                p_image_indices: &swapchain_image_index,
-                ..Default::default()
-            };
-
-            unsafe {
-                self.swapchain
-                    .swapchain_loader
-                    .queue_present(self.core.present_queue, &present_info)?;
-            }
-        }
-
+        self.end_command_buffer(
+            cmd,
+            render_semaphore,
+            present_semaphore,
+            render_fence,
+        )?;
+        self.present_frame(swapchain_image_index, render_semaphore)?;
         self.frame_number += 1;
 
         Ok(())
     }
 
+    fn present_frame(
+        &mut self,
+        swapchain_image_index: u32,
+        render_semaphore: vk::Semaphore,
+    ) -> Result<()> {
+        let present_info = vk::PresentInfoKHR {
+            p_swapchains: &self.swapchain.swapchain,
+            swapchain_count: 1,
+            p_wait_semaphores: &render_semaphore,
+            wait_semaphore_count: 1,
+            p_image_indices: &swapchain_image_index,
+            ..Default::default()
+        };
+        unsafe {
+            self.swapchain
+                .swapchain_loader
+                .queue_present(self.core.present_queue, &present_info)?;
+        }
+        Ok(())
+    }
+
+    /*
     fn draw_render_objects(
         &mut self,
         width: u32,
@@ -668,6 +590,7 @@ impl RendererInner {
 
         Ok(())
     }
+    */
 
     pub fn cleanup(mut self, resources: &mut RenderResources) {
         // Wait until all frames have finished rendering
@@ -693,7 +616,6 @@ impl RendererInner {
 
             self.desc_allocator.cleanup(device);
             self.upload_context.cleanup(device);
-            self.resources.unwrap().cleanup(device, &mut allocator);
 
             // Destroy command pool
             unsafe {
@@ -718,6 +640,80 @@ impl RendererInner {
 
         // Clean up core Vulkan objects
         self.core.cleanup();
+    }
+
+    /// Set dynamic viewport and scissor
+    fn set_viewport_scissor(
+        &self,
+        cmd: vk::CommandBuffer,
+        width: u32,
+        height: u32,
+    ) {
+        let viewport = vk::Viewport::builder()
+            .x(0.0)
+            .y(0.0)
+            //.width(swapchain_image.extent.width as f32)
+            //.height(swapchain_image.extent.height as f32)
+            .width(width as f32)
+            .height(height as f32)
+            .min_depth(0.0)
+            .max_depth(1.0)
+            .build();
+        unsafe {
+            self.core.device.cmd_set_viewport(cmd, 0, &[viewport]);
+        }
+
+        let scissor = vk::Rect2D::builder()
+            .offset(vk::Offset2D { x: 0, y: 0 })
+            .extent(vk::Extent2D { width, height })
+            .build();
+        unsafe {
+            self.core.device.cmd_set_scissor(cmd, 0, &[scissor]);
+        }
+    }
+
+    /// Helper function that copies the background texture to the specified swapchain image
+    fn copy_background_texture_to_swapchain(
+        &mut self,
+        cmd: vk::CommandBuffer,
+        swapchain_image: vk::Image,
+    ) {
+        let device = &self.core.device;
+
+        // Transition the draw image and swapchain image into their correct transfer layouts
+        self.background_texture.image_mut().transition_layout(
+            cmd,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            device,
+        );
+        vkutils::transition_image_layout(
+            cmd,
+            swapchain_image,
+            vk::ImageAspectFlags::COLOR,
+            vk::ImageLayout::UNDEFINED,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            device,
+        );
+
+        // Execute a copy from the draw image into the swapchain
+        self.background_texture.image_mut().copy_to_image(
+            cmd,
+            swapchain_image,
+            self.swapchain.image_extent,
+            device,
+        );
+
+        // Transition swapchain image to COLOR_ATTACHMENT_OPTIMAL for use with egui
+        vkutils::transition_image_layout(
+            cmd,
+            swapchain_image,
+            vk::ImageAspectFlags::COLOR,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            //vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            vk::ImageLayout::PRESENT_SRC_KHR,
+            device,
+        );
     }
 
     /// Helper function that creates a command pool
@@ -758,44 +754,19 @@ impl RendererInner {
             .build(device)?;
         desc_allocator.add_layout("graphics texture", graphics_texture_layout);
 
-        let single_texture_desc_set_layout = {
-            let texture_bind = vkinit::descriptor_set_layout_binding(
-                vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                vk::ShaderStageFlags::FRAGMENT,
+        let scene_camera_layout = DescriptorSetLayoutBuilder::new()
+            .add_binding(
                 0,
-            );
-
-            let set_info = vk::DescriptorSetLayoutCreateInfo {
-                binding_count: 1,
-                p_bindings: &texture_bind,
-                ..Default::default()
-            };
-            unsafe { device.create_descriptor_set_layout(&set_info, None)? }
-        };
-
-        let global_desc_set_layout = {
-            // Binding 0 for GpuSceneData
-            let scene_bind = vkinit::descriptor_set_layout_binding(
                 vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                0,
-            );
-            // Binding 1 for GpuCameraData
-            let camera_bind = vkinit::descriptor_set_layout_binding(
-                vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+            )
+            .add_binding(
                 1,
-            );
-            let bindings = [scene_bind, camera_bind];
-
-            let set_info = vk::DescriptorSetLayoutCreateInfo {
-                binding_count: bindings.len() as u32,
-                flags: vk::DescriptorSetLayoutCreateFlags::empty(),
-                p_bindings: bindings.as_ptr(),
-                ..Default::default()
-            };
-            unsafe { device.create_descriptor_set_layout(&set_info, None)? }
-        };
+                vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
+                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+            )
+            .build(device)?;
+        desc_allocator.add_layout("scene-camera buffer", scene_camera_layout);
 
         let object_desc_set_layout = {
             // Binding 0 for GpuObjectData
@@ -813,10 +784,7 @@ impl RendererInner {
             unsafe { device.create_descriptor_set_layout(&set_info, None)? }
         };
 
-        desc_allocator.add_layout("global", global_desc_set_layout);
         desc_allocator.add_layout("object", object_desc_set_layout);
-        desc_allocator
-            .add_layout("single texture", single_texture_desc_set_layout);
 
         Ok(())
     }
@@ -852,4 +820,284 @@ impl RendererInner {
 
         Ok(global_desc_allocator)
     }
+
+    /// Upload all models to the GPU
+    fn init_models(&mut self, resources: &mut RenderResources) -> Result<()> {
+        for (_, model) in resources.models.iter_mut() {
+            model.upload(
+                &self.core.device,
+                &mut *self.core.get_allocator()?,
+                &self.upload_context,
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Upload all textures to the GPU
+    fn init_textures(&mut self, resources: &mut RenderResources) -> Result<()> {
+        for (_, texture) in resources.textures.iter_mut() {
+            texture.init_graphics_texture(
+                &self.core.device,
+                &mut *self.core.get_allocator()?,
+                &mut self.desc_allocator,
+                &self.upload_context,
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Create materials and insert them into RenderResources
+    fn init_materials(&self, resources: &mut RenderResources) -> Result<()> {
+        let scene_camera_layout =
+            self.desc_allocator.get_layout("scene-camera buffer")?;
+        /*
+        let graphics_texture_layout =
+            self.desc_allocator.get_layout("graphics texture")?;
+        let compute_texture_layout =
+            self.desc_allocator.get_layout("compute texture")?;
+        */
+
+        let default_mat = {
+            let set_layouts = [*scene_camera_layout];
+            let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
+                .set_layouts(&set_layouts)
+                .build();
+            let pipeline_layout = unsafe {
+                self.core
+                    .device
+                    .create_pipeline_layout(&pipeline_layout_info, None)?
+            };
+            Material::builder_graphics(&self.core.device)
+                .pipeline_layout(pipeline_layout)
+                .shader(GraphicsShader::new("default", &self.core.device)?)
+                .color_attachment_format(self.swapchain.image_format)
+                .depth_attachment_format(self.swapchain.depth_image.format)
+                .build()?
+        };
+        resources.materials.insert("default".into(), default_mat);
+
+        let grid_mat = {
+            let set_layouts = [*scene_camera_layout];
+            let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
+                .set_layouts(&set_layouts)
+                .build();
+            let pipeline_layout = unsafe {
+                self.core
+                    .device
+                    .create_pipeline_layout(&pipeline_layout_info, None)?
+            };
+            Material::builder_graphics(&self.core.device)
+                .pipeline_layout(pipeline_layout)
+                .shader(GraphicsShader::new("grid", &self.core.device)?)
+                .color_attachment_format(self.swapchain.image_format)
+                .depth_attachment_format(self.swapchain.depth_image.format)
+                .build()?
+        };
+        resources.materials.insert("grid".into(), grid_mat);
+
+        Ok(())
+    }
+
+    /*
+    fn create_materials(
+        device: &ash::Device,
+        swapchain: &Swapchain,
+        desc_allocator: &DescriptorAllocator,
+        background_fx: &mut Vec<ComputeEffect>,
+        draw_image: &AllocatedImage,
+    ) -> Result<HashMap<String, Material>> {
+        let default_lit_mat = {
+            let pipeline_layout = {
+                let mut layout_info = vkinit::pipeline_layout_create_info();
+
+                // Push constants setup
+                let push_constant = vk::PushConstantRange {
+                    offset: 0,
+                    size: std::mem::size_of::<MeshPushConstants>() as u32,
+                    stage_flags: vk::ShaderStageFlags::VERTEX,
+                };
+                layout_info.p_push_constant_ranges = &push_constant;
+                layout_info.push_constant_range_count = 1;
+
+                // Descriptor set layout setup
+                let set_layouts =
+                    [*global_desc_set_layout, *object_desc_set_layout];
+                layout_info.set_layout_count = set_layouts.len() as u32;
+                layout_info.p_set_layouts = set_layouts.as_ptr();
+
+                // Create pipeline layout
+                unsafe { device.create_pipeline_layout(&layout_info, None)? }
+            };
+
+            let default_lit_shader =
+                GraphicsShader::new("default-lit", device)?;
+            Material::builder_graphics(device)
+                .pipeline_layout(pipeline_layout)
+                .shader(default_lit_shader)
+                .vertex_input(Vertex::get_vertex_desc())
+                .color_attachment_format(draw_image.format)
+                .depth_attachment_format(swapchain.depth_image.format)
+                .build()?
+        };
+
+        let default_mat = {
+            let pipeline_layout = {
+                let mut layout_info = vkinit::pipeline_layout_create_info();
+
+                // Push constants setup
+                let push_constant = vk::PushConstantRange {
+                    offset: 0,
+                    size: std::mem::size_of::<MeshPushConstants>() as u32,
+                    stage_flags: vk::ShaderStageFlags::VERTEX,
+                };
+                layout_info.p_push_constant_ranges = &push_constant;
+                layout_info.push_constant_range_count = 1;
+
+                // Descriptor set layout setup
+                let set_layouts = [*global_desc_set_layout];
+                layout_info.set_layout_count = set_layouts.len() as u32;
+                layout_info.p_set_layouts = set_layouts.as_ptr();
+
+                // Create pipeline layout
+                unsafe { device.create_pipeline_layout(&layout_info, None)? }
+            };
+
+            let default_lit_shader = GraphicsShader::new("default", device)?;
+            Material::builder_graphics(device)
+                .pipeline_layout(pipeline_layout)
+                .shader(default_lit_shader)
+                .vertex_input(Vertex::get_vertex_desc())
+                .color_attachment_format(draw_image.format)
+                .depth_attachment_format(swapchain.depth_image.format)
+                .build()?
+        };
+
+        let textured_lit_mat = {
+            let pipeline_layout = {
+                let mut layout_info = vkinit::pipeline_layout_create_info();
+                // Push constants setup
+                let push_constant = vk::PushConstantRange {
+                    offset: 0,
+                    size: std::mem::size_of::<MeshPushConstants>() as u32,
+                    stage_flags: vk::ShaderStageFlags::VERTEX,
+                };
+                layout_info.p_push_constant_ranges = &push_constant;
+                layout_info.push_constant_range_count = 1;
+                // Descriptor set layout setup
+                let set_layouts = [
+                    *global_desc_set_layout,
+                    *object_desc_set_layout,
+                    *single_texture_desc_set_layout,
+                ];
+                layout_info.set_layout_count = set_layouts.len() as u32;
+                layout_info.p_set_layouts = set_layouts.as_ptr();
+                // Create pipeline layout
+                unsafe { device.create_pipeline_layout(&layout_info, None)? }
+            };
+            let textured_lit_shader =
+                GraphicsShader::new("textured-lit", device)?;
+            Material::builder_graphics(device)
+                .pipeline_layout(pipeline_layout)
+                .shader(textured_lit_shader)
+                .vertex_input(Vertex::get_vertex_desc())
+                .color_attachment_format(draw_image.format)
+                .depth_attachment_format(swapchain.depth_image.format)
+                .build()?
+        };
+
+        let grid_mat = {
+            let push_constant_ranges = [vk::PushConstantRange::builder()
+                .offset(0)
+                .size(std::mem::size_of::<Mat4>() as u32)
+                .stage_flags(vk::ShaderStageFlags::VERTEX)
+                .build()];
+            let set_layouts = [*global_desc_set_layout];
+            let layout_info = vk::PipelineLayoutCreateInfo::builder()
+                .push_constant_ranges(&push_constant_ranges)
+                .set_layouts(&set_layouts)
+                .build();
+            // Create pipeline layout
+            let layout =
+                unsafe { device.create_pipeline_layout(&layout_info, None)? };
+            let shader = GraphicsShader::new("grid", device)?;
+            Material::builder_graphics(device)
+                .pipeline_layout(layout)
+                .shader(shader)
+                .color_attachment_format(draw_image.format)
+                .depth_attachment_format(swapchain.depth_image.format)
+                .build()?
+        };
+
+        let gradient_mat = {
+            let pipeline_layout = {
+                let layouts = [*draw_image_desc_set_layout];
+                let push_constant_ranges = [vk::PushConstantRange {
+                    stage_flags: vk::ShaderStageFlags::COMPUTE,
+                    offset: 0,
+                    size: std::mem::size_of::<ComputePushConstants>() as u32,
+                }];
+                let layout_info = vk::PipelineLayoutCreateInfo::builder()
+                    .set_layouts(&layouts)
+                    .push_constant_ranges(&push_constant_ranges)
+                    .build();
+                unsafe { device.create_pipeline_layout(&layout_info, None)? }
+            };
+            let gradient_shader = ComputeShader::new("gradient-color", device)?;
+            Material::builder_compute(device)
+                .pipeline_layout(pipeline_layout)
+                .shader(gradient_shader)
+                .build()?
+        };
+        let gradient_comp_fx = ComputeEffect {
+            name: "gradient".into(),
+            material: gradient_mat.clone(),
+            data: ComputePushConstants {
+                data1: Vec4::new(1.0, 0.0, 0.0, 1.0),
+                data2: Vec4::new(0.0, 0.0, 1.0, 1.0),
+                ..Default::default()
+            },
+        };
+
+        let sky_mat = {
+            let pipeline_layout = {
+                let layouts = [*draw_image_desc_set_layout];
+                let push_constant_ranges = [vk::PushConstantRange {
+                    stage_flags: vk::ShaderStageFlags::COMPUTE,
+                    offset: 0,
+                    size: std::mem::size_of::<ComputePushConstants>() as u32,
+                }];
+                let layout_info = vk::PipelineLayoutCreateInfo::builder()
+                    .set_layouts(&layouts)
+                    .push_constant_ranges(&push_constant_ranges)
+                    .build();
+                unsafe { device.create_pipeline_layout(&layout_info, None)? }
+            };
+            let sky_shader = ComputeShader::new("sky", device)?;
+            Material::builder_compute(device)
+                .pipeline_layout(pipeline_layout)
+                .shader(sky_shader)
+                .build()?
+        };
+        let sky_comp_fx = ComputeEffect {
+            name: "sky".into(),
+            material: sky_mat.clone(),
+            data: ComputePushConstants {
+                data1: Vec4::new(0.1, 0.2, 0.4, 0.97),
+                ..Default::default()
+            },
+        };
+
+        background_fx.push(gradient_comp_fx);
+        background_fx.push(sky_comp_fx);
+
+        let mut map = HashMap::new();
+        map.insert("default-lit".into(), Arc::new(default_lit_mat));
+        map.insert("textured-lit".into(), Arc::new(textured_lit_mat));
+        map.insert("gradient".into(), Arc::new(gradient_mat));
+        map.insert("sky".into(), Arc::new(sky_mat));
+        map.insert("grid".into(), Arc::new(grid_mat));
+        map.insert("default".into(), Arc::new(default_mat));
+        Ok(map)
+    }
+    */
 }
