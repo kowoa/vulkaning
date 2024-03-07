@@ -15,7 +15,6 @@ mod material;
 mod mesh;
 mod model;
 mod queue_family_indices;
-mod render_object;
 mod shader;
 mod swapchain;
 mod texture;

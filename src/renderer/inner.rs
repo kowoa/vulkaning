@@ -16,6 +16,8 @@ use super::{
     },
     frame::Frame,
     material::Material,
+    mesh::Mesh,
+    model::Model,
     render_resources::RenderResources,
     shader::GraphicsShader,
     swapchain::Swapchain,
@@ -390,7 +392,7 @@ impl RendererInner {
             self.scene_camera_buffer
                 .write(&[cam_data], camera_start_offset as usize)?;
         }
-        let monkey_mat = &resources.materials["monkey"];
+        let monkey_mat = &resources.materials["default"];
         let monkey_model = &resources.models["monkey"];
         monkey_mat.bind_pipeline(cmd, &self.core.device);
         monkey_mat.bind_desc_sets(
@@ -464,6 +466,11 @@ impl RendererInner {
         self.begin_renderpass(
             cmd,
             self.swapchain.image_views[swapchain_image_index as usize],
+            self.swapchain.image_extent.width,
+            self.swapchain.image_extent.height,
+        );
+        self.set_viewport_scissor(
+            cmd,
             self.swapchain.image_extent.width,
             self.swapchain.image_extent.height,
         );
@@ -823,13 +830,22 @@ impl RendererInner {
 
     /// Upload all models to the GPU
     fn init_models(&mut self, resources: &mut RenderResources) -> Result<()> {
+        let mut allocator = self.core.get_allocator()?;
+
+        // Upload asset models to the GPU
         for (_, model) in resources.models.iter_mut() {
             model.upload(
                 &self.core.device,
-                &mut *self.core.get_allocator()?,
+                &mut allocator,
                 &self.upload_context,
             )?;
         }
+        // Upload other models to the GPU
+        let quad = Mesh::new_quad();
+        let mut quad = Model::new(vec![quad]);
+        quad.upload(&self.core.device, &mut allocator, &self.upload_context)?;
+        resources.models.insert("quad".into(), quad);
+
         Ok(())
     }
 

@@ -323,7 +323,7 @@ impl Core {
         physical_device: &vk::PhysicalDevice,
         surface: &vk::SurfaceKHR,
         surface_loader: &ash::extensions::khr::Surface,
-        req_device_exts: &Vec<CString>,
+        req_device_exts: &[CString],
     ) -> Result<(ash::Device, vk::Queue, vk::Queue, QueueFamilyIndices)> {
         let indices = QueueFamilyIndices::new(
             instance,
