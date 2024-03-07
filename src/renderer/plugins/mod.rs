@@ -2,17 +2,13 @@ mod assets;
 mod camera;
 mod misc;
 
-use std::collections::HashMap;
-
 use bevy::prelude::*;
-use bevy::window::{PrimaryWindow, RequestRedraw, WindowCloseRequested};
+use bevy::window::{PrimaryWindow, WindowCloseRequested};
 use bevy::winit::WinitWindows;
-use color_eyre::eyre::eyre;
 
-use self::assets::{ObjAssetsLoadState, ObjAssetsLoading};
+use self::assets::ObjAssetsLoadState;
 
 use super::camera::Camera;
-use super::model::Model;
 use super::render_resources::RenderResources;
 use super::Renderer;
 
@@ -73,20 +69,10 @@ fn check_all_assets_loaded(
 }
 
 fn init_render_resources(
-    mut commands: Commands,
     renderer: NonSend<Renderer>,
-    mut loaded_models: ResMut<Assets<Model>>,
+    mut resources: ResMut<RenderResources>,
 ) {
-    let mut models = HashMap::new();
-    for (name, (handle, load_state)) in loading.0.iter_mut() {
-        let model = loaded_models.remove(handle.clone_weak()).unwrap();
-        models.insert(name.to_owned(), model);
-    }
-    let mut resources = RenderResources { models };
-    renderer.upload_resources(&mut resources).unwrap();
-    commands.insert_resource(resources);
-    // ObjAssetsLoading is now empty of all its models
-    commands.remove_resource::<ObjAssetsLoading>();
+    renderer.init_resources(&mut resources).unwrap();
 }
 
 fn draw_frame(

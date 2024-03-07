@@ -1,6 +1,6 @@
 use bevy::log;
 use color_eyre::eyre::{eyre, OptionExt, Result};
-use std::{collections::HashMap, ffi::CString};
+use std::ffi::CString;
 
 use ash::vk;
 

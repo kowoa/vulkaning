@@ -1,6 +1,6 @@
 [env]
 RUST_LOG = "info"
-RUST_BACKTRACE = "full"
+RUST_BACKTRACE = "1"
 SHADER_BUILD_DIR = "./shaderbuild"
 ASSETS_DIR = "./assets"
 

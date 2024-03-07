@@ -3,8 +3,8 @@ pub mod object;
 pub mod renderpass;
 pub mod scene;
 
-use color_eyre::eyre::{eyre, Result};
-use std::{collections::HashMap, ffi::CString, mem::ManuallyDrop, sync::Arc};
+use color_eyre::eyre::Result;
+use std::{collections::HashMap, mem::ManuallyDrop, sync::Arc};
 
 use ash::vk;
 use glam::{Mat4, Vec3, Vec4};
@@ -18,7 +18,6 @@ use super::{
     mesh::{Mesh, MeshPushConstants},
     model::Model,
     render_object::RenderObject,
-    render_resources::RenderResources,
     shader::{
         ComputeEffect, ComputePushConstants, ComputeShader, GraphicsShader,
     },
@@ -219,7 +218,7 @@ impl Resources {
         let single_texture_desc_set_layout =
             desc_allocator.get_layout("single texture")?;
         let draw_image_desc_set_layout =
-            desc_allocator.get_layout("draw image")?;
+            desc_allocator.get_layout("compute texture")?;
 
         let default_lit_mat = {
             let pipeline_layout = {

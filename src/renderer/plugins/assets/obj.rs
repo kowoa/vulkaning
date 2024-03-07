@@ -5,15 +5,12 @@ use bevy_utils::BoxedFuture;
 use color_eyre::eyre::Result;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::{fs::File, io::BufReader};
 use thiserror::Error;
 
 use crate::renderer::mesh::Mesh;
 use crate::renderer::model::Model;
 use crate::renderer::render_resources::RenderResources;
 use crate::renderer::vertex::Vertex;
-
-use super::AssetLoadState;
 
 const OBJ_EXTENSIONS: &[&str] = &["obj"];
 
@@ -24,7 +21,7 @@ pub enum ObjAssetsLoadState {
 }
 
 #[derive(Resource, Default)]
-struct ObjAssetsLoading(pub HashMap<String, Handle<Model>>);
+pub struct ObjAssetsLoading(pub HashMap<String, Handle<Model>>);
 
 pub struct ObjAssetsPlugin;
 impl Plugin for ObjAssetsPlugin {
@@ -95,7 +92,7 @@ impl AssetLoader for ObjLoader {
     }
 
     fn extensions(&self) -> &[&str] {
-        &["obj"]
+        OBJ_EXTENSIONS
     }
 }
 
@@ -132,6 +129,8 @@ async fn load_obj_model<'a, 'b>(
     load_context: &'a mut LoadContext<'b>,
 ) -> Result<Model, ObjError> {
     let (models, materials) = load_obj_data(bytes, load_context).await?;
+
+    #[allow(unused_variables)]
     let materials = materials.map_err(|err| {
         let obj_path = load_context.path().to_path_buf();
         ObjError::MaterialError(obj_path, err)

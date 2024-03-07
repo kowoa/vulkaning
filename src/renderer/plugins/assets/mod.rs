@@ -1,15 +1,11 @@
 mod image;
 mod obj;
 
-use bevy::asset::RecursiveDependencyLoadState;
-use color_eyre::eyre::Result;
-
 use bevy::prelude::*;
 
-use crate::renderer::{mesh::Mesh, model::Model, vertex::Vertex};
+use crate::renderer::model::Model;
 
-pub use self::obj::ObjAssetsLoadState;
-pub use self::obj::ObjAssetsLoading;
+pub use self::obj::{ObjAssetsLoadState, ObjAssetsLoading};
 
 pub struct AssetsPlugin;
 impl Plugin for AssetsPlugin {
@@ -25,10 +21,7 @@ fn load_obj_models(
     mut loading: ResMut<ObjAssetsLoading>,
 ) {
     let monkey_handle: Handle<Model> = asset_server.load("monkey_smooth.obj");
-    loading.0.insert(
-        "monkey".into(),
-        (monkey_handle, ObjAssetsLoadState::NotLoaded),
-    );
+    loading.0.insert("monkey".into(), monkey_handle);
 }
 
 /*

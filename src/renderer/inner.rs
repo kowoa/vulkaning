@@ -1,15 +1,13 @@
 use bevy::log;
-use std::{
-    ffi::CString,
-    sync::{Arc, Mutex, MutexGuard},
-};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use ash::vk;
 use color_eyre::eyre::{eyre, Result};
-use glam::{Mat4, Vec3, Vec4};
-use gpu_allocator::vulkan::Allocator;
+use glam::{Mat4, Vec4};
 
-use crate::renderer::{camera::GpuCameraData, resources::scene::GpuSceneData};
+use crate::renderer::{
+    camera::GpuCameraData, resources::scene::GpuSceneData, texture::Texture,
+};
 
 use super::{
     buffer::AllocatedBuffer,
@@ -19,7 +17,6 @@ use super::{
         DescriptorAllocator, DescriptorSetLayoutBuilder, PoolSizeRatio,
     },
     frame::Frame,
-    image::{AllocatedImage, AllocatedImageCreateInfo},
     render_resources::RenderResources,
     resources::Resources,
     swapchain::Swapchain,
@@ -40,9 +37,10 @@ pub struct RendererInner {
     pub frames: Vec<Arc<Mutex<Frame>>>,
     pub command_pool: vk::CommandPool,
 
-    pub draw_image: AllocatedImage, // Image to render into
     pub scene_camera_buffer: AllocatedBuffer,
     pub upload_context: UploadContext,
+
+    pub background_texture: Texture,
 }
 
 impl RendererInner {
@@ -61,9 +59,9 @@ impl RendererInner {
             core.graphics_queue,
         )?;
 
-        let draw_image = {
+        let background_texture = {
             let size = window.inner_size();
-            Self::create_draw_image(
+            Texture::new_compute_texture(
                 size.width,
                 size.height,
                 &core.device,
@@ -128,12 +126,12 @@ impl RendererInner {
             command_pool,
             scene_camera_buffer,
             upload_context,
-            draw_image,
             desc_allocator,
+            background_texture,
         })
     }
 
-    pub fn upload_resources(
+    pub fn init_resources(
         &mut self,
         resources: &mut RenderResources,
     ) -> Result<()> {
@@ -148,11 +146,12 @@ impl RendererInner {
 
         // Upload all textures to the GPU
         for (_, texture) in resources.textures.iter_mut() {
-            texture.upload(
+            texture.init_graphics_texture(
                 &self.core.device,
                 &mut *self.core.get_allocator()?,
+                &mut self.desc_allocator,
                 &self.upload_context,
-            )
+            )?;
         }
 
         let resources = Resources::new(
@@ -160,7 +159,7 @@ impl RendererInner {
             &self.swapchain,
             &self.upload_context,
             &mut self.desc_allocator,
-            &self.draw_image,
+            self.background_texture.image(),
         )?;
 
         self.resources = Some(resources);
@@ -176,7 +175,7 @@ impl RendererInner {
     }
 
     fn draw_background(&mut self, cmd: vk::CommandBuffer) {
-        self.draw_image.transition_layout(
+        self.background_texture.image_mut().transition_layout(
             cmd,
             vk::ImageLayout::UNDEFINED,
             vk::ImageLayout::GENERAL,
@@ -199,7 +198,7 @@ impl RendererInner {
             cmd,
             device,
             0,
-            &[self.draw_image.desc_set.unwrap()],
+            &[self.background_texture.desc_set()],
             &[],
         );
 
@@ -217,13 +216,13 @@ impl RendererInner {
         unsafe {
             self.core.device.cmd_dispatch(
                 cmd,
-                (self.draw_image.extent.width as f64 / 16.0).ceil() as u32,
-                (self.draw_image.extent.height as f64 / 16.0).ceil() as u32,
+                (self.background_texture.width() as f64 / 16.0).ceil() as u32,
+                (self.background_texture.height() as f64 / 16.0).ceil() as u32,
                 1,
             );
         }
 
-        self.draw_image.transition_layout(
+        self.background_texture.image_mut().transition_layout(
             cmd,
             vk::ImageLayout::GENERAL,
             vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
@@ -276,7 +275,7 @@ impl RendererInner {
         resources: &RenderResources,
     ) -> Result<()> {
         let color_attachments = [vk::RenderingAttachmentInfo::builder()
-            .image_view(self.draw_image.view)
+            .image_view(self.background_texture.image().view)
             .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .load_op(vk::AttachmentLoadOp::LOAD)
             .store_op(vk::AttachmentStoreOp::STORE)
@@ -305,8 +304,8 @@ impl RendererInner {
             .render_area(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
                 extent: vk::Extent2D {
-                    width: self.draw_image.extent.width,
-                    height: self.draw_image.extent.height,
+                    width: self.background_texture.width(),
+                    height: self.background_texture.height(),
                 },
             })
             .layer_count(1)
@@ -357,8 +356,8 @@ impl RendererInner {
             // Fill a GpuCameraData struct
             let cam_data = GpuCameraData {
                 viewproj: camera.viewproj_mat(
-                    self.draw_image.extent.width as f32,
-                    self.draw_image.extent.height as f32,
+                    self.background_texture.width() as f32,
+                    self.background_texture.height() as f32,
                 ),
                 near: camera.near,
                 far: camera.far,
@@ -401,8 +400,9 @@ impl RendererInner {
         resources: &RenderResources,
     ) -> Result<()> {
         let (
-            swapchain_image_index,
             cmd,
+            swapchain_image,
+            swapchain_image_index,
             render_semaphore,
             present_semaphore,
             render_fence,
@@ -429,8 +429,9 @@ impl RendererInner {
             };
 
             (
-                swapchain_image_index,
                 frame.command_buffer,
+                self.swapchain.images[swapchain_image_index as usize],
+                swapchain_image_index,
                 frame.render_semaphore,
                 frame.present_semaphore,
                 frame.render_fence,
@@ -464,8 +465,10 @@ impl RendererInner {
             let viewport = vk::Viewport::builder()
                 .x(0.0)
                 .y(0.0)
-                .width(self.draw_image.extent.width as f32)
-                .height(self.draw_image.extent.height as f32)
+                //.width(swapchain_image.extent.width as f32)
+                //.height(swapchain_image.extent.height as f32)
+                .width(self.background_texture.width() as f32)
+                .height(self.background_texture.height() as f32)
                 .min_depth(0.0)
                 .max_depth(1.0)
                 .build();
@@ -476,8 +479,8 @@ impl RendererInner {
             let scissor = vk::Rect2D::builder()
                 .offset(vk::Offset2D { x: 0, y: 0 })
                 .extent(vk::Extent2D {
-                    width: self.draw_image.extent.width,
-                    height: self.draw_image.extent.height,
+                    width: self.background_texture.width(),
+                    height: self.background_texture.height(),
                 })
                 .build();
             unsafe {
@@ -491,11 +494,9 @@ impl RendererInner {
         // Copy draw image to swapchain image
         {
             let device = &self.core.device;
-            let swapchain_image =
-                self.swapchain.images[swapchain_image_index as usize];
 
             // Transition the draw image and swapchain image into their correct transfer layouts
-            self.draw_image.transition_layout(
+            self.background_texture.image_mut().transition_layout(
                 cmd,
                 vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                 vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
@@ -511,7 +512,7 @@ impl RendererInner {
             );
 
             // Execute a copy from the draw image into the swapchain
-            self.draw_image.copy_to_image(
+            self.background_texture.image_mut().copy_to_image(
                 cmd,
                 swapchain_image,
                 self.swapchain.image_extent,
@@ -709,7 +710,7 @@ impl RendererInner {
 
             // Clean up buffers
             self.scene_camera_buffer.cleanup(device, &mut allocator);
-            self.draw_image.cleanup(device, &mut allocator);
+            self.background_texture.cleanup(device, &mut allocator);
 
             // Clean up swapchain
             self.swapchain.cleanup(device, &mut allocator);
@@ -739,6 +740,39 @@ impl RendererInner {
         device: &ash::Device,
         desc_allocator: &mut DescriptorAllocator,
     ) -> Result<()> {
+        let compute_texture_layout = DescriptorSetLayoutBuilder::new()
+            .add_binding(
+                0,
+                vk::DescriptorType::STORAGE_IMAGE,
+                vk::ShaderStageFlags::COMPUTE,
+            )
+            .build(device)?;
+        desc_allocator.add_layout("compute texture", compute_texture_layout);
+
+        let graphics_texture_layout = DescriptorSetLayoutBuilder::new()
+            .add_binding(
+                0,
+                vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                vk::ShaderStageFlags::FRAGMENT,
+            )
+            .build(device)?;
+        desc_allocator.add_layout("graphics texture", graphics_texture_layout);
+
+        let single_texture_desc_set_layout = {
+            let texture_bind = vkinit::descriptor_set_layout_binding(
+                vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                vk::ShaderStageFlags::FRAGMENT,
+                0,
+            );
+
+            let set_info = vk::DescriptorSetLayoutCreateInfo {
+                binding_count: 1,
+                p_bindings: &texture_bind,
+                ..Default::default()
+            };
+            unsafe { device.create_descriptor_set_layout(&set_info, None)? }
+        };
+
         let global_desc_set_layout = {
             // Binding 0 for GpuSceneData
             let scene_bind = vkinit::descriptor_set_layout_binding(
@@ -779,84 +813,12 @@ impl RendererInner {
             unsafe { device.create_descriptor_set_layout(&set_info, None)? }
         };
 
-        let single_texture_desc_set_layout = {
-            let texture_bind = vkinit::descriptor_set_layout_binding(
-                vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                vk::ShaderStageFlags::FRAGMENT,
-                0,
-            );
-
-            let set_info = vk::DescriptorSetLayoutCreateInfo {
-                binding_count: 1,
-                p_bindings: &texture_bind,
-                ..Default::default()
-            };
-            unsafe { device.create_descriptor_set_layout(&set_info, None)? }
-        };
-
         desc_allocator.add_layout("global", global_desc_set_layout);
         desc_allocator.add_layout("object", object_desc_set_layout);
         desc_allocator
             .add_layout("single texture", single_texture_desc_set_layout);
 
         Ok(())
-    }
-
-    /// Helper function that creates the descriptor pool and descriptor sets
-    fn create_draw_image(
-        width: u32,
-        height: u32,
-        device: &ash::Device,
-        allocator: &mut Allocator,
-        desc_allocator: &mut DescriptorAllocator,
-    ) -> Result<AllocatedImage> {
-        let draw_image_desc_set = {
-            let layout = DescriptorSetLayoutBuilder::new()
-                .add_binding(
-                    0,
-                    vk::DescriptorType::STORAGE_IMAGE,
-                    vk::ShaderStageFlags::COMPUTE,
-                )
-                .build(device)?;
-            desc_allocator.add_layout("draw image", layout);
-            desc_allocator.allocate(device, "draw image")?
-        };
-
-        let draw_image = {
-            let extent = vk::Extent3D {
-                width,
-                height,
-                depth: 1,
-            };
-            let usage_flags = vk::ImageUsageFlags::TRANSFER_SRC
-                | vk::ImageUsageFlags::TRANSFER_DST
-                | vk::ImageUsageFlags::STORAGE
-                | vk::ImageUsageFlags::COLOR_ATTACHMENT;
-            let create_info = AllocatedImageCreateInfo {
-                format: vk::Format::R16G16B16A16_SFLOAT,
-                extent,
-                usage_flags,
-                aspect_flags: vk::ImageAspectFlags::COLOR,
-                name: "Draw image".into(),
-            };
-            AllocatedImage::new(&create_info, device, allocator)?
-        };
-
-        let draw_image_info = [vk::DescriptorImageInfo::builder()
-            .image_layout(vk::ImageLayout::GENERAL)
-            .image_view(draw_image.view)
-            .build()];
-        let draw_image_write = vk::WriteDescriptorSet::builder()
-            .dst_binding(0)
-            .dst_set(draw_image_desc_set)
-            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-            .image_info(&draw_image_info)
-            .build();
-        unsafe {
-            device.update_descriptor_sets(&[draw_image_write], &[]);
-        }
-
-        Ok(draw_image)
     }
 
     fn create_desc_allocator(

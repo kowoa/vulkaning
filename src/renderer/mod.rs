@@ -25,11 +25,7 @@ mod vertex;
 
 use bevy::ecs::system::Resource;
 use color_eyre::eyre::{eyre, Result};
-use gpu_allocator::vulkan::Allocator;
-use std::{
-    ffi::CString,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use self::{
     camera::Camera, inner::RendererInner, render_resources::RenderResources,
@@ -50,12 +46,12 @@ impl Renderer {
         })
     }
 
-    pub fn upload_resources(
+    pub fn init_resources(
         &self,
         resources: &mut RenderResources,
     ) -> Result<()> {
         if let Some(inner) = &self.inner {
-            inner.lock().unwrap().upload_resources(resources)
+            inner.lock().unwrap().init_resources(resources)
         } else {
             Err(eyre!("Failed to init resources because renderer has already been destroyed"))
         }

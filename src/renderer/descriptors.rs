@@ -104,7 +104,7 @@ impl DescriptorAllocator {
 
     pub fn get_layout(&self, name: &str) -> Result<&vk::DescriptorSetLayout> {
         self.layouts
-            .get(name.into())
+            .get(name)
             .ok_or_eyre(format!("Descriptor Set Layout not found: {}", name))
     }
 
