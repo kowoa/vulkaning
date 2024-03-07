@@ -140,7 +140,6 @@ async fn load_obj_model<'a, 'b>(
     for model in models {
         let mesh = &model.mesh;
         let mut vertices = Vec::new();
-        let mut indices = Vec::new();
 
         for i in &mesh.indices {
             let pos = &mesh.positions;
@@ -166,8 +165,9 @@ async fn load_obj_model<'a, 'b>(
                 color: n,
                 texcoord: t,
             });
-            indices.push(i as u32);
         }
+
+        let indices = (0..vertices.len() as u32).collect();
 
         /*
         if let Some(material_id) = mesh.material_id {

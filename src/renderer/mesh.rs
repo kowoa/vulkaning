@@ -1,4 +1,3 @@
-use bevy::log;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use bytemuck::{Pod, Zeroable};
@@ -19,8 +18,10 @@ static MESH_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug)]
 pub struct Mesh {
     pub id: usize,
-    pub vertices: Vec<Vertex>,
-    pub indices: Vec<u32>,
+    pub vertices: Option<Vec<Vertex>>,
+    pub indices: Option<Vec<u32>>,
+    pub vertex_count: u32,
+    pub index_count: u32,
 }
 
 impl PartialEq for Mesh {
@@ -32,10 +33,14 @@ impl PartialEq for Mesh {
 impl Mesh {
     pub fn new(vertices: Vec<Vertex>, indices: Vec<u32>) -> Self {
         let id = MESH_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let vertex_count = vertices.len() as u32;
+        let index_count = indices.len() as u32;
         Self {
             id,
-            vertices,
-            indices,
+            vertices: Some(vertices),
+            indices: Some(indices),
+            vertex_count,
+            index_count,
         }
     }
 
