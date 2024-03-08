@@ -35,7 +35,7 @@ impl Default for Camera {
             fov_y_deg: Self::DEFAULT_FOV_Y_DEG,
             near: 0.1,
             far: 100.0,
-            pivot: Vec3::ZERO,
+            pivot: Vec3::new(0.0, 20.0, 0.0),
         }
     }
 }

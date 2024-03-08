@@ -181,3 +181,91 @@ impl RenderObject {
         Ok(())
     }
 }
+
+/*
+fn draw_render_objects(
+    &mut self,
+    width: u32,
+    height: u32,
+    first_index: usize,
+    count: usize,
+    camera: &Camera,
+) -> Result<()> {
+    let core = &self.core;
+    let frame_index = self.frame_number % FRAME_OVERLAP;
+    let scene_start_offset = core
+        .pad_uniform_buffer_size(std::mem::size_of::<GpuSceneData>() as u64)
+        * frame_index as u64;
+    let camera_start_offset = core
+        .pad_uniform_buffer_size(std::mem::size_of::<GpuSceneData>() as u64)
+        * FRAME_OVERLAP as u64
+        + core.pad_uniform_buffer_size(
+            std::mem::size_of::<GpuCameraData>() as u64,
+        ) * frame_index as u64;
+
+    // Write into scene section of scene-camera uniform buffer
+    {
+        // Fill a GpuSceneData struct
+        let framed = self.frame_number as f32 / 120.0;
+        let scene_data = GpuSceneData {
+            ambient_color: Vec4::new(framed.sin(), 0.0, framed.cos(), 1.0),
+            ..Default::default()
+        };
+
+        // Copy GpuSceneData struct to buffer
+        self.scene_camera_buffer
+            .write(&[scene_data], scene_start_offset as usize)?;
+    }
+
+    // Write into camera section of scene-camera uniform buffer
+    {
+        // Fill a GpuCameraData struct
+        let cam_data = GpuCameraData {
+            viewproj: camera.viewproj_mat(width as f32, height as f32),
+            near: camera.near,
+            far: camera.far,
+        };
+
+        // Copy GpuCameraData struct to buffer
+        self.scene_camera_buffer
+            .write(&[cam_data], camera_start_offset as usize)?;
+    }
+
+    // Write into object storage buffer
+    {
+        //let rot = Mat4::from_rotation_y(self.frame_number as f32 / 240.0);
+        let rot = Mat4::IDENTITY;
+        let object_data = self
+            .resources
+            .as_ref()
+            .unwrap()
+            .render_objs
+            .iter()
+            .map(|obj| rot * obj.transform)
+            .collect::<Vec<_>>();
+        let mut frame = self.get_current_frame()?;
+        frame.object_buffer.write(&object_data, 0)?;
+    }
+
+    let mut last_model_drawn = None;
+    let mut last_material_drawn = None;
+    for instance_index in first_index..(first_index + count) {
+        let device = &core.device;
+        let render_obj =
+            &self.resources.as_ref().unwrap().render_objs[instance_index];
+        let frame = self.get_current_frame()?;
+
+        render_obj.draw(
+            device,
+            &frame,
+            frame_index,
+            &mut last_model_drawn,
+            &mut last_material_drawn,
+            &self.scene_camera_buffer,
+            instance_index as u32,
+        )?;
+    }
+
+    Ok(())
+}
+*/

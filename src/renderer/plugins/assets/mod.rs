@@ -40,4 +40,7 @@ fn load_image_textures(
 ) {
     let backpack = asset_server.load("backpack/diffuse.jpg");
     loading.0.insert("backpack".into(), backpack);
+
+    let empire = asset_server.load("lost_empire-RGBA.png");
+    loading.0.insert("empire".into(), empire);
 }
