@@ -21,7 +21,7 @@ pub enum ImageAssetsLoadState {
 }
 
 #[derive(Resource, Default)]
-struct ImageAssetsLoading(pub HashMap<String, Handle<Texture>>);
+pub struct ImageAssetsLoading(pub HashMap<String, Handle<Texture>>);
 
 pub struct ImageAssetsPlugin;
 impl Plugin for ImageAssetsPlugin {

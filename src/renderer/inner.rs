@@ -397,14 +397,17 @@ impl RendererInner {
             self.scene_camera_buffer
                 .write(&[cam_data], camera_start_offset as usize)?;
         }
-        let monkey_mat = &resources.materials["default"];
-        let monkey_model = &resources.models["monkey"];
+        let monkey_mat = &resources.materials["textured"];
+        let monkey_model = &resources.models["backpack"];
         monkey_mat.bind_pipeline(cmd, &self.core.device);
         monkey_mat.bind_desc_sets(
             cmd,
             &self.core.device,
             0,
-            &[self.get_current_frame()?.scene_camera_desc_set],
+            &[
+                self.get_current_frame()?.scene_camera_desc_set,
+                resources.textures["backpack"].desc_set(),
+            ],
             &[scene_start_offset, camera_start_offset],
         );
         monkey_model.draw(cmd, &self.core.device)?;
@@ -856,12 +859,15 @@ impl RendererInner {
 
     /// Upload all textures to the GPU
     fn init_textures(&mut self, resources: &mut RenderResources) -> Result<()> {
-        for (_, texture) in resources.textures.iter_mut() {
+        for (name, texture) in resources.textures.iter_mut() {
+            let flipv = name == "backpack";
+
             texture.init_graphics_texture(
                 &self.core.device,
                 &mut *self.core.get_allocator()?,
                 &mut self.desc_allocator,
                 &self.upload_context,
+                flipv,
             )?;
         }
         Ok(())
@@ -871,12 +877,10 @@ impl RendererInner {
     fn init_materials(&self, resources: &mut RenderResources) -> Result<()> {
         let scene_camera_layout =
             self.desc_allocator.get_layout("scene-camera buffer")?;
-        /*
         let graphics_texture_layout =
             self.desc_allocator.get_layout("graphics texture")?;
         let compute_texture_layout =
             self.desc_allocator.get_layout("compute texture")?;
-        */
 
         let default_mat = {
             let set_layouts = [*scene_camera_layout];
@@ -915,6 +919,25 @@ impl RendererInner {
                 .build()?
         };
         resources.materials.insert("grid".into(), grid_mat);
+
+        let textured_mat = {
+            let set_layouts = [*scene_camera_layout, *graphics_texture_layout];
+            let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
+                .set_layouts(&set_layouts)
+                .build();
+            let pipeline_layout = unsafe {
+                self.core
+                    .device
+                    .create_pipeline_layout(&pipeline_layout_info, None)?
+            };
+            Material::builder_graphics(&self.core.device)
+                .pipeline_layout(pipeline_layout)
+                .shader(GraphicsShader::new("textured", &self.core.device)?)
+                .color_attachment_format(self.swapchain.image_format)
+                .depth_attachment_format(self.swapchain.depth_image.format)
+                .build()?
+        };
+        resources.materials.insert("textured".into(), textured_mat);
 
         Ok(())
     }

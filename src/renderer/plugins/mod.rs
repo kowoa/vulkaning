@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy::window::{PrimaryWindow, WindowCloseRequested};
 use bevy::winit::WinitWindows;
 
-use self::assets::ObjAssetsLoadState;
+use self::assets::{ImageAssetsLoadState, ObjAssetsLoadState};
 
 use super::camera::Camera;
 use super::render_resources::RenderResources;
@@ -62,8 +62,11 @@ fn create_renderer(world: &mut World) {
 fn check_all_assets_loaded(
     mut render_res_state: ResMut<NextState<RenderResourcesLoadState>>,
     obj_assets_state: Res<State<ObjAssetsLoadState>>,
+    image_assets_state: Res<State<ImageAssetsLoadState>>,
 ) {
-    if *obj_assets_state.get() == ObjAssetsLoadState::Loaded {
+    if *obj_assets_state.get() == ObjAssetsLoadState::Loaded
+        && *image_assets_state.get() == ImageAssetsLoadState::Loaded
+    {
         render_res_state.set(RenderResourcesLoadState::Loaded);
     }
 }

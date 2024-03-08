@@ -1,14 +1,10 @@
-use bevy::{asset::Asset, log, reflect::TypePath};
-use std::{cell::RefCell, path::PathBuf, sync::MutexGuard};
-
 use ash::vk;
+use bevy::{asset::Asset, reflect::TypePath};
 use color_eyre::eyre::{eyre, OptionExt, Result};
-use glam::{Vec2, Vec3};
 use gpu_allocator::vulkan::Allocator;
 
 use crate::renderer::{
     buffer::AllocatedBuffer, upload_context::UploadContext, vertex::Vertex,
-    ASSETS_DIR,
 };
 
 use super::mesh::Mesh;
@@ -88,93 +84,6 @@ impl Model {
             );
         }
         Ok(())
-    }
-
-    pub fn load_from_obj(filename: &str) -> Result<Self> {
-        let filepath = unsafe {
-            let mut path = PathBuf::from(
-                ASSETS_DIR
-                    .as_ref()
-                    .ok_or_eyre("Assets directory not specified")?
-                    .clone(),
-            );
-            path.push(filename);
-            path
-        };
-
-        let (models, materials) = tobj::load_obj(
-            filepath,
-            &tobj::LoadOptions {
-                single_index: true,
-                triangulate: true,
-                ..Default::default()
-            },
-        )?;
-        let materials = materials?;
-
-        log::info!("Number of models: {}", models.len());
-        log::info!("Number of materials: {}", materials.len());
-
-        let mut meshes = Vec::new();
-        for model in models {
-            let mesh = &model.mesh;
-            let mut vertices = Vec::new();
-            let mut indices = Vec::new();
-
-            for i in &mesh.indices {
-                let pos = &mesh.positions;
-                let nor = &mesh.normals;
-                let tex = &mesh.texcoords;
-
-                let i = *i as usize;
-                let p = Vec3::new(pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]);
-                let n = if !nor.is_empty() {
-                    Vec3::new(nor[3 * i], nor[3 * i + 1], nor[3 * i + 2])
-                } else {
-                    Vec3::ZERO
-                };
-                let t = if !tex.is_empty() {
-                    Vec2::new(tex[2 * i], 1.0 - tex[2 * i + 1])
-                } else {
-                    Vec2::ZERO
-                };
-
-                vertices.push(Vertex {
-                    position: p,
-                    normal: n,
-                    color: n,
-                    texcoord: t,
-                });
-                indices.push(i as u32);
-            }
-
-            // Process material
-            if let Some(material_id) = mesh.material_id {
-                let material = &materials[material_id];
-
-                // Diffuse map
-                if let Some(filename) = &material.diffuse_texture {
-                    //log::info!("Diffuse map: {}", filename);
-                }
-
-                // Specular map
-                if let Some(filename) = &material.specular_texture {
-                    //log::info!("Specular map: {}", filename);
-                }
-
-                // Normal map
-                if let Some(filename) = &material.normal_texture {
-                    //log::info!("Normal map: {}", filename);
-                }
-
-                // NOTE: no height maps for now
-            }
-
-            let mesh = Mesh::new(vertices, indices);
-            meshes.push(mesh);
-        }
-
-        Ok(Self::new(meshes))
     }
 
     pub fn upload(

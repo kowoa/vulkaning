@@ -28,7 +28,6 @@ impl Plugin for ObjAssetsPlugin {
     fn build(&self, app: &mut App) {
         app.preregister_asset_loader::<ObjLoader>(OBJ_EXTENSIONS)
             .insert_state(ObjAssetsLoadState::NotLoaded) // Loaded when all obj assets get loaded
-            .init_asset::<Model>()
             .init_resource::<ObjAssetsLoading>()
             .add_systems(
                 Update,

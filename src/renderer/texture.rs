@@ -44,6 +44,7 @@ impl Texture {
         allocator: &mut Allocator,
         desc_allocator: &mut DescriptorAllocator,
         upload_context: &UploadContext,
+        flipv: bool,
     ) -> Result<Self> {
         let mut image = Self::new_uninitialized(data);
         image.init_graphics_texture(
@@ -51,6 +52,7 @@ impl Texture {
             allocator,
             desc_allocator,
             upload_context,
+            flipv,
         )?;
         Ok(image)
     }
@@ -69,18 +71,26 @@ impl Texture {
         allocator: &mut Allocator,
         desc_allocator: &mut DescriptorAllocator,
         upload_context: &UploadContext,
+        flipv: bool,
     ) -> Result<()> {
         if self.image.is_some() || self.sampler.is_some() {
             return Err(eyre!("Cannot initialize graphics texture because texture is already initialized"));
         }
         let data = self.data.take().ok_or_eyre("Texture data is empty")?;
+        let mut img = image::DynamicImage::ImageRgba8(data);
+        if flipv {
+            img = img.flipv();
+        }
+        let width = img.width();
+        let height = img.height();
+        let data = img.as_bytes();
 
         self.sampler = Some(Self::default_sampler(device)?);
         self.image = Some(AllocatedImage::new_color_image(
-            &data,
-            data.width(),
-            data.height(),
-            desc_allocator.allocate(device, "single texture")?,
+            data,
+            width,
+            height,
+            desc_allocator.allocate(device, "graphics texture")?,
             self.sampler.unwrap(),
             device,
             allocator,
@@ -98,7 +108,7 @@ impl Texture {
         desc_allocator: &mut DescriptorAllocator,
         upload_context: &UploadContext,
     ) -> Result<Self> {
-        let desc_set = desc_allocator.allocate(device, "single texture")?;
+        let desc_set = desc_allocator.allocate(device, "graphics texture")?;
         let sampler = Self::default_sampler(device)?;
         let image = AllocatedImage::load_from_file(
             filename,
