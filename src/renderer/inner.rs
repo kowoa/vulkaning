@@ -398,7 +398,7 @@ impl RendererInner {
                 .write(&[cam_data], camera_start_offset as usize)?;
         }
         let monkey_mat = &resources.materials["textured"];
-        let monkey_model = &resources.models["empire"];
+        let monkey_model = &resources.models["backpack"];
         monkey_mat.bind_pipeline(cmd, &self.core.device);
         monkey_mat.bind_desc_sets(
             cmd,
@@ -406,7 +406,7 @@ impl RendererInner {
             0,
             &[
                 self.get_current_frame()?.scene_camera_desc_set,
-                resources.textures["empire"].desc_set(),
+                resources.textures["backpack"].desc_set(),
             ],
             &[scene_start_offset, camera_start_offset],
         );
