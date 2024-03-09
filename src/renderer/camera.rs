@@ -3,14 +3,6 @@ use std::f32::consts::PI;
 use bevy::{ecs::component::Component, log};
 use glam::{Mat4, Vec2, Vec3, Vec4, Vec4Swizzles};
 
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct GpuCameraData {
-    pub viewproj: Mat4,
-    pub near: f32,
-    pub far: f32,
-}
-
 #[derive(Component)]
 pub struct Camera {
     position: Vec3,

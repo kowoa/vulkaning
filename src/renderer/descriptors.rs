@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use ash::vk;
 use color_eyre::eyre::{eyre, OptionExt, Result};
@@ -53,10 +53,33 @@ pub struct PoolSizeRatio {
     pub ratio: f32,
 }
 
+pub struct DescriptorSetLayouts(HashMap<String, vk::DescriptorSetLayout>);
+impl DescriptorSetLayouts {
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    pub fn add(&mut self, name: &str, layout: vk::DescriptorSetLayout) {
+        self.0.insert(name.into(), layout);
+    }
+
+    pub fn get(&self, name: &str) -> Result<&vk::DescriptorSetLayout> {
+        self.0
+            .get(name)
+            .ok_or_eyre(format!("Descriptor Set Layout not found: {}", name))
+    }
+
+    pub fn cleanup(self, device: &ash::Device) {
+        for layout in self.0.values() {
+            unsafe {
+                device.destroy_descriptor_set_layout(*layout, None);
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct DescriptorAllocator {
-    layouts: HashMap<String, vk::DescriptorSetLayout>,
-
     pool_ratios: Vec<PoolSizeRatio>, // Needed to reallocate pools
     full_pools: Vec<vk::DescriptorPool>, // Pools that cannot allocate more sets
     ready_pools: Vec<vk::DescriptorPool>, // Pools that can allocate more sets
@@ -64,19 +87,33 @@ pub struct DescriptorAllocator {
 }
 
 impl DescriptorAllocator {
-    pub fn new(
-        device: &ash::Device,
-        max_sets: u32,
-        pool_ratios: &[PoolSizeRatio],
-    ) -> Result<Self> {
+    pub fn new(device: &ash::Device, max_sets: u32) -> Result<Self> {
+        let pool_ratios = [
+            PoolSizeRatio {
+                desc_type: vk::DescriptorType::STORAGE_IMAGE,
+                ratio: 3.0,
+            },
+            PoolSizeRatio {
+                desc_type: vk::DescriptorType::STORAGE_BUFFER,
+                ratio: 3.0,
+            },
+            PoolSizeRatio {
+                desc_type: vk::DescriptorType::UNIFORM_BUFFER,
+                ratio: 3.0,
+            },
+            PoolSizeRatio {
+                desc_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                ratio: 4.0,
+            },
+        ];
+
         // Allocate the first descriptor pool and add it to ready_pools
-        let new_pool = Self::create_pool(device, max_sets, pool_ratios)?;
+        let new_pool = Self::create_pool(device, max_sets, &pool_ratios)?;
         let ready_pools = vec![new_pool];
         // Incrase number of sets per pool by 50% for the next pool allocation
         let sets_per_pool = (max_sets as f32 * 1.5) as u32;
 
         Ok(Self {
-            layouts: HashMap::new(),
             pool_ratios: pool_ratios.to_vec(),
             full_pools: Vec::new(),
             ready_pools,
@@ -84,22 +121,12 @@ impl DescriptorAllocator {
         })
     }
 
-    pub fn add_layout(&mut self, name: &str, layout: vk::DescriptorSetLayout) {
-        self.layouts.insert(name.into(), layout);
-    }
-
-    pub fn get_layout(&self, name: &str) -> Result<&vk::DescriptorSetLayout> {
-        self.layouts
-            .get(name)
-            .ok_or_eyre(format!("Descriptor Set Layout not found: {}", name))
-    }
-
     pub fn allocate(
         &mut self,
         device: &ash::Device,
-        layout_name: &str,
+        set_layout: vk::DescriptorSetLayout,
     ) -> Result<vk::DescriptorSet> {
-        let set_layouts = [*self.get_layout(layout_name)?];
+        let set_layouts = [set_layout];
         let mut pool_to_use = self.get_pool(device)?;
 
         let mut alloc_info = vk::DescriptorSetAllocateInfo {
@@ -173,11 +200,6 @@ impl DescriptorAllocator {
     }
 
     pub fn cleanup(mut self, device: &ash::Device) {
-        for layout in self.layouts.values() {
-            unsafe {
-                device.destroy_descriptor_set_layout(*layout, None);
-            }
-        }
         self.destroy_pools(device);
     }
 
@@ -218,5 +240,94 @@ impl DescriptorAllocator {
             .build();
 
         Ok(unsafe { device.create_descriptor_pool(&pool_info, None)? })
+    }
+}
+
+pub struct DescriptorWriter {
+    image_infos: Vec<(vk::DescriptorImageInfo, vk::WriteDescriptorSet)>,
+    buffer_infos: Vec<(vk::DescriptorBufferInfo, vk::WriteDescriptorSet)>,
+}
+
+impl DescriptorWriter {
+    pub fn new() -> Self {
+        Self {
+            image_infos: Vec::new(),
+            buffer_infos: Vec::new(),
+        }
+    }
+
+    pub fn write_buffer(
+        &mut self,
+        binding: u32,
+        buffer: vk::Buffer,
+        size: vk::DeviceSize,
+        offset: vk::DeviceSize,
+        desc_type: vk::DescriptorType,
+    ) {
+        let buffer_info = vk::DescriptorBufferInfo {
+            buffer,
+            offset,
+            range: size,
+        };
+        let write = vk::WriteDescriptorSet {
+            dst_binding: binding,
+            dst_set: vk::DescriptorSet::null(), // Filled in later
+            descriptor_count: 1,
+            descriptor_type: desc_type,
+            p_buffer_info: std::ptr::null(), // Filled in later
+            ..Default::default()
+        };
+        self.buffer_infos.push((buffer_info, write));
+    }
+
+    pub fn write_image(
+        &mut self,
+        binding: u32,
+        image_view: vk::ImageView,
+        sampler: vk::Sampler,
+        layout: vk::ImageLayout,
+        desc_type: vk::DescriptorType,
+    ) {
+        let image_info = vk::DescriptorImageInfo {
+            sampler,
+            image_view,
+            image_layout: layout,
+        };
+        let write = vk::WriteDescriptorSet {
+            dst_binding: binding,
+            dst_set: vk::DescriptorSet::null(), // Filled in later
+            descriptor_count: 1,
+            descriptor_type: desc_type,
+            p_image_info: std::ptr::null(), // Filled in later
+            ..Default::default()
+        };
+        self.image_infos.push((image_info, write));
+    }
+
+    pub fn clear(&mut self) {
+        self.buffer_infos.clear();
+        self.image_infos.clear();
+    }
+
+    pub fn update_set(
+        &mut self,
+        device: &ash::Device,
+        desc_set: vk::DescriptorSet,
+    ) {
+        let mut writes = Vec::new();
+
+        for (buffer_info, write) in self.buffer_infos.iter_mut() {
+            write.dst_set = desc_set;
+            write.p_buffer_info = buffer_info;
+            writes.push(*write);
+        }
+
+        for (image_info, write) in self.image_infos.iter_mut() {
+            write.dst_set = desc_set;
+            write.p_image_info = image_info;
+            writes.push(*write);
+        }
+
+        unsafe { device.update_descriptor_sets(&writes, &[]) }
     }
 }

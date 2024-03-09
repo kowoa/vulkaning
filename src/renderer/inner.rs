@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use ash::vk;
 use color_eyre::eyre::{eyre, Result};
-use glam::{Mat4, Vec4};
+use glam::Vec4;
 
 use crate::renderer::{camera::GpuCameraData, texture::Texture};
 
@@ -12,9 +12,10 @@ use super::{
     camera::Camera,
     core::Core,
     descriptors::{
-        DescriptorAllocator, DescriptorSetLayoutBuilder, PoolSizeRatio,
+        DescriptorAllocator, DescriptorSetLayoutBuilder, DescriptorSetLayouts,
     },
     frame::Frame,
+    gpu_data::GpuSceneData,
     material::Material,
     mesh::Mesh,
     model::Model,
@@ -25,34 +26,17 @@ use super::{
     vkutils,
 };
 
-#[derive(Default, Copy, Clone)]
-#[repr(C)]
-pub struct GpuSceneData {
-    pub fog_color: Vec4,     // w for exponent
-    pub fog_distances: Vec4, // x for min, y for max, zw unused
-    pub ambient_color: Vec4,
-    pub sunlight_direction: Vec4, // w for sun power
-    pub sunlight_color: Vec4,
-}
-
-#[repr(C)]
-pub struct GpuObjectData {
-    pub model_mat: Mat4,
-}
-
 pub const FRAME_OVERLAP: u32 = 2;
 pub const MAX_OBJECTS: u32 = 10000; // Max objects per frame
 
 pub struct RendererInner {
     pub core: Core,
     pub swapchain: Swapchain,
-    pub desc_allocator: DescriptorAllocator,
 
     pub frame_number: u32,
     pub frames: Vec<Arc<Mutex<Frame>>>,
     pub command_pool: vk::CommandPool,
-
-    pub scene_camera_buffer: AllocatedBuffer,
+    pub desc_set_layouts: DescriptorSetLayouts,
     pub upload_context: UploadContext,
 
     pub background_texture: Texture,
@@ -64,15 +48,13 @@ impl RendererInner {
 
         let mut core = Core::new(window)?;
         let swapchain = Swapchain::new(&mut core, window)?;
-
-        let mut desc_allocator = Self::create_desc_allocator(&core.device)?;
-        Self::create_desc_set_layouts(&core.device, &mut desc_allocator)?;
-
         let upload_context = UploadContext::new(
             &core.device,
             core.queue_family_indices.get_graphics_family()?,
             core.graphics_queue,
         )?;
+        let mut desc_set_layouts = DescriptorSetLayouts::new();
+        Self::init_desc_set_layouts(&core.device, &mut desc_set_layouts)?;
 
         let background_texture = {
             let size = window.inner_size();
@@ -81,7 +63,6 @@ impl RendererInner {
                 size.height,
                 &core.device,
                 &mut *core.get_allocator()?,
-                &mut desc_allocator,
             )?
         };
 
@@ -120,12 +101,8 @@ impl RendererInner {
             let mut frames = Vec::with_capacity(FRAME_OVERLAP as usize);
             for _ in 0..FRAME_OVERLAP {
                 // Call Frame constructor
-                let frame = Frame::new(
-                    &mut core,
-                    &scene_camera_buffer,
-                    &command_pool,
-                    &mut desc_allocator,
-                )?;
+                let frame =
+                    Frame::new(&mut core, &scene_camera_buffer, &command_pool)?;
 
                 frames.push(Arc::new(Mutex::new(frame)));
             }
@@ -138,9 +115,9 @@ impl RendererInner {
             frame_number: 0,
             frames,
             command_pool,
+            desc_set_layouts,
             scene_camera_buffer,
             upload_context,
-            desc_allocator,
             background_texture,
         })
     }
@@ -340,9 +317,9 @@ impl RendererInner {
             let submit_info = vk::SubmitInfo {
                 p_wait_dst_stage_mask: wait_stages.as_ptr(),
                 wait_semaphore_count: 1,
-                p_wait_semaphores: &present_semaphore,
+                p_wait_semaphores: &present_semaphore, // Wait for presentation to finish
                 signal_semaphore_count: 1,
-                p_signal_semaphores: &render_semaphore,
+                p_signal_semaphores: &render_semaphore, // Signal rendering is done
                 command_buffer_count: 1,
                 p_command_buffers: &cmd,
                 ..Default::default()
@@ -350,7 +327,7 @@ impl RendererInner {
             self.core.device.queue_submit(
                 self.core.graphics_queue,
                 &[submit_info],
-                render_fence,
+                render_fence, // Signal when the command buffer finishes executing
             )?;
         }
         Ok(())
@@ -362,12 +339,6 @@ impl RendererInner {
         camera: &Camera,
         resources: &RenderResources,
     ) -> Result<()> {
-        let frame_index = self.frame_number % FRAME_OVERLAP;
-        let scene_start_offset =
-            self.scene_camera_buffer.get_offset(frame_index)?;
-        let camera_start_offset =
-            self.scene_camera_buffer.get_offset(frame_index + 2)?;
-
         // Write into scene section of scene-camera uniform buffer
         {
             // Fill a GpuSceneData struct
@@ -428,7 +399,7 @@ impl RendererInner {
             present_semaphore,
             render_fence,
         ) = {
-            let frame = self.get_current_frame()?;
+            let mut frame = self.get_current_frame()?;
 
             // Wait until GPU has finished rendering last frame (1 sec timeout)
             unsafe {
@@ -438,6 +409,8 @@ impl RendererInner {
                     .wait_for_fences(&fences, true, 1000000000)?;
                 self.core.device.reset_fences(&fences)?;
             }
+
+            frame.desc_allocator.clear_pools(&self.core.device)?;
 
             // Request image from swapchain (1 sec timeout)
             let swapchain_image_index = unsafe {
@@ -509,7 +482,7 @@ impl RendererInner {
         let present_info = vk::PresentInfoKHR {
             p_swapchains: &self.swapchain.swapchain,
             swapchain_count: 1,
-            p_wait_semaphores: &render_semaphore,
+            p_wait_semaphores: &render_semaphore, // Wait until rendering is done before presenting
             wait_semaphore_count: 1,
             p_image_indices: &swapchain_image_index,
             ..Default::default()
@@ -540,7 +513,6 @@ impl RendererInner {
 
             resources.cleanup(device, &mut allocator);
 
-            self.desc_allocator.cleanup(device);
             self.upload_context.cleanup(device);
 
             // Destroy command pool
@@ -657,9 +629,9 @@ impl RendererInner {
         Ok(command_pool)
     }
 
-    fn create_desc_set_layouts(
+    fn init_desc_set_layouts(
         device: &ash::Device,
-        desc_allocator: &mut DescriptorAllocator,
+        desc_set_layouts: &mut DescriptorSetLayouts,
     ) -> Result<()> {
         let compute_texture_layout = DescriptorSetLayoutBuilder::new()
             .add_binding(
@@ -668,7 +640,7 @@ impl RendererInner {
                 vk::ShaderStageFlags::COMPUTE,
             )
             .build(device)?;
-        desc_allocator.add_layout("compute texture", compute_texture_layout);
+        desc_set_layouts.add_layout("compute texture", compute_texture_layout);
 
         let graphics_texture_layout = DescriptorSetLayoutBuilder::new()
             .add_binding(
@@ -677,75 +649,19 @@ impl RendererInner {
                 vk::ShaderStageFlags::FRAGMENT,
             )
             .build(device)?;
-        desc_allocator.add_layout("graphics texture", graphics_texture_layout);
+        desc_set_layouts
+            .add_layout("graphics texture", graphics_texture_layout);
 
-        let scene_camera_layout = DescriptorSetLayoutBuilder::new()
+        let scene_layout = DescriptorSetLayoutBuilder::new()
             .add_binding(
                 0,
-                vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-            )
-            .add_binding(
-                1,
-                vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
+                vk::DescriptorType::UNIFORM_BUFFER,
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
             )
             .build(device)?;
-        desc_allocator.add_layout("scene-camera buffer", scene_camera_layout);
-
-        /*
-        let object_desc_set_layout = {
-            // Binding 0 for GpuObjectData
-            let object_bind = vkinit::descriptor_set_layout_binding(
-                vk::DescriptorType::STORAGE_BUFFER,
-                vk::ShaderStageFlags::VERTEX,
-                0,
-            );
-
-            let set_info = vk::DescriptorSetLayoutCreateInfo {
-                binding_count: 1,
-                p_bindings: &object_bind,
-                ..Default::default()
-            };
-            unsafe { device.create_descriptor_set_layout(&set_info, None)? }
-        };
-
-        desc_allocator.add_layout("object", object_desc_set_layout);
-        */
+        desc_set_layouts.add_layout("scene buffer", scene_layout);
 
         Ok(())
-    }
-
-    fn create_desc_allocator(
-        device: &ash::Device,
-    ) -> Result<DescriptorAllocator> {
-        let ratios = [
-            PoolSizeRatio {
-                // For the camera buffer
-                desc_type: vk::DescriptorType::UNIFORM_BUFFER,
-                ratio: 1.0,
-            },
-            PoolSizeRatio {
-                // For the scene params buffer
-                desc_type: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-                ratio: 1.0,
-            },
-            PoolSizeRatio {
-                // For the object buffer
-                desc_type: vk::DescriptorType::STORAGE_BUFFER,
-                ratio: 1.0,
-            },
-            PoolSizeRatio {
-                desc_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                // For textures
-                ratio: 1.0,
-            },
-        ];
-
-        let global_desc_allocator =
-            DescriptorAllocator::new(device, 10, &ratios)?;
-
-        Ok(global_desc_allocator)
     }
 
     /// Upload all models to the GPU

@@ -21,6 +21,9 @@ mod texture;
 mod upload_context;
 mod vertex;
 
+mod gpu_data;
+
+use ash::vk;
 use bevy::ecs::system::Resource;
 use color_eyre::eyre::{eyre, Result};
 use std::sync::{Arc, Mutex};
@@ -31,6 +34,16 @@ use self::{
 
 pub static mut ASSETS_DIR: Option<String> = None;
 pub static mut SHADERBUILD_DIR: Option<String> = None;
+
+struct DrawContext<'a> {
+    cmd: vk::CommandBuffer,
+    device: &'a ash::Device,
+    allocator: &'a mut gpu_allocator::vulkan::Allocator,
+    camera: &'a Camera,
+    frame_number: u32,
+    swapchain: &'a swapchain::Swapchain,
+    desc_set_layouts: &'a descriptors::DescriptorSetLayouts,
+}
 
 #[derive(Clone, Resource)]
 pub struct Renderer {

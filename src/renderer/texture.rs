@@ -11,9 +11,8 @@ use image::{ImageBuffer, Rgba};
 /// A texture is an image with a sampler and descriptor set
 #[derive(Asset, TypePath)]
 pub struct Texture {
-    data: Option<ImageBuffer<Rgba<u8>, Vec<u8>>>,
-    image: Option<AllocatedImage>,
-    sampler: Option<vk::Sampler>,
+    image: AllocatedImage,
+    sampler: vk::Sampler,
 }
 
 impl Texture {
@@ -55,14 +54,6 @@ impl Texture {
             flipv,
         )?;
         Ok(image)
-    }
-
-    pub fn new_uninitialized(data: ImageBuffer<Rgba<u8>, Vec<u8>>) -> Self {
-        Self {
-            data: Some(data),
-            image: None,
-            sampler: None,
-        }
     }
 
     pub fn init_graphics_texture(

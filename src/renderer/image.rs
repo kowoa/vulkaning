@@ -167,8 +167,7 @@ impl AllocatedImage {
             };
             let usage_flags = vk::ImageUsageFlags::TRANSFER_SRC
                 | vk::ImageUsageFlags::TRANSFER_DST
-                | vk::ImageUsageFlags::STORAGE
-                | vk::ImageUsageFlags::COLOR_ATTACHMENT; // TODO: DELETE THIS LATER
+                | vk::ImageUsageFlags::STORAGE;
             let create_info = AllocatedImageCreateInfo {
                 format: vk::Format::R16G16B16A16_SFLOAT,
                 extent,

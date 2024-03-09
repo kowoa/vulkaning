@@ -1,37 +1,32 @@
 use ash::vk;
 use color_eyre::eyre::Result;
-use gpu_allocator::vulkan::Allocator;
 
 use crate::renderer::{
     buffer::AllocatedBuffer, core::Core, descriptors::DescriptorAllocator,
-    inner::MAX_OBJECTS, vkinit,
 };
 
 use super::{
-    camera::GpuCameraData,
-    inner::{GpuObjectData, GpuSceneData},
+    descriptors::DescriptorWriter,
+    gpu_data::{GpuCameraData, GpuSceneData},
+    DrawContext,
 };
 
 #[derive(Debug)]
 pub struct Frame {
-    pub present_semaphore: vk::Semaphore,
-    pub render_semaphore: vk::Semaphore,
-    pub render_fence: vk::Fence,
+    pub present_semaphore: vk::Semaphore, // Signals when the swapchain is ready to present
+    pub render_semaphore: vk::Semaphore,  // Signals when rendering is done
+    pub render_fence: vk::Fence, // Signals when rendering commands all get executed
     pub command_buffer: vk::CommandBuffer,
-
-    pub scene_camera_desc_set: vk::DescriptorSet,
-
-    pub object_buffer: AllocatedBuffer,
+    pub desc_allocator: DescriptorAllocator,
 }
 
 impl Frame {
     pub fn new(
         core: &mut Core,
-        scene_camera_buffer: &AllocatedBuffer,
         command_pool: &vk::CommandPool,
-        desc_allocator: &mut DescriptorAllocator,
     ) -> Result<Self> {
         let device = &core.device;
+        let desc_allocator = DescriptorAllocator::new(device, 1000)?;
 
         // Create command buffer
         let command_buffer = Self::create_command_buffer(device, command_pool)?;
@@ -40,85 +35,65 @@ impl Frame {
         let (present_semaphore, render_semaphore, render_fence) =
             Self::create_sync_objs(device)?;
 
-        // Allocate descriptor set for the scene and camera data
-        let scene_camera_desc_set =
-            desc_allocator.allocate(&core.device, "scene-camera buffer")?;
-
-        // Create object buffer
-        let mut allocator = core.get_allocator()?;
-        let object_buffer = AllocatedBuffer::new(
-            &core.device,
-            &mut allocator,
-            std::mem::size_of::<GpuObjectData>() as u64 * MAX_OBJECTS as u64,
-            vk::BufferUsageFlags::STORAGE_BUFFER,
-            "Object Storage Buffer",
-            gpu_allocator::MemoryLocation::CpuToGpu,
-        )?;
-
-        {
-            // Point descriptor set to the scene binding in the scene-camera buffer
-            let scene_info = vk::DescriptorBufferInfo {
-                buffer: scene_camera_buffer.buffer,
-                offset: 0,
-                range: std::mem::size_of::<GpuSceneData>() as u64,
-            };
-            // Point descriptor set to the camera binding in the scene-camera buffer
-            let camera_info = vk::DescriptorBufferInfo {
-                buffer: scene_camera_buffer.buffer,
-                offset: 0,
-                range: std::mem::size_of::<GpuCameraData>() as u64,
-            };
-            // Point descriptor set to object buffer
-            /*
-            let object_info = vk::DescriptorBufferInfo {
-                buffer: object_buffer.buffer,
-                offset: 0,
-                range: std::mem::size_of::<GpuObjectData>() as u64
-                    * MAX_OBJECTS as u64,
-            };
-            */
-
-            // Scene data is in binding 0
-            let scene_write = vkinit::write_descriptor_buffer(
-                vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-                scene_camera_desc_set,
-                0,
-                &scene_info,
-            );
-            // Camera data is in binding 1
-            let camera_write = vkinit::write_descriptor_buffer(
-                vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-                scene_camera_desc_set,
-                1,
-                &camera_info,
-            );
-            /*
-            let object_write = vkinit::write_descriptor_buffer(
-                vk::DescriptorType::STORAGE_BUFFER,
-                scene_camera_desc_set,
-                0,
-                &object_info,
-            );
-            */
-
-            //let writes = [scene_write, camera_write, object_write];
-            let writes = [scene_write, camera_write];
-            unsafe { device.update_descriptor_sets(&writes, &[]) }
-        }
-
         Ok(Self {
             present_semaphore,
             render_semaphore,
             render_fence,
             command_buffer,
-            scene_camera_desc_set,
-            object_buffer,
+            desc_allocator,
         })
     }
 
-    pub fn cleanup(self, device: &ash::Device, allocator: &mut Allocator) {
+    pub fn draw_geometry(&mut self, ctx: DrawContext) -> Result<()> {
+        // Allocate a new uniform buffer for the scene data
+        let mut scene_buffer = AllocatedBuffer::new(
+            ctx.device,
+            ctx.allocator,
+            std::mem::size_of::<GpuSceneData>() as u64,
+            vk::BufferUsageFlags::UNIFORM_BUFFER,
+            "Scene Buffer",
+            gpu_allocator::MemoryLocation::CpuToGpu,
+        )?;
+
+        // Write to the buffer
+        let scene_data = GpuSceneData {
+            cam_data: GpuCameraData {
+                viewproj: ctx.camera.viewproj_mat(
+                    ctx.swapchain.image_extent.width as f32,
+                    ctx.swapchain.image_extent.height as f32,
+                ),
+                near: ctx.camera.near,
+                far: ctx.camera.far,
+            },
+            ..Default::default()
+        };
+        scene_buffer.write(&[scene_data], 0)?;
+
+        // Create a descriptor set for the scene data
+        let scene_desc_set = self
+            .desc_allocator
+            .allocate(ctx.device, *ctx.desc_set_layouts.get("scene buffer")?)?;
+
+        // Update the descriptor set with the new scene buffer
+        let mut writer = DescriptorWriter::new();
+        writer.write_buffer(
+            0,
+            scene_buffer.buffer,
+            scene_buffer.size,
+            0,
+            vk::DescriptorType::UNIFORM_BUFFER,
+        );
+        writer.update_set(ctx.device, scene_desc_set);
+
+        // Destroy the scene buffer
+        scene_buffer.cleanup(ctx.device, ctx.allocator);
+
+        Ok(())
+    }
+
+    pub fn cleanup(self, device: &ash::Device) {
         unsafe {
-            self.object_buffer.cleanup(device, allocator);
+            self.desc_allocator.cleanup(device);
             device.destroy_semaphore(self.render_semaphore, None);
             device.destroy_semaphore(self.present_semaphore, None);
             device.destroy_fence(self.render_fence, None);
