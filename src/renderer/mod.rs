@@ -5,15 +5,16 @@ mod vkutils;
 
 mod buffer;
 mod camera;
-mod core;
+mod context;
 mod descriptors;
 mod frame;
+//mod gui;
 mod image;
 mod inner;
 mod material;
 mod mesh;
 mod model;
-mod queue_family_indices;
+mod render_object;
 mod render_resources;
 mod shader;
 mod swapchain;

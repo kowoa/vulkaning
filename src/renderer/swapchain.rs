@@ -3,7 +3,7 @@ use bevy::log;
 use color_eyre::eyre::Result;
 use gpu_allocator::vulkan::Allocator;
 
-use super::{core::Core, image::AllocatedImage};
+use super::{context::Context, image::AllocatedImage};
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
@@ -18,18 +18,18 @@ pub struct Swapchain {
 
 impl Swapchain {
     pub fn new(
-        core: &mut Core,
+        ctx: &Context,
         allocator: &mut Allocator,
         window: &winit::window::Window,
     ) -> Result<Self> {
         let (swapchain, swapchain_loader, images, image_format, image_extent) =
-            create_swapchain(core, window)?;
-        let image_views = create_image_views(core, &image_format, &images)?;
+            create_swapchain(ctx, window)?;
+        let image_views = create_image_views(ctx, &image_format, &images)?;
 
         let depth_image = AllocatedImage::new_depth_image(
             image_extent.width,
             image_extent.height,
-            &core.device,
+            &ctx.device,
             allocator,
         )?;
 
@@ -60,7 +60,7 @@ impl Swapchain {
 }
 
 fn create_swapchain(
-    core: &Core,
+    ctx: &Context,
     window: &winit::window::Window,
 ) -> Result<(
     vk::SwapchainKHR,
@@ -70,9 +70,9 @@ fn create_swapchain(
     vk::Extent2D,
 )> {
     let swapchain_support = query_swapchain_support(
-        &core.physical_device,
-        &core.surface,
-        &core.surface_loader,
+        &ctx.physical_device,
+        &ctx.surface,
+        &ctx.surface_loader,
     )?;
 
     let surface_format =
@@ -98,9 +98,8 @@ fn create_swapchain(
     };
 
     let (image_sharing_mode, queue_family_index_count, queue_family_indices) = {
-        let indices = &core.queue_family_indices;
-        let graphics_family = indices.get_graphics_family()?;
-        let present_family = indices.get_present_family()?;
+        let graphics_family = ctx.graphics_queue_family;
+        let present_family = ctx.present_queue_family;
         if graphics_family != present_family {
             (
                 // CONCURRENT means images can be used across multiple queue families
@@ -117,7 +116,7 @@ fn create_swapchain(
     };
 
     let info = vk::SwapchainCreateInfoKHR {
-        surface: core.surface,
+        surface: ctx.surface,
         min_image_count,
         image_format: surface_format.format,
         image_color_space: surface_format.color_space,
@@ -137,7 +136,7 @@ fn create_swapchain(
     };
 
     let swapchain_loader =
-        ash::extensions::khr::Swapchain::new(&core.instance, &core.device);
+        ash::extensions::khr::Swapchain::new(&ctx.instance, &ctx.device);
     let swapchain = unsafe { swapchain_loader.create_swapchain(&info, None)? };
     let swapchain_images =
         unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
@@ -156,7 +155,7 @@ fn create_swapchain(
 }
 
 fn create_image_views(
-    core_objs: &Core,
+    ctx: &Context,
     swapchain_image_format: &vk::Format,
     images: &[vk::Image],
 ) -> Result<Vec<vk::ImageView>> {
@@ -183,7 +182,7 @@ fn create_image_views(
                 ..Default::default()
             };
 
-            unsafe { core_objs.device.create_image_view(&info, None) }
+            unsafe { ctx.device.create_image_view(&info, None) }
         })
         .collect::<ash::prelude::VkResult<Vec<_>>>()?;
 

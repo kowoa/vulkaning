@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use ash::vk;
 use color_eyre::eyre::Result;
 use gpu_allocator::{
@@ -7,10 +5,7 @@ use gpu_allocator::{
     MemoryLocation,
 };
 
-use super::{
-    buffer::AllocatedBuffer, upload_context::UploadContext, vkinit, vkutils,
-    ASSETS_DIR,
-};
+use super::{buffer::AllocatedBuffer, context::Context, vkinit, vkutils};
 
 struct AllocatedImageCreateInfo {
     pub format: vk::Format,
@@ -83,9 +78,8 @@ impl AllocatedImage {
         data: &[u8],
         width: u32,
         height: u32,
-        device: &ash::Device,
+        ctx: &Context,
         allocator: &mut Allocator,
-        upload_context: &UploadContext,
     ) -> Result<Self> {
         let image = {
             let create_info = AllocatedImageCreateInfo {
@@ -100,8 +94,8 @@ impl AllocatedImage {
                 aspect_flags: vk::ImageAspectFlags::COLOR,
                 name: "Color Image".into(),
             };
-            let mut image = Self::new(&create_info, device, allocator)?;
-            image.upload(data, device, allocator, upload_context)?;
+            let mut image = Self::new(&create_info, &ctx.device, allocator)?;
+            image.upload(data, ctx, allocator)?;
             image
         };
 
@@ -158,38 +152,6 @@ impl AllocatedImage {
         Ok(image)
     }
 
-    pub fn load_from_file(
-        filename: &str,
-        flipv: bool,
-        device: &ash::Device,
-        allocator: &mut Allocator,
-        upload_context: &UploadContext,
-    ) -> Result<Self> {
-        // Read data from file
-        let filepath = unsafe {
-            let mut path = PathBuf::from(ASSETS_DIR.clone().unwrap());
-            path.push(filename);
-            path
-        };
-        let img = image::open(filepath)?.into_rgba8();
-        let mut img = image::DynamicImage::ImageRgba8(img);
-        if flipv {
-            img = img.flipv();
-        }
-        let img_width = img.width();
-        let img_height = img.height();
-        let data = img.as_bytes();
-
-        Self::new_color_image(
-            data,
-            img_width,
-            img_height,
-            device,
-            allocator,
-            upload_context,
-        )
-    }
-
     pub fn transition_layout(
         &mut self,
         cmd: vk::CommandBuffer,
@@ -238,12 +200,11 @@ impl AllocatedImage {
     fn upload(
         &mut self,
         data: &[u8],
-        device: &ash::Device,
+        ctx: &Context,
         allocator: &mut Allocator,
-        upload_context: &UploadContext,
     ) -> Result<()> {
         let mut staging_buffer = AllocatedBuffer::new(
-            device,
+            &ctx.device,
             allocator,
             data.len() as u64,
             vk::BufferUsageFlags::TRANSFER_SRC,
@@ -251,8 +212,8 @@ impl AllocatedImage {
             gpu_allocator::MemoryLocation::CpuToGpu,
         )?;
         let _ = staging_buffer.write(data, 0);
-        let _ = upload_context.immediate_submit(
-            |cmd: &vk::CommandBuffer, device: &ash::Device| {
+        ctx.execute_one_time_command(
+            |cmd: vk::CommandBuffer, device: &ash::Device| {
                 let range = vk::ImageSubresourceRange {
                     aspect_mask: self.aspect,
                     base_mip_level: 0,
@@ -276,7 +237,7 @@ impl AllocatedImage {
                     // VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT to VK_PIPELINE_STAGE_TRANSFER_BIT
                     // Read more: https://gpuopen.com/learn/vulkan-barriers-explained/
                     device.cmd_pipeline_barrier(
-                        *cmd,
+                        cmd,
                         vk::PipelineStageFlags::TOP_OF_PIPE,
                         vk::PipelineStageFlags::TRANSFER,
                         vk::DependencyFlags::empty(),
@@ -303,7 +264,7 @@ impl AllocatedImage {
                 unsafe {
                     // Copy staging buffer into image
                     device.cmd_copy_buffer_to_image(
-                        *cmd,
+                        cmd,
                         staging_buffer.buffer,
                         self.image,
                         vk::ImageLayout::TRANSFER_DST_OPTIMAL,
@@ -324,7 +285,7 @@ impl AllocatedImage {
                 // Barrier the image into the shader-readable layout
                 unsafe {
                     device.cmd_pipeline_barrier(
-                        *cmd,
+                        cmd,
                         vk::PipelineStageFlags::TRANSFER,
                         vk::PipelineStageFlags::FRAGMENT_SHADER,
                         vk::DependencyFlags::empty(),
@@ -333,10 +294,11 @@ impl AllocatedImage {
                         &[img_barrier_to_readable],
                     )
                 }
+
+                Ok(())
             },
-            device,
-        );
-        staging_buffer.cleanup(device, allocator);
+        )?;
+        staging_buffer.cleanup(&ctx.device, allocator);
 
         Ok(())
     }

@@ -1,13 +1,10 @@
 use ash::vk;
-use bevy::{asset::Asset, ecs::system::Resource, reflect::TypePath};
 use color_eyre::eyre::{eyre, OptionExt, Result};
 use gpu_allocator::vulkan::Allocator;
 
-use crate::renderer::{
-    buffer::AllocatedBuffer, upload_context::UploadContext, vertex::Vertex,
-};
+use crate::renderer::{buffer::AllocatedBuffer, vertex::Vertex};
 
-use super::mesh::Mesh;
+use super::{context::Context, mesh::Mesh};
 
 #[derive(Debug)]
 pub struct Model {
@@ -88,20 +85,18 @@ impl Model {
 
     pub fn upload(
         &mut self,
-        device: &ash::Device,
+        ctx: &Context,
         allocator: &mut Allocator,
-        upload_context: &UploadContext,
     ) -> Result<()> {
-        self.upload_vertices(device, allocator, upload_context)?;
-        self.upload_indices(device, allocator, upload_context)?;
+        self.upload_vertices(ctx, allocator)?;
+        self.upload_indices(ctx, allocator)?;
         Ok(())
     }
 
     fn upload_vertices(
         &mut self,
-        device: &ash::Device,
+        ctx: &Context,
         allocator: &mut Allocator,
-        upload_context: &UploadContext,
     ) -> Result<()> {
         let mut vertices = Vec::new();
         for mesh in &mut self.meshes {
@@ -116,7 +111,7 @@ impl Model {
             (vertices.len() * std::mem::size_of::<Vertex>()) as u64;
         // Create CPU-side staging buffer
         let mut staging_buffer = AllocatedBuffer::new(
-            device,
+            &ctx.device,
             allocator,
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_SRC,
@@ -130,7 +125,7 @@ impl Model {
         // Create GPU-side vertex buffer if it doesn't already exist
         if self.vertex_buffer.is_none() {
             self.vertex_buffer = Some(AllocatedBuffer::new(
-                device,
+                &ctx.device,
                 allocator,
                 buffer_size,
                 // Use this buffer to render meshes and copy data into
@@ -143,8 +138,8 @@ impl Model {
 
         // Execute immediate command to transfer data from staging buffer to vertex buffer
         if let Some(vertex_buffer) = &self.vertex_buffer {
-            upload_context.immediate_submit(
-                |cmd: &vk::CommandBuffer, device: &ash::Device| {
+            ctx.execute_one_time_command(
+                |cmd: vk::CommandBuffer, device: &ash::Device| {
                     let copy = vk::BufferCopy {
                         src_offset: 0,
                         dst_offset: 0,
@@ -152,32 +147,32 @@ impl Model {
                     };
                     unsafe {
                         device.cmd_copy_buffer(
-                            *cmd,
+                            cmd,
                             staging_buffer.buffer,
                             vertex_buffer.buffer,
                             &[copy],
                         );
                     }
+
+                    Ok(())
                 },
-                device,
             )?;
 
             // At this point, the vertex buffer should be populated with data from the staging buffer
             // Destroy staging buffer now because the vertex buffer now holds the data
-            staging_buffer.cleanup(device, allocator);
+            staging_buffer.cleanup(&ctx.device, allocator);
 
             Ok(())
         } else {
-            staging_buffer.cleanup(device, allocator);
+            staging_buffer.cleanup(&ctx.device, allocator);
             Err(eyre!("Vertex buffer not created"))
         }
     }
 
     fn upload_indices(
         &mut self,
-        device: &ash::Device,
+        ctx: &Context,
         allocator: &mut Allocator,
-        upload_context: &UploadContext,
     ) -> Result<()> {
         let mut offset = 0;
         let mut indices = Vec::new();
@@ -193,7 +188,7 @@ impl Model {
         let buffer_size = (indices.len() * std::mem::size_of::<u32>()) as u64;
         // Create CPU-side staging buffer
         let mut staging_buffer = AllocatedBuffer::new(
-            device,
+            &ctx.device,
             allocator,
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_SRC,
@@ -207,7 +202,7 @@ impl Model {
         // Create GPU-side index buffer if it doesn't already exist
         if self.index_buffer.is_none() {
             self.index_buffer = Some(AllocatedBuffer::new(
-                device,
+                &ctx.device,
                 allocator,
                 buffer_size,
                 // Use this buffer to render meshes and copy data into
@@ -220,8 +215,8 @@ impl Model {
 
         // Execute immediate command to transfer data from staging buffer to vertex buffer
         if let Some(index_buffer) = &self.index_buffer {
-            upload_context.immediate_submit(
-                |cmd: &vk::CommandBuffer, device: &ash::Device| {
+            ctx.execute_one_time_command(
+                |cmd: vk::CommandBuffer, device: &ash::Device| {
                     let copy = vk::BufferCopy {
                         src_offset: 0,
                         dst_offset: 0,
@@ -229,23 +224,24 @@ impl Model {
                     };
                     unsafe {
                         device.cmd_copy_buffer(
-                            *cmd,
+                            cmd,
                             staging_buffer.buffer,
                             index_buffer.buffer,
                             &[copy],
                         );
                     }
+
+                    Ok(())
                 },
-                device,
             )?;
 
             // At this point, the vertex buffer should be populated with data from the staging buffer
             // Destroy staging buffer now because the vertex buffer now holds the data
-            staging_buffer.cleanup(device, allocator);
+            staging_buffer.cleanup(&ctx.device, allocator);
 
             Ok(())
         } else {
-            staging_buffer.cleanup(device, allocator);
+            staging_buffer.cleanup(&ctx.device, allocator);
             Err(eyre!("Index buffer not created"))
         }
     }

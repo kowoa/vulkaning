@@ -14,7 +14,7 @@ use color_eyre::eyre::{eyre, Result};
 
 use super::{
     camera::Camera,
-    core::Core,
+    context::Context,
     descriptors::DescriptorSetLayoutBuilder,
     frame::Frame,
     material::Material,
@@ -24,7 +24,6 @@ use super::{
     shader::GraphicsShader,
     swapchain::Swapchain,
     texture::{Texture, TextureAssetData},
-    upload_context::UploadContext,
     AssetData,
 };
 
@@ -32,27 +31,24 @@ pub const FRAME_OVERLAP: u32 = 2;
 pub const MAX_OBJECTS: u32 = 10000; // Max objects per frame
 
 pub struct DrawContext<'a> {
-    pub device: ash::Device,
+    pub context: Arc<Context>,
     pub swapchain: Arc<Swapchain>,
-    pub allocator: Arc<Mutex<gpu_allocator::vulkan::Allocator>>,
-    pub camera: &'a Camera,
-    pub frame_number: u32,
     pub resources: Arc<Mutex<RenderResources>>,
-    pub graphics_queue: vk::Queue,
-    pub present_queue: vk::Queue,
+
+    pub frame_number: u32,
+    pub camera: &'a Camera,
     pub background_texture: Arc<Mutex<Texture>>,
 }
 
 pub struct RendererInner {
-    core: Core,
+    context: Arc<Context>,
     swapchain: Arc<Swapchain>,
     allocator: ManuallyDrop<Arc<Mutex<Allocator>>>,
+    resources: Arc<Mutex<RenderResources>>,
 
     frame_number: u32,
     frames: Vec<Frame>,
     command_pool: vk::CommandPool,
-    upload_context: UploadContext,
-    resources: Arc<Mutex<RenderResources>>,
 
     background_texture: Arc<Mutex<Texture>>,
 }
@@ -61,11 +57,11 @@ impl RendererInner {
     pub fn new(window: &winit::window::Window) -> Result<Self> {
         log::info!("Initializing renderer ...");
 
-        let mut core = Core::new(window)?;
+        let mut ctx = Context::new(window)?;
         let mut allocator = Allocator::new(&AllocatorCreateDesc {
-            instance: core.instance.clone(),
-            device: core.device.clone(),
-            physical_device: core.physical_device,
+            instance: ctx.instance.clone(),
+            device: ctx.device.clone(),
+            physical_device: ctx.physical_device,
             debug_settings: AllocatorDebugSettings {
                 log_memory_information: true,
                 log_leaks_on_shutdown: true,
@@ -77,31 +73,23 @@ impl RendererInner {
             buffer_device_address: true,
             allocation_sizes: Default::default(),
         })?;
-        let swapchain = Swapchain::new(&mut core, &mut allocator, window)?;
+        let swapchain = Swapchain::new(&ctx, &mut allocator, window)?;
 
         let mut resources = RenderResources::default();
         Self::init_desc_set_layouts(
-            &core.device,
+            &ctx.device,
             &mut resources.desc_set_layouts,
         )?;
 
-        let upload_context = UploadContext::new(
-            &core.device,
-            core.queue_family_indices.get_graphics_family()?,
-            core.graphics_queue,
-        )?;
-
-        let command_pool = Self::create_command_pool(
-            &core.device,
-            core.queue_family_indices.get_graphics_family()?,
-        )?;
+        let command_pool =
+            Self::create_command_pool(&ctx.device, ctx.graphics_queue_family)?;
 
         let frames = {
             let mut frames = Vec::with_capacity(FRAME_OVERLAP as usize);
             for _ in 0..FRAME_OVERLAP {
                 // Call Frame constructor
                 frames.push(Frame::new(
-                    &mut core,
+                    &mut ctx,
                     &mut allocator,
                     &command_pool,
                 )?);
@@ -112,18 +100,17 @@ impl RendererInner {
         let background_texture = Texture::new_compute_texture(
             swapchain.image_extent.width,
             swapchain.image_extent.height,
-            &core.device,
+            &ctx.device,
             &mut allocator,
         )?;
 
         Ok(Self {
-            core,
+            context: Arc::new(ctx),
             swapchain: Arc::new(swapchain),
             allocator: ManuallyDrop::new(Arc::new(Mutex::new(allocator))),
             frame_number: 0,
             frames,
             command_pool,
-            upload_context,
             resources: Arc::new(Mutex::new(resources)),
             background_texture: Arc::new(Mutex::new(background_texture)),
         })
@@ -139,14 +126,11 @@ impl RendererInner {
 
     pub fn draw_frame(&mut self, camera: &Camera) -> Result<()> {
         let ctx = DrawContext {
-            device: self.core.device.clone(),
-            allocator: Arc::clone(&self.allocator),
-            camera,
-            frame_number: self.frame_number,
+            context: self.context.clone(),
             swapchain: self.swapchain.clone(),
             resources: self.resources.clone(),
-            graphics_queue: self.core.graphics_queue,
-            present_queue: self.core.present_queue,
+            frame_number: self.frame_number,
+            camera,
             background_texture: self.background_texture.clone(),
         };
         self.get_current_frame().draw(ctx)?;
@@ -159,7 +143,7 @@ impl RendererInner {
         // Wait until all frames have finished rendering
         for frame in &self.frames {
             unsafe {
-                self.core
+                self.context
                     .device
                     .wait_for_fences(&[frame.render_fence()], true, 1000000000)
                     .unwrap();
@@ -167,7 +151,7 @@ impl RendererInner {
         }
 
         {
-            let device = &self.core.device;
+            let device = &self.context.device;
             let mut allocator = self.allocator.lock().unwrap();
 
             match Arc::try_unwrap(self.resources) {
@@ -181,8 +165,6 @@ impl RendererInner {
                 Err(_) => Err(eyre!("Failed to cleanup resources")),
             }
             .unwrap();
-
-            self.upload_context.cleanup(device);
 
             // Destroy command pool
             unsafe {
@@ -217,13 +199,15 @@ impl RendererInner {
             }
             .unwrap()
         }
-
         // We need to do this because the allocator doesn't destroy all
         // memory blocks (VkDeviceMemory) until it is dropped.
         unsafe { ManuallyDrop::drop(&mut self.allocator) };
 
         // Clean up core Vulkan objects
-        self.core.cleanup();
+        match Arc::try_unwrap(self.context) {
+            Ok(context) => context.cleanup(),
+            Err(_) => log::error!("Failed to cleanup context"),
+        }
     }
 
     fn get_current_frame(&mut self) -> &mut Frame {
@@ -305,21 +289,13 @@ impl RendererInner {
 
         // Upload asset models to the GPU
         for (name, mut model) in models.drain() {
-            model.upload(
-                &self.core.device,
-                &mut *self.get_allocator()?,
-                &self.upload_context,
-            )?;
+            model.upload(&self.context, &mut *self.get_allocator()?)?;
             resources.models.insert(name, model);
         }
         // Upload other models to the GPU
         let quad = Mesh::new_quad();
         let mut quad = Model::new(vec![quad]);
-        quad.upload(
-            &self.core.device,
-            &mut *self.get_allocator()?,
-            &self.upload_context,
-        )?;
+        quad.upload(&self.context, &mut *self.get_allocator()?)?;
         resources.models.insert("quad".into(), quad);
 
         Ok(())
@@ -333,15 +309,14 @@ impl RendererInner {
 
         for (name, data) in textures.drain() {
             if !resources.samplers.contains_key(&data.filter) {
-                resources.create_sampler(data.filter, &self.core.device)?;
+                resources.create_sampler(data.filter, &self.context.device)?;
             }
             let sampler = resources.samplers[&data.filter];
             let texture = Texture::new_graphics_texture(
                 data,
                 sampler,
-                &self.core.device,
+                &self.context,
                 &mut *self.get_allocator()?,
-                &self.upload_context,
             )?;
             resources.textures.insert(name, texture);
         }
@@ -366,13 +341,13 @@ impl RendererInner {
                 .set_layouts(&set_layouts)
                 .build();
             let pipeline_layout = unsafe {
-                self.core
+                self.context
                     .device
                     .create_pipeline_layout(&pipeline_layout_info, None)?
             };
-            Material::builder_graphics(&self.core.device)
+            Material::builder_graphics(&self.context.device)
                 .pipeline_layout(pipeline_layout)
-                .shader(GraphicsShader::new("default", &self.core.device)?)
+                .shader(GraphicsShader::new("default", &self.context.device)?)
                 .color_attachment_format(self.swapchain.image_format)
                 .depth_attachment_format(self.swapchain.depth_image.format)
                 .build()?
@@ -385,13 +360,13 @@ impl RendererInner {
                 .set_layouts(&set_layouts)
                 .build();
             let pipeline_layout = unsafe {
-                self.core
+                self.context
                     .device
                     .create_pipeline_layout(&pipeline_layout_info, None)?
             };
-            Material::builder_graphics(&self.core.device)
+            Material::builder_graphics(&self.context.device)
                 .pipeline_layout(pipeline_layout)
-                .shader(GraphicsShader::new("grid", &self.core.device)?)
+                .shader(GraphicsShader::new("grid", &self.context.device)?)
                 .color_attachment_format(self.swapchain.image_format)
                 .depth_attachment_format(self.swapchain.depth_image.format)
                 .build()?
@@ -404,13 +379,13 @@ impl RendererInner {
                 .set_layouts(&set_layouts)
                 .build();
             let pipeline_layout = unsafe {
-                self.core
+                self.context
                     .device
                     .create_pipeline_layout(&pipeline_layout_info, None)?
             };
-            Material::builder_graphics(&self.core.device)
+            Material::builder_graphics(&self.context.device)
                 .pipeline_layout(pipeline_layout)
-                .shader(GraphicsShader::new("textured", &self.core.device)?)
+                .shader(GraphicsShader::new("textured", &self.context.device)?)
                 .color_attachment_format(self.swapchain.image_format)
                 .depth_attachment_format(self.swapchain.depth_image.format)
                 .build()?

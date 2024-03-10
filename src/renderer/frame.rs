@@ -3,9 +3,10 @@ use bevy::log;
 use color_eyre::eyre::Result;
 use gpu_allocator::vulkan::Allocator;
 
-use crate::renderer::{buffer::AllocatedBuffer, core::Core};
+use crate::renderer::buffer::AllocatedBuffer;
 
 use super::{
+    context::Context,
     descriptors::{DescriptorAllocator, DescriptorWriter},
     gpu_data::{GpuCameraData, GpuSceneData},
     inner::DrawContext,
@@ -26,25 +27,24 @@ pub struct Frame {
 
 impl Frame {
     pub fn new(
-        core: &mut Core,
+        ctx: &mut Context,
         allocator: &mut Allocator,
         command_pool: &vk::CommandPool,
     ) -> Result<Self> {
-        let device = &core.device;
-
         // Create command buffer
-        let command_buffer = Self::create_command_buffer(device, command_pool)?;
+        let command_buffer =
+            Self::create_command_buffer(&ctx.device, command_pool)?;
 
         // Create semaphores and fences
         let (present_semaphore, render_semaphore, render_fence) =
-            Self::create_sync_objs(device)?;
+            Self::create_sync_objs(&ctx.device)?;
 
         // Create descriptor allocator exclusive to this frame
-        let desc_allocator = DescriptorAllocator::new(&core.device, 1000)?;
+        let desc_allocator = DescriptorAllocator::new(&ctx.device, 1000)?;
 
         // Allocate a new uniform buffer for the scene data
         let scene_buffer = AllocatedBuffer::new(
-            &core.device,
+            &ctx.device,
             allocator,
             std::mem::size_of::<GpuSceneData>() as u64,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
@@ -67,15 +67,17 @@ impl Frame {
         // Wait until GPU has finished rendering last frame (1 sec timeout)
         unsafe {
             let fences = [self.render_fence];
-            ctx.device.wait_for_fences(&fences, true, 1000000000)?;
-            ctx.device.reset_fences(&fences)?;
+            ctx.context
+                .device
+                .wait_for_fences(&fences, true, 1000000000)?;
+            ctx.context.device.reset_fences(&fences)?;
         }
 
-        self.desc_allocator.clear_pools(&ctx.device)?;
+        self.desc_allocator.clear_pools(&ctx.context.device)?;
 
         // Create a descriptor set for the scene buffer
         let scene_desc_set = self.desc_allocator.allocate(
-            &ctx.device,
+            &ctx.context.device,
             ctx.resources.lock().unwrap().desc_set_layouts["scene buffer"],
         )?;
 
@@ -102,7 +104,7 @@ impl Frame {
             0,
             vk::DescriptorType::UNIFORM_BUFFER,
         );
-        writer.update_set(&ctx.device, scene_desc_set);
+        writer.update_set(&ctx.context.device, scene_desc_set);
 
         // Request image from swapchain (1 sec timeout)
         let swapchain_image_index = unsafe {
@@ -128,7 +130,7 @@ impl Frame {
         self.draw_background(cmd, &ctx)?;
         self.copy_background_texture_to_swapchain(
             cmd,
-            &ctx.device,
+            &ctx.context.device,
             &mut ctx.background_texture.lock().unwrap(),
             ctx.swapchain.images[swapchain_image_index as usize],
             ctx.swapchain.image_extent,
@@ -138,7 +140,7 @@ impl Frame {
         self.begin_renderpass(swapchain_image_index, cmd, &ctx);
         self.set_viewport_scissor(
             cmd,
-            &ctx.device,
+            &ctx.context.device,
             ctx.swapchain.image_extent.width,
             ctx.swapchain.image_extent.height,
         );
@@ -170,7 +172,7 @@ impl Frame {
         unsafe {
             ctx.swapchain
                 .swapchain_loader
-                .queue_present(ctx.present_queue, &present_info)?;
+                .queue_present(ctx.context.present_queue, &present_info)?;
         }
         Ok(())
     }
@@ -186,11 +188,11 @@ impl Frame {
             cmd,
             vk::ImageLayout::UNDEFINED,
             vk::ImageLayout::GENERAL,
-            &ctx.device,
+            &ctx.context.device,
         );
 
         unsafe {
-            ctx.device.cmd_clear_color_image(
+            ctx.context.device.cmd_clear_color_image(
                 cmd,
                 background_texture.image().image,
                 vk::ImageLayout::GENERAL,
@@ -233,7 +235,7 @@ impl Frame {
     ) -> Result<()> {
         let resources = ctx.resources.lock().unwrap();
         let graphics_texture_desc_set = self.desc_allocator.allocate(
-            &ctx.device,
+            &ctx.context.device,
             resources.desc_set_layouts["graphics texture"],
         )?;
 
@@ -246,19 +248,19 @@ impl Frame {
             vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
         );
-        writer.update_set(&ctx.device, graphics_texture_desc_set);
+        writer.update_set(&ctx.context.device, graphics_texture_desc_set);
 
         let monkey_mat = &resources.materials["textured"];
         let monkey_model = &resources.models["backpack"];
-        monkey_mat.bind_pipeline(cmd, &ctx.device);
+        monkey_mat.bind_pipeline(cmd, &ctx.context.device);
         monkey_mat.bind_desc_sets(
             cmd,
-            &ctx.device,
+            &ctx.context.device,
             0,
             &[scene_desc_set, graphics_texture_desc_set],
             &[],
         );
-        monkey_model.draw(cmd, &ctx.device)?;
+        monkey_model.draw(cmd, &ctx.context.device)?;
 
         Ok(())
     }
@@ -274,9 +276,15 @@ impl Frame {
         let grid_mat = &resources.materials["grid"];
         let grid_model = &resources.models["quad"];
 
-        grid_mat.bind_pipeline(cmd, &ctx.device);
-        grid_mat.bind_desc_sets(cmd, &ctx.device, 0, &[scene_desc_set], &[]);
-        grid_model.draw(cmd, &ctx.device)?;
+        grid_mat.bind_pipeline(cmd, &ctx.context.device);
+        grid_mat.bind_desc_sets(
+            cmd,
+            &ctx.context.device,
+            0,
+            &[scene_desc_set],
+            &[],
+        );
+        grid_model.draw(cmd, &ctx.context.device)?;
 
         Ok(())
     }
@@ -288,7 +296,7 @@ impl Frame {
     ) -> Result<()> {
         // Reset the command buffer to begin recording
         unsafe {
-            ctx.device.reset_command_buffer(
+            ctx.context.device.reset_command_buffer(
                 cmd,
                 vk::CommandBufferResetFlags::empty(),
             )?;
@@ -300,7 +308,9 @@ impl Frame {
             ..Default::default()
         };
         unsafe {
-            ctx.device.begin_command_buffer(cmd, &cmd_begin_info)?;
+            ctx.context
+                .device
+                .begin_command_buffer(cmd, &cmd_begin_info)?;
         }
 
         Ok(())
@@ -313,7 +323,7 @@ impl Frame {
     ) -> Result<()> {
         unsafe {
             // Finalize the main command buffer
-            ctx.device.end_command_buffer(cmd)?;
+            ctx.context.device.end_command_buffer(cmd)?;
 
             // Prepare submission to the graphics queue
             let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
@@ -327,8 +337,8 @@ impl Frame {
                 p_command_buffers: &cmd,
                 ..Default::default()
             };
-            ctx.device.queue_submit(
-                ctx.graphics_queue,
+            ctx.context.device.queue_submit(
+                ctx.context.graphics_queue,
                 &[submit_info],
                 self.render_fence, // Signal when the command buffer finishes executing
             )?;
@@ -383,7 +393,7 @@ impl Frame {
 
         // Begin a render pass connected to the draw image
         unsafe {
-            ctx.device.cmd_begin_rendering(cmd, &rendering_info);
+            ctx.context.device.cmd_begin_rendering(cmd, &rendering_info);
         }
     }
 
@@ -394,7 +404,7 @@ impl Frame {
         ctx: &DrawContext,
     ) {
         unsafe {
-            ctx.device.cmd_end_rendering(cmd);
+            ctx.context.device.cmd_end_rendering(cmd);
         }
         vkutils::transition_image_layout(
             cmd,
@@ -402,7 +412,7 @@ impl Frame {
             vk::ImageAspectFlags::COLOR,
             vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             vk::ImageLayout::PRESENT_SRC_KHR,
-            &ctx.device,
+            &ctx.context.device,
         );
     }
 

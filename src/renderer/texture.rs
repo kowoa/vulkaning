@@ -1,8 +1,10 @@
-use crate::renderer::{image::AllocatedImage, upload_context::UploadContext};
+use crate::renderer::image::AllocatedImage;
 use ash::vk;
 use color_eyre::eyre::Result;
 use gpu_allocator::vulkan::Allocator;
 use image::{ImageBuffer, Rgba};
+
+use super::context::Context;
 
 /// Asset data sent from the asset loader
 pub struct TextureAssetData {
@@ -47,9 +49,8 @@ impl Texture {
     pub fn new_graphics_texture(
         asset: TextureAssetData,
         sampler: vk::Sampler,
-        device: &ash::Device,
+        ctx: &Context,
         allocator: &mut Allocator,
-        upload_context: &UploadContext,
     ) -> Result<Self> {
         let image_data = asset.data.unwrap();
         let width = image_data.width();
@@ -63,12 +64,7 @@ impl Texture {
         };
 
         let image = AllocatedImage::new_color_image(
-            &data,
-            width,
-            height,
-            device,
-            allocator,
-            upload_context,
+            &data, width, height, ctx, allocator,
         )?;
 
         Ok(Self {

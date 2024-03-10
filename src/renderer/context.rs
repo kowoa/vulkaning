@@ -1,57 +1,45 @@
 use bevy::log;
-use color_eyre::eyre::{eyre, Result};
+use color_eyre::eyre::{eyre, OptionExt, Result};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use std::{
     collections::HashSet,
     ffi::{c_void, CStr, CString},
-    mem::ManuallyDrop,
-    sync::{Arc, Mutex, MutexGuard},
 };
 
 use ash::vk;
-use gpu_allocator::{
-    vulkan::{Allocator, AllocatorCreateDesc},
-    AllocatorDebugSettings,
-};
 
 use super::{
-    queue_family_indices::QueueFamilyIndices,
-    swapchain::query_swapchain_support, vkinit, vkutils,
+    swapchain::query_swapchain_support, upload_context::UploadContext, vkinit,
+    vkutils,
 };
 
-pub struct Core {
-    pub entry: ash::Entry,
-
-    pub instance: ash::Instance,
-
-    pub debug_messenger: vk::DebugUtilsMessengerEXT,
-    pub debug_messenger_loader: ash::extensions::ext::DebugUtils,
-
-    pub surface: vk::SurfaceKHR,
-    pub surface_loader: ash::extensions::khr::Surface,
-
-    pub physical_device: vk::PhysicalDevice,
-    pub physical_device_props: vk::PhysicalDeviceProperties,
+pub struct Context {
     pub device: ash::Device,
-
     pub graphics_queue: vk::Queue,
     pub present_queue: vk::Queue,
-    pub queue_family_indices: QueueFamilyIndices,
+    pub graphics_queue_family: u32,
+    pub present_queue_family: u32,
+
+    pub instance: ash::Instance,
+    pub surface: vk::SurfaceKHR,
+    pub surface_loader: ash::extensions::khr::Surface,
+    pub physical_device: vk::PhysicalDevice,
+    pub physical_device_props: vk::PhysicalDeviceProperties,
+
+    entry: ash::Entry,
+    debug_messenger: vk::DebugUtilsMessengerEXT,
+    debug_messenger_loader: ash::extensions::ext::DebugUtils,
+    upload_context: UploadContext,
 }
 
-impl Core {
+impl Context {
     const ENABLE_VALIDATION_LAYERS: bool = cfg!(debug_assertions);
     const REQUIRED_VALIDATION_LAYERS: [&'static str; 1] =
         ["VK_LAYER_KHRONOS_validation"];
 
     pub fn new(window: &winit::window::Window) -> Result<Self> {
         let req_instance_exts = Self::get_required_instance_extensions(window)?;
-
-        println!("{:#?}", req_instance_exts);
-
         let req_device_exts = Self::get_required_device_extensions();
-
-        println!("{:#?}", req_device_exts);
 
         let entry = ash::Entry::linked();
         let instance = Self::create_instance(&entry, &req_instance_exts)?;
@@ -75,35 +63,56 @@ impl Core {
                 .min_uniform_buffer_offset_alignment
         );
 
-        let (device, graphics_queue, present_queue, queue_family_indices) =
-            Self::create_logical_device(
-                &instance,
-                &physical_device,
-                &surface,
-                &surface_loader,
-                &req_device_exts,
-            )?;
+        let (
+            device,
+            graphics_queue,
+            present_queue,
+            graphics_queue_family,
+            present_queue_family,
+        ) = Self::create_logical_device(
+            &instance,
+            &physical_device,
+            &surface,
+            &surface_loader,
+            &req_device_exts,
+        )?;
+
+        let upload_context =
+            UploadContext::new(&device, graphics_queue_family, graphics_queue)?;
 
         Ok(Self {
-            entry,
+            device,
+            graphics_queue,
+            present_queue,
+            graphics_queue_family,
+            present_queue_family,
+
             instance,
-            debug_messenger,
-            debug_messenger_loader,
             surface,
             surface_loader,
             physical_device,
             physical_device_props,
-            device,
-            graphics_queue,
-            present_queue,
-            queue_family_indices,
+
+            entry,
+            debug_messenger,
+            debug_messenger_loader,
+            upload_context,
         })
     }
 
-    pub fn cleanup(mut self) {
-        log::info!("Cleaning up core ...");
+    pub fn execute_one_time_command<F>(&self, func: F) -> Result<()>
+    where
+        F: FnOnce(vk::CommandBuffer, &ash::Device) -> Result<()>,
+    {
+        self.upload_context.immediate_submit(func, &self.device)
+    }
+
+    pub fn cleanup(self) {
+        self.upload_context.cleanup(&self.device);
+
         unsafe {
             self.device.destroy_device(None);
+
             // Segfault occurs here if window gets destroyed before surface
             self.surface_loader.destroy_surface(self.surface, None);
             if Self::ENABLE_VALIDATION_LAYERS {
@@ -290,7 +299,7 @@ impl Core {
         surface: &vk::SurfaceKHR,
         surface_loader: &ash::extensions::khr::Surface,
         req_device_exts: &[CString],
-    ) -> Result<(ash::Device, vk::Queue, vk::Queue, QueueFamilyIndices)> {
+    ) -> Result<(ash::Device, vk::Queue, vk::Queue, u32, u32)> {
         let indices = QueueFamilyIndices::new(
             instance,
             physical_device,
@@ -367,7 +376,13 @@ impl Core {
         let present_queue =
             unsafe { device.get_device_queue(present_family, 0) };
 
-        Ok((device, graphics_queue, present_queue, indices))
+        Ok((
+            device,
+            graphics_queue,
+            present_queue,
+            graphics_family,
+            present_family,
+        ))
     }
 
     fn check_required_validation_layers(entry: &ash::Entry) -> Result<()> {
@@ -510,5 +525,68 @@ impl Core {
             .all(|ext| available_exts.contains(ext));
 
         Ok(contains_all)
+    }
+}
+
+struct QueueFamilyIndices {
+    graphics_family: Option<u32>,
+    present_family: Option<u32>,
+}
+
+impl QueueFamilyIndices {
+    pub fn new(
+        instance: &ash::Instance,
+        physical_device: &vk::PhysicalDevice,
+        surface: &vk::SurfaceKHR,
+        surface_loader: &ash::extensions::khr::Surface,
+    ) -> Result<Self> {
+        let queue_families = unsafe {
+            instance
+                .get_physical_device_queue_family_properties(*physical_device)
+        };
+
+        let mut indices = QueueFamilyIndices {
+            graphics_family: None,
+            present_family: None,
+        };
+
+        for (i, family) in queue_families.iter().enumerate() {
+            let i = i as u32;
+
+            if family.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
+                indices.graphics_family = Some(i);
+            }
+
+            let present_support = unsafe {
+                surface_loader.get_physical_device_surface_support(
+                    *physical_device,
+                    i,
+                    *surface,
+                )?
+            };
+            if present_support {
+                indices.present_family = Some(i);
+            }
+
+            if indices.is_complete() {
+                break;
+            }
+        }
+
+        Ok(indices)
+    }
+
+    pub fn get_graphics_family(&self) -> Result<u32> {
+        self.graphics_family
+            .ok_or_eyre("No graphics family index found")
+    }
+
+    pub fn get_present_family(&self) -> Result<u32> {
+        self.present_family
+            .ok_or_eyre("No present family index found")
+    }
+
+    pub fn is_complete(&self) -> bool {
+        self.graphics_family.is_some() && self.present_family.is_some()
     }
 }

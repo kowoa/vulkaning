@@ -1,4 +1,3 @@
-use bevy::log;
 use ash::vk;
 use color_eyre::eyre::Result;
 
@@ -63,7 +62,7 @@ impl UploadContext {
         device: &ash::Device,
     ) -> Result<()>
     where
-        F: Fn(&vk::CommandBuffer, &ash::Device),
+        F: FnOnce(vk::CommandBuffer, &ash::Device) -> Result<()>,
     {
         let cmd = self.command_buffer;
 
@@ -76,7 +75,7 @@ impl UploadContext {
             device.begin_command_buffer(cmd, &cmd_begin_info)?;
         }
 
-        func(&cmd, device);
+        func(cmd, device)?;
 
         // End the command buffer recording
         unsafe {
