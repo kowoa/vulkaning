@@ -5,6 +5,7 @@ use std::{fs::File, io::Read, path::PathBuf};
 
 use super::SHADERBUILD_DIR;
 
+#[derive(Clone)]
 pub struct GraphicsShader {
     pub vert_shader_mod: vk::ShaderModule,
     pub frag_shader_mod: vk::ShaderModule,

@@ -1,5 +1,5 @@
 use ash::vk;
-use color_eyre::eyre::{eyre, OptionExt, Result};
+use color_eyre::eyre::Result;
 use gpu_allocator::{
     vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator},
     MemoryLocation,
@@ -10,7 +10,6 @@ pub struct AllocatedBuffer {
     pub buffer: vk::Buffer,
     pub allocation: Allocation,
     pub size: u64,
-    offsets: Option<Vec<u32>>,
 }
 
 impl AllocatedBuffer {
@@ -53,21 +52,7 @@ impl AllocatedBuffer {
             buffer,
             allocation,
             size: buffer_size,
-            offsets: None,
         })
-    }
-
-    pub fn set_offsets(&mut self, offsets: Vec<u32>) {
-        self.offsets = Some(offsets);
-    }
-
-    pub fn get_offset(&self, index: u32) -> Result<u32> {
-        Ok(*self
-            .offsets
-            .as_ref()
-            .ok_or_eyre(eyre!("No offsets set"))?
-            .get(index as usize)
-            .ok_or_eyre(eyre!("Invalid offset index"))?)
     }
 
     pub fn write<T>(

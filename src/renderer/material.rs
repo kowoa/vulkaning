@@ -1,16 +1,22 @@
 use bevy::log;
 use color_eyre::eyre::{eyre, OptionExt, Result};
-use std::{ffi::CString, sync::Arc};
+use glam::Vec4;
+use std::{collections::HashMap, ffi::CString, sync::Arc};
 
 use ash::vk;
 
 use super::{
+    context::Context,
+    descriptors::{DescriptorSetLayoutBuilder, DescriptorWriter},
+    gpu_data::GpuDrawPushConstants,
+    image::AllocatedImage,
     shader::{ComputeShader, GraphicsShader},
+    swapchain::Swapchain,
     vertex::VertexInputDescription,
 };
 
 pub struct MaterialInstance {
-    pub material: Arc<Material>,
+    pub material_name: String,
     pub desc_set: vk::DescriptorSet,
     pub pass: MaterialPass,
 }
@@ -29,15 +35,13 @@ pub struct Material {
 }
 
 impl Material {
-    pub fn builder_graphics<'a>(
-        device: &'a ash::Device,
-    ) -> GraphicsMaterialBuilder<'a> {
+    pub fn builder_graphics(
+        device: &ash::Device,
+    ) -> GraphicsMaterialBuilder<'_> {
         GraphicsMaterialBuilder::new(device)
     }
 
-    pub fn builder_compute<'a>(
-        device: &'a ash::Device,
-    ) -> ComputeMaterialBuilder<'a> {
+    pub fn builder_compute(device: &ash::Device) -> ComputeMaterialBuilder<'_> {
         ComputeMaterialBuilder::new(device)
     }
 
@@ -227,6 +231,19 @@ impl<'a> GraphicsMaterialBuilder<'a> {
         self
     }
 
+    pub fn enable_additive_blending(mut self) -> Self {
+        let blend = &mut self.color_blend_attachment;
+        blend.color_write_mask = vk::ColorComponentFlags::RGBA;
+        blend.blend_enable = vk::TRUE;
+        blend.src_color_blend_factor = vk::BlendFactor::ONE;
+        blend.dst_color_blend_factor = vk::BlendFactor::DST_ALPHA;
+        blend.color_blend_op = vk::BlendOp::ADD;
+        blend.src_alpha_blend_factor = vk::BlendFactor::ONE;
+        blend.dst_alpha_blend_factor = vk::BlendFactor::ZERO;
+        blend.alpha_blend_op = vk::BlendOp::ADD;
+        self
+    }
+
     pub fn color_attachment_format(mut self, format: vk::Format) -> Self {
         self.color_attachment_format = format;
         // Connect the format to the rendering_info struct
@@ -241,13 +258,21 @@ impl<'a> GraphicsMaterialBuilder<'a> {
         self
     }
 
-    pub fn depth_test_enable(mut self, enable: bool) -> Self {
+    pub fn depth_test_enable(
+        mut self,
+        enable: bool,
+        compare: Option<vk::CompareOp>,
+    ) -> Self {
         self.depth_stencil.depth_test_enable =
             if enable { vk::TRUE } else { vk::FALSE };
         self.depth_stencil.depth_write_enable =
             if enable { vk::TRUE } else { vk::FALSE };
         self.depth_stencil.depth_compare_op = if enable {
-            vk::CompareOp::LESS_OR_EQUAL
+            if let Some(compare) = compare {
+                compare
+            } else {
+                vk::CompareOp::LESS_OR_EQUAL
+            }
         } else {
             vk::CompareOp::ALWAYS
         };
@@ -518,4 +543,105 @@ impl<'a> Drop for ComputeMaterialBuilder<'a> {
             shader.cleanup(self.device);
         }
     }
+}
+
+/// To be written into uniform buffers
+struct MaterialConstants {
+    color_factors: Vec4,
+    metal_rough_factors: Vec4,
+    padding: [Vec4; 14], // Padding to 256 bytes
+}
+
+struct MaterialResources {
+    color_image: AllocatedImage,
+    color_sampler: vk::Sampler,
+    metal_rough_image: AllocatedImage,
+    metal_rough_sampler: vk::Sampler,
+    data_buffer: vk::Buffer,
+    data_buffer_offset: u32,
+}
+
+struct GltfMetallicRoughness {
+    opaque_material: Material,
+    transparent_material: Material,
+    material_layout: vk::DescriptorSetLayout,
+    writer: DescriptorWriter,
+}
+
+impl GltfMetallicRoughness {
+    pub fn new(
+        ctx: &Context,
+        swapchain: &Swapchain,
+        scene_layout: vk::DescriptorSetLayout,
+    ) -> Result<Self> {
+        let shader = GraphicsShader::new("mesh.glsl", &ctx.device)?;
+
+        let matrix_range = [vk::PushConstantRange {
+            offset: 0,
+            size: std::mem::size_of::<GpuDrawPushConstants>() as u32,
+            stage_flags: vk::ShaderStageFlags::VERTEX,
+        }];
+
+        let material_layout = DescriptorSetLayoutBuilder::new()
+            .add_binding(
+                0,
+                vk::DescriptorType::UNIFORM_BUFFER,
+                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+            )
+            .add_binding(
+                1,
+                vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+            )
+            .add_binding(
+                2,
+                vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+            )
+            .build(&ctx.device)?;
+
+        let set_layouts = [scene_layout, material_layout];
+        let mesh_pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
+            .set_layouts(&set_layouts)
+            .push_constant_ranges(&matrix_range)
+            .build();
+        let mesh_pipeline_layout = unsafe {
+            ctx.device
+                .create_pipeline_layout(&mesh_pipeline_layout_info, None)?
+        };
+
+        let opaque_material = Material::builder_graphics(&ctx.device)
+            .shader(shader.clone())
+            .input_topology(vk::PrimitiveTopology::TRIANGLE_LIST)
+            .polygon_mode(vk::PolygonMode::FILL)
+            .cull_mode(vk::CullModeFlags::BACK, vk::FrontFace::CLOCKWISE)
+            .disable_multisampling()
+            .disable_blending()
+            .depth_test_enable(true, Some(vk::CompareOp::GREATER_OR_EQUAL))
+            .color_attachment_format(swapchain.image_format)
+            .depth_attachment_format(swapchain.depth_image.format)
+            .pipeline_layout(mesh_pipeline_layout)
+            .build()?;
+
+        let transparent_material = Material::builder_graphics(&ctx.device)
+            .shader(shader)
+            .input_topology(vk::PrimitiveTopology::TRIANGLE_LIST)
+            .polygon_mode(vk::PolygonMode::FILL)
+            .cull_mode(vk::CullModeFlags::BACK, vk::FrontFace::CLOCKWISE)
+            .disable_multisampling()
+            .enable_additive_blending()
+            .depth_test_enable(false, None)
+            .color_attachment_format(swapchain.image_format)
+            .depth_attachment_format(swapchain.depth_image.format)
+            .pipeline_layout(mesh_pipeline_layout)
+            .build()?;
+
+        Ok(Self {
+            opaque_material,
+            transparent_material,
+            material_layout,
+            writer: DescriptorWriter::new(),
+        })
+    }
+    fn clear_resources(ctx: &Context) {}
 }

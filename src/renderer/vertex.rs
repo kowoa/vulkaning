@@ -1,7 +1,9 @@
-use bevy::log;
 use ash::vk;
+use bevy::log;
 use bytemuck::{offset_of, Pod, Zeroable};
 use glam::{Vec2, Vec3};
+
+use super::gpu_data::GpuVertexData;
 
 #[derive(Debug)]
 pub struct VertexInputDescription {
@@ -68,6 +70,16 @@ impl Vertex {
             bindings,
             attributes,
             flags: vk::PipelineVertexInputStateCreateFlags::empty(),
+        }
+    }
+
+    pub fn as_gpu_data(&self) -> GpuVertexData {
+        GpuVertexData {
+            position: self.position,
+            uv_x: self.texcoord.x,
+            normal: self.normal,
+            uv_y: self.texcoord.y,
+            color: Vec4::new(self.color.x, self.color.y, self.color.z, 1.0),
         }
     }
 }

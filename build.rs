@@ -2,14 +2,14 @@ extern crate shaderc;
 
 use std::{
     fs::{self, File},
-    io::{BufRead, BufReader, Write, Read},
+    io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
 };
 
 use color_eyre::eyre::{eyre, OptionExt, Result};
 use shaderc::CompilationArtifact;
 
-const COMBINED_SHADER_EXT: &str = "glsl";
+const COMBINED_SHADER_EXT: &str = "combined";
 const COMP_SHADER_EXT: &str = "comp";
 
 fn main() -> Result<()> {
@@ -39,12 +39,21 @@ fn main() -> Result<()> {
             let filename = filepath.file_name().unwrap().to_str().unwrap();
 
             if ext == COMBINED_SHADER_EXT {
-                let (vert_glsl, frag_glsl) = parse_combined_shaderfile(&filepath)?;
+                let (vert_glsl, frag_glsl) =
+                    parse_combined_shaderfile(&filepath)?;
                 let vert_spirv = compile_shader(
-                    &vert_glsl, shaderc::ShaderKind::Vertex, &compiler, &options, filename,
+                    &vert_glsl,
+                    shaderc::ShaderKind::Vertex,
+                    &compiler,
+                    &options,
+                    filename,
                 )?;
                 let frag_spirv = compile_shader(
-                    &frag_glsl, shaderc::ShaderKind::Fragment, &compiler, &options, filename,
+                    &frag_glsl,
+                    shaderc::ShaderKind::Fragment,
+                    &compiler,
+                    &options,
+                    filename,
                 )?;
 
                 let vert_spv_filepath =
@@ -62,7 +71,8 @@ fn main() -> Result<()> {
                 file.read_to_string(&mut comp_glsl)?;
 
                 let comp_spirv = compile_shader(
-                    &comp_glsl, shaderc::ShaderKind::Compute,
+                    &comp_glsl,
+                    shaderc::ShaderKind::Compute,
                     &compiler,
                     &options,
                     filename,

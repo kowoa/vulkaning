@@ -4,13 +4,14 @@ use gpu_allocator::vulkan::Allocator;
 
 use crate::renderer::{buffer::AllocatedBuffer, vertex::Vertex};
 
-use super::{context::Context, mesh::Mesh};
+use super::{context::Context, gpu_data::GpuVertexData, mesh::Mesh};
 
 #[derive(Debug)]
 pub struct Model {
-    pub meshes: Vec<Mesh>,
+    meshes: Vec<Mesh>,
     vertex_buffer: Option<AllocatedBuffer>,
     index_buffer: Option<AllocatedBuffer>,
+    vertex_buffer_address: Option<vk::DeviceAddress>,
 }
 
 impl PartialEq for Model {
@@ -28,6 +29,7 @@ impl Model {
             meshes,
             vertex_buffer: None,
             index_buffer: None,
+            vertex_buffer_address: None,
         }
     }
 
@@ -106,9 +108,13 @@ impl Model {
                 .ok_or_eyre("No vertices found in mesh")?;
             vertices.extend(mesh_vertices);
         }
+        let vertices = vertices
+            .iter()
+            .map(|v| v.as_gpu_data())
+            .collect::<Vec<GpuVertexData>>();
 
         let buffer_size =
-            (vertices.len() * std::mem::size_of::<Vertex>()) as u64;
+            (vertices.len() * std::mem::size_of::<GpuVertexData>()) as u64;
         // Create CPU-side staging buffer
         let mut staging_buffer = AllocatedBuffer::new(
             &ctx.device,
@@ -124,7 +130,7 @@ impl Model {
 
         // Create GPU-side vertex buffer if it doesn't already exist
         if self.vertex_buffer.is_none() {
-            self.vertex_buffer = Some(AllocatedBuffer::new(
+            let buffer = AllocatedBuffer::new(
                 &ctx.device,
                 allocator,
                 buffer_size,
@@ -133,7 +139,16 @@ impl Model {
                     | vk::BufferUsageFlags::TRANSFER_DST,
                 "Model vertex buffer",
                 gpu_allocator::MemoryLocation::GpuOnly,
-            )?);
+            )?;
+            self.vertex_buffer_address = Some(unsafe {
+                ctx.device.get_buffer_device_address(
+                    &vk::BufferDeviceAddressInfo {
+                        buffer: buffer.buffer,
+                        ..Default::default()
+                    },
+                )
+            });
+            self.vertex_buffer = Some(buffer);
         }
 
         // Execute immediate command to transfer data from staging buffer to vertex buffer
