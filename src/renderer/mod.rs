@@ -8,7 +8,6 @@ mod camera;
 mod context;
 mod descriptors;
 mod frame;
-//mod gui;
 mod image;
 mod inner;
 mod material;
