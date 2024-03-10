@@ -18,9 +18,9 @@ struct AllocatedImageCreateInfo {
     pub usage_flags: vk::ImageUsageFlags,
     pub aspect_flags: vk::ImageAspectFlags,
     pub name: String,
-    pub desc_set: Option<vk::DescriptorSet>,
 }
 
+#[derive(Debug)]
 pub struct AllocatedImage {
     pub image: vk::Image,
     pub view: vk::ImageView,
@@ -28,7 +28,6 @@ pub struct AllocatedImage {
     pub extent: vk::Extent3D,
     pub aspect: vk::ImageAspectFlags,
     pub allocation: Allocation, // GPU-only memory block
-    pub desc_set: Option<vk::DescriptorSet>, // Some if accessible from shaders, None if not
 }
 
 impl AllocatedImage {
@@ -76,7 +75,6 @@ impl AllocatedImage {
             extent: create_info.extent,
             aspect: create_info.aspect_flags,
             allocation,
-            desc_set: create_info.desc_set,
         })
     }
 
@@ -85,8 +83,6 @@ impl AllocatedImage {
         data: &[u8],
         width: u32,
         height: u32,
-        desc_set: vk::DescriptorSet,
-        sampler: vk::Sampler,
         device: &ash::Device,
         allocator: &mut Allocator,
         upload_context: &UploadContext,
@@ -103,28 +99,11 @@ impl AllocatedImage {
                     | vk::ImageUsageFlags::TRANSFER_DST,
                 aspect_flags: vk::ImageAspectFlags::COLOR,
                 name: "Color Image".into(),
-                desc_set: Some(desc_set),
             };
             let mut image = Self::new(&create_info, device, allocator)?;
             image.upload(data, device, allocator, upload_context)?;
             image
         };
-
-        // Update new descriptor set
-        {
-            let info = vk::DescriptorImageInfo {
-                sampler,
-                image_view: image.view,
-                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            };
-            let write = vkinit::write_descriptor_image(
-                vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                desc_set,
-                0,
-                &info,
-            );
-            unsafe { device.update_descriptor_sets(&[write], &[]) }
-        }
 
         Ok(image)
     }
@@ -146,7 +125,6 @@ impl AllocatedImage {
             usage_flags: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
             aspect_flags: vk::ImageAspectFlags::DEPTH,
             name: "Depth Image".into(),
-            desc_set: None,
         };
         Ok(Self::new(&create_info, device, allocator)?)
     }
@@ -155,7 +133,6 @@ impl AllocatedImage {
     pub fn new_storage_image(
         width: u32,
         height: u32,
-        desc_set: vk::DescriptorSet,
         device: &ash::Device,
         allocator: &mut Allocator,
     ) -> Result<Self> {
@@ -174,27 +151,9 @@ impl AllocatedImage {
                 usage_flags,
                 aspect_flags: vk::ImageAspectFlags::COLOR,
                 name: "Storage Image".into(),
-                desc_set: Some(desc_set),
             };
             AllocatedImage::new(&create_info, device, allocator)?
         };
-
-        // Update new descriptor set
-        {
-            let info = [vk::DescriptorImageInfo::builder()
-                .image_layout(vk::ImageLayout::GENERAL)
-                .image_view(image.view)
-                .build()];
-            let write = vk::WriteDescriptorSet::builder()
-                .dst_binding(0)
-                .dst_set(desc_set)
-                .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-                .image_info(&info)
-                .build();
-            unsafe {
-                device.update_descriptor_sets(&[write], &[]);
-            }
-        }
 
         Ok(image)
     }
@@ -202,8 +161,6 @@ impl AllocatedImage {
     pub fn load_from_file(
         filename: &str,
         flipv: bool,
-        desc_set: vk::DescriptorSet,
-        sampler: vk::Sampler,
         device: &ash::Device,
         allocator: &mut Allocator,
         upload_context: &UploadContext,
@@ -227,16 +184,10 @@ impl AllocatedImage {
             data,
             img_width,
             img_height,
-            desc_set,
-            sampler,
             device,
             allocator,
             upload_context,
         )
-    }
-
-    pub fn is_shader_readable(&self) -> bool {
-        self.desc_set.is_some()
     }
 
     pub fn transition_layout(

@@ -1,5 +1,5 @@
-use bevy::log;
 use ash::vk;
+use bevy::log;
 use color_eyre::eyre::Result;
 use gpu_allocator::vulkan::Allocator;
 

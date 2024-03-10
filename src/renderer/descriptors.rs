@@ -1,7 +1,5 @@
-use std::collections::{HashMap, VecDeque};
-
 use ash::vk;
-use color_eyre::eyre::{eyre, OptionExt, Result};
+use color_eyre::eyre::{eyre, Result};
 
 pub struct DescriptorSetLayoutBuilder {
     bindings: Vec<vk::DescriptorSetLayoutBinding>,
@@ -51,31 +49,6 @@ impl DescriptorSetLayoutBuilder {
 pub struct PoolSizeRatio {
     pub desc_type: vk::DescriptorType,
     pub ratio: f32,
-}
-
-pub struct DescriptorSetLayouts(HashMap<String, vk::DescriptorSetLayout>);
-impl DescriptorSetLayouts {
-    pub fn new() -> Self {
-        Self(HashMap::new())
-    }
-
-    pub fn add(&mut self, name: &str, layout: vk::DescriptorSetLayout) {
-        self.0.insert(name.into(), layout);
-    }
-
-    pub fn get(&self, name: &str) -> Result<&vk::DescriptorSetLayout> {
-        self.0
-            .get(name)
-            .ok_or_eyre(format!("Descriptor Set Layout not found: {}", name))
-    }
-
-    pub fn cleanup(self, device: &ash::Device) {
-        for layout in self.0.values() {
-            unsafe {
-                device.destroy_descriptor_set_layout(*layout, None);
-            }
-        }
-    }
 }
 
 #[derive(Debug)]

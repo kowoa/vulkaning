@@ -1,45 +1,57 @@
 use bevy::log;
-use std::sync::{Arc, Mutex, MutexGuard};
+use gpu_allocator::{
+    vulkan::{Allocator, AllocatorCreateDesc},
+    AllocatorDebugSettings,
+};
+use std::{
+    collections::HashMap,
+    mem::ManuallyDrop,
+    sync::{Arc, Mutex, MutexGuard},
+};
 
 use ash::vk;
 use color_eyre::eyre::{eyre, Result};
-use glam::Vec4;
-
-use crate::renderer::{camera::GpuCameraData, texture::Texture};
 
 use super::{
-    buffer::AllocatedBuffer,
     camera::Camera,
     core::Core,
-    descriptors::{
-        DescriptorAllocator, DescriptorSetLayoutBuilder, DescriptorSetLayouts,
-    },
+    descriptors::DescriptorSetLayoutBuilder,
     frame::Frame,
-    gpu_data::GpuSceneData,
     material::Material,
     mesh::Mesh,
-    model::Model,
+    model::{Model, ModelAssetData},
     render_resources::RenderResources,
     shader::GraphicsShader,
     swapchain::Swapchain,
+    texture::{Texture, TextureAssetData},
     upload_context::UploadContext,
-    vkutils,
+    vkutils, AssetData,
 };
 
 pub const FRAME_OVERLAP: u32 = 2;
 pub const MAX_OBJECTS: u32 = 10000; // Max objects per frame
 
-pub struct RendererInner {
-    pub core: Core,
-    pub swapchain: Swapchain,
-
+pub struct DrawContext<'a> {
+    pub device: ash::Device,
+    pub swapchain: Arc<Swapchain>,
+    pub allocator: Arc<Mutex<gpu_allocator::vulkan::Allocator>>,
+    pub camera: &'a Camera,
     pub frame_number: u32,
-    pub frames: Vec<Arc<Mutex<Frame>>>,
-    pub command_pool: vk::CommandPool,
-    pub desc_set_layouts: DescriptorSetLayouts,
-    pub upload_context: UploadContext,
+    pub resources: Arc<Mutex<RenderResources>>,
+}
 
-    pub background_texture: Texture,
+pub struct RendererInner {
+    core: Core,
+    swapchain: Arc<Swapchain>,
+    allocator: ManuallyDrop<Arc<Mutex<Allocator>>>,
+
+    frame_number: u32,
+    frames: Vec<Frame>,
+    command_pool: vk::CommandPool,
+    upload_context: UploadContext,
+    resources: Arc<Mutex<RenderResources>>,
+
+    background_texture: Texture,
 }
 
 impl RendererInner {
@@ -48,49 +60,33 @@ impl RendererInner {
 
         let mut core = Core::new(window)?;
         let swapchain = Swapchain::new(&mut core, window)?;
+        let mut allocator = Allocator::new(&AllocatorCreateDesc {
+            instance: core.instance.clone(),
+            device: core.device.clone(),
+            physical_device: core.physical_device,
+            debug_settings: AllocatorDebugSettings {
+                log_memory_information: true,
+                log_leaks_on_shutdown: true,
+                store_stack_traces: false,
+                log_allocations: true,
+                log_frees: true,
+                log_stack_traces: false,
+            },
+            buffer_device_address: true,
+            allocation_sizes: Default::default(),
+        })?;
+
+        let mut resources = RenderResources::default();
+        Self::init_desc_set_layouts(
+            &core.device,
+            &mut resources.desc_set_layouts,
+        )?;
+
         let upload_context = UploadContext::new(
             &core.device,
             core.queue_family_indices.get_graphics_family()?,
             core.graphics_queue,
         )?;
-        let mut desc_set_layouts = DescriptorSetLayouts::new();
-        Self::init_desc_set_layouts(&core.device, &mut desc_set_layouts)?;
-
-        let background_texture = {
-            let size = window.inner_size();
-            Texture::new_compute_texture(
-                size.width,
-                size.height,
-                &core.device,
-                &mut *core.get_allocator()?,
-            )?
-        };
-
-        let scene_camera_buffer = {
-            let scene_size = core
-                .pad_uniform_buffer_size(
-                    std::mem::size_of::<GpuSceneData>() as u64
-                ) as u32;
-            let camera_size = core
-                .pad_uniform_buffer_size(
-                    std::mem::size_of::<GpuCameraData>() as u64
-                ) as u32;
-            let size = FRAME_OVERLAP * (scene_size + camera_size);
-            let offsets =
-                [0, scene_size, 2 * scene_size, 2 * scene_size + camera_size];
-
-            let mut allocator = core.get_allocator()?;
-            let mut buffer = AllocatedBuffer::new(
-                &core.device,
-                &mut allocator,
-                size as u64,
-                vk::BufferUsageFlags::UNIFORM_BUFFER,
-                "Scene-Camera Uniform Buffer",
-                gpu_allocator::MemoryLocation::CpuToGpu,
-            )?;
-            buffer.set_offsets(offsets.to_vec());
-            buffer
-        };
 
         let command_pool = Self::create_command_pool(
             &core.device,
@@ -101,113 +97,60 @@ impl RendererInner {
             let mut frames = Vec::with_capacity(FRAME_OVERLAP as usize);
             for _ in 0..FRAME_OVERLAP {
                 // Call Frame constructor
-                let frame =
-                    Frame::new(&mut core, &scene_camera_buffer, &command_pool)?;
-
-                frames.push(Arc::new(Mutex::new(frame)));
+                frames.push(Frame::new(
+                    &mut core,
+                    &swapchain,
+                    &mut allocator,
+                    &command_pool,
+                )?);
             }
             frames
         };
 
+        let background_texture = Texture::new_compute_texture(
+            swapchain.image_extent.width,
+            swapchain.image_extent.height,
+            &core.device,
+            &mut allocator,
+        )?;
+
         Ok(Self {
             core,
-            swapchain,
+            swapchain: Arc::new(swapchain),
+            allocator: ManuallyDrop::new(Arc::new(Mutex::new(allocator))),
             frame_number: 0,
             frames,
             command_pool,
-            desc_set_layouts,
-            scene_camera_buffer,
             upload_context,
+            resources: Arc::new(Mutex::new(resources)),
             background_texture,
         })
     }
 
-    pub fn init_resources(
-        &mut self,
-        resources: &mut RenderResources,
-    ) -> Result<()> {
-        self.init_models(resources)?;
-        self.init_textures(resources)?;
-        self.init_materials(resources)?;
+    pub fn init_resources(&mut self, assets: &mut AssetData) -> Result<()> {
+        self.init_models(&mut assets.models)?;
+        self.init_textures(&mut assets.textures)?;
+        self.init_materials()?;
 
         Ok(())
     }
 
-    fn get_current_frame(&self) -> Result<MutexGuard<Frame>> {
-        match self.frames[(self.frame_number % FRAME_OVERLAP) as usize].lock() {
-            Ok(frame) => Ok(frame),
+    fn get_current_frame(&mut self) -> &mut Frame {
+        &mut self.frames[(self.frame_number % FRAME_OVERLAP) as usize]
+    }
+
+    fn get_allocator(&self) -> Result<MutexGuard<Allocator>> {
+        match self.allocator.lock() {
+            Ok(allocator) => Ok(allocator),
             Err(err) => Err(eyre!(err.to_string())),
         }
     }
 
-    fn draw_background(&mut self, cmd: vk::CommandBuffer) {
-        self.background_texture.image_mut().transition_layout(
-            cmd,
-            vk::ImageLayout::UNDEFINED,
-            vk::ImageLayout::GENERAL,
-            &self.core.device,
-        );
-
-        unsafe {
-            self.core.device.cmd_clear_color_image(
-                cmd,
-                self.background_texture.image().image,
-                vk::ImageLayout::GENERAL,
-                &vk::ClearColorValue {
-                    float32: [0.0, 0.0, 0.0, 1.0],
-                },
-                &[vk::ImageSubresourceRange {
-                    aspect_mask: self.background_texture.image().aspect,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                }],
-            );
+    fn get_resources(&self) -> Result<MutexGuard<RenderResources>> {
+        match self.resources.lock() {
+            Ok(resources) => Ok(resources),
+            Err(err) => Err(eyre!(err.to_string())),
         }
-
-        /*
-        // Execute the compute pipeline dispatch
-        // The gradient compute shader uses a 16x16 workgroup, so divide by 16
-        // The compute shader will write to the draw image
-        unsafe {
-            self.core.device.cmd_dispatch(
-                cmd,
-                (self.background_texture.width() as f64 / 16.0).ceil() as u32,
-                (self.background_texture.height() as f64 / 16.0).ceil() as u32,
-                1,
-            );
-        }
-        */
-    }
-
-    // MAKE SURE TO CALL THIS FUNCTION AFTER DRAWING EVERYTHING ELSE
-    fn draw_grid(
-        &mut self,
-        cmd: vk::CommandBuffer,
-        resources: &RenderResources,
-        frame_index: u32,
-    ) -> Result<()> {
-        let device = &self.core.device;
-        let grid_mat = &resources.materials["grid"];
-        let grid_model = &resources.models["quad"];
-
-        let frame = self.get_current_frame()?;
-
-        grid_mat.bind_pipeline(cmd, device);
-        grid_mat.bind_desc_sets(
-            cmd,
-            device,
-            0,
-            &[frame.scene_camera_desc_set],
-            &[
-                self.scene_camera_buffer.get_offset(frame_index)?,
-                self.scene_camera_buffer.get_offset(frame_index + 2)?,
-            ],
-        );
-        grid_model.draw(cmd, device)?;
-
-        Ok(())
     }
 
     fn begin_renderpass(
@@ -333,145 +276,16 @@ impl RendererInner {
         Ok(())
     }
 
-    fn draw_geometry(
-        &mut self,
-        cmd: vk::CommandBuffer,
-        camera: &Camera,
-        resources: &RenderResources,
-    ) -> Result<()> {
-        // Write into scene section of scene-camera uniform buffer
-        {
-            // Fill a GpuSceneData struct
-            let framed = self.frame_number as f32 / 120.0;
-            let scene_data = GpuSceneData {
-                ambient_color: Vec4::new(framed.sin(), 0.0, framed.cos(), 1.0),
-                ..Default::default()
-            };
-
-            // Copy GpuSceneData struct to buffer
-            self.scene_camera_buffer
-                .write(&[scene_data], scene_start_offset as usize)?;
-        }
-        // Write into camera section of scene-camera uniform buffer
-        {
-            // Fill a GpuCameraData struct
-            let cam_data = GpuCameraData {
-                viewproj: camera.viewproj_mat(
-                    self.background_texture.width() as f32,
-                    self.background_texture.height() as f32,
-                ),
-                near: camera.near,
-                far: camera.far,
-            };
-
-            // Copy GpuCameraData struct to buffer
-            self.scene_camera_buffer
-                .write(&[cam_data], camera_start_offset as usize)?;
-        }
-        let monkey_mat = &resources.materials["textured"];
-        let monkey_model = &resources.models["backpack"];
-        monkey_mat.bind_pipeline(cmd, &self.core.device);
-        monkey_mat.bind_desc_sets(
-            cmd,
-            &self.core.device,
-            0,
-            &[
-                self.get_current_frame()?.scene_camera_desc_set,
-                resources.textures["backpack"].desc_set(),
-            ],
-            &[scene_start_offset, camera_start_offset],
-        );
-        monkey_model.draw(cmd, &self.core.device)?;
-
-        Ok(())
-    }
-
-    /// Returns the swapchain image index draw into
-    pub fn draw_frame(
-        &mut self,
-        camera: &Camera,
-        resources: &RenderResources,
-    ) -> Result<()> {
-        let (
-            cmd,
-            swapchain_image_index,
-            render_semaphore,
-            present_semaphore,
-            render_fence,
-        ) = {
-            let mut frame = self.get_current_frame()?;
-
-            // Wait until GPU has finished rendering last frame (1 sec timeout)
-            unsafe {
-                let fences = [frame.render_fence];
-                self.core
-                    .device
-                    .wait_for_fences(&fences, true, 1000000000)?;
-                self.core.device.reset_fences(&fences)?;
-            }
-
-            frame.desc_allocator.clear_pools(&self.core.device)?;
-
-            // Request image from swapchain (1 sec timeout)
-            let swapchain_image_index = unsafe {
-                let (index, suboptimal) =
-                    self.swapchain.swapchain_loader.acquire_next_image(
-                        self.swapchain.swapchain,
-                        1000000000,
-                        frame.present_semaphore,
-                        vk::Fence::null(),
-                    )?;
-                if suboptimal {
-                    log::warn!("Swapchain image is suboptimal");
-                }
-                index
-            };
-
-            (
-                frame.command_buffer,
-                swapchain_image_index,
-                frame.render_semaphore,
-                frame.present_semaphore,
-                frame.render_fence,
-            )
+    pub fn draw_frame(&mut self, camera: &Camera) -> Result<()> {
+        let ctx = DrawContext {
+            device: self.core.device.clone(),
+            allocator: Arc::clone(&mut self.allocator),
+            camera,
+            frame_number: self.frame_number,
+            swapchain: self.swapchain.clone(),
+            resources: self.resources.clone(),
         };
-
-        self.begin_command_buffer(cmd)?;
-
-        self.draw_background(cmd);
-        self.copy_background_texture_to_swapchain(
-            cmd,
-            self.swapchain.images[swapchain_image_index as usize],
-        );
-
-        self.begin_renderpass(
-            cmd,
-            self.swapchain.image_views[swapchain_image_index as usize],
-            self.swapchain.image_extent.width,
-            self.swapchain.image_extent.height,
-        );
-        self.set_viewport_scissor(
-            cmd,
-            self.swapchain.image_extent.width,
-            self.swapchain.image_extent.height,
-        );
-        self.draw_geometry(cmd, camera, resources)?;
-        self.draw_grid(cmd, resources, self.frame_number % FRAME_OVERLAP)?;
-        self.end_renderpass(
-            cmd,
-            self.swapchain.images[swapchain_image_index as usize],
-        );
-
-        self.end_command_buffer(
-            cmd,
-            render_semaphore,
-            present_semaphore,
-            render_fence,
-        )?;
-        self.present_frame(swapchain_image_index, render_semaphore)?;
-        self.frame_number += 1;
-
-        Ok(())
+        self.get_current_frame().draw(ctx)
     }
 
     fn present_frame(
@@ -495,10 +309,9 @@ impl RendererInner {
         Ok(())
     }
 
-    pub fn cleanup(mut self, resources: &mut RenderResources) {
+    pub fn cleanup(mut self) {
         // Wait until all frames have finished rendering
         for frame in &self.frames {
-            let frame = frame.lock().unwrap();
             unsafe {
                 self.core
                     .device
@@ -509,9 +322,16 @@ impl RendererInner {
 
         {
             let device = &self.core.device;
-            let mut allocator = self.core.get_allocator().unwrap();
+            let mut allocator = self.allocator.lock().unwrap();
 
-            resources.cleanup(device, &mut allocator);
+            match Arc::try_unwrap(self.resources) {
+                Ok(resources) => Ok(resources
+                    .into_inner()
+                    .unwrap()
+                    .cleanup(device, &mut allocator)),
+                Err(_) => Err(eyre!("Failed to cleanup resources")),
+            }
+            .unwrap();
 
             self.upload_context.cleanup(device);
 
@@ -521,20 +341,23 @@ impl RendererInner {
             }
 
             // Clean up all frames
-            for _ in 0..self.frames.len() {
-                let frame = self.frames.pop().unwrap();
-                let frame = Arc::try_unwrap(frame).unwrap();
-                let frame = frame.into_inner().unwrap();
-                frame.cleanup(device, &mut allocator);
+            for frame in self.frames.drain(..) {
+                frame.cleanup(device);
             }
 
-            // Clean up buffers
-            self.scene_camera_buffer.cleanup(device, &mut allocator);
             self.background_texture.cleanup(device, &mut allocator);
 
             // Clean up swapchain
-            self.swapchain.cleanup(device, &mut allocator);
+            match Arc::try_unwrap(self.swapchain) {
+                Ok(swapchain) => Ok(swapchain.cleanup(device, &mut allocator)),
+                Err(_) => Err(eyre!("Failed to cleanup swapchain")),
+            }
+            .unwrap()
         }
+
+        // We need to do this because the allocator doesn't destroy all
+        // memory blocks (VkDeviceMemory) until it is dropped.
+        unsafe { ManuallyDrop::drop(&mut self.allocator) };
 
         // Clean up core Vulkan objects
         self.core.cleanup();
@@ -570,49 +393,6 @@ impl RendererInner {
         }
     }
 
-    /// Helper function that copies the background texture to the specified swapchain image
-    fn copy_background_texture_to_swapchain(
-        &mut self,
-        cmd: vk::CommandBuffer,
-        swapchain_image: vk::Image,
-    ) {
-        let device = &self.core.device;
-
-        // Transition the draw image and swapchain image into their correct transfer layouts
-        self.background_texture.image_mut().transition_layout(
-            cmd,
-            vk::ImageLayout::GENERAL,
-            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-            device,
-        );
-        vkutils::transition_image_layout(
-            cmd,
-            swapchain_image,
-            vk::ImageAspectFlags::COLOR,
-            vk::ImageLayout::UNDEFINED,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            device,
-        );
-
-        // Execute a copy from the draw image into the swapchain
-        self.background_texture.image_mut().copy_to_image(
-            cmd,
-            swapchain_image,
-            self.swapchain.image_extent,
-            device,
-        );
-
-        // Transition the swapchain image to color attachment optimal layout for more drawing
-        vkutils::transition_image_layout(
-            cmd,
-            swapchain_image,
-            vk::ImageAspectFlags::COLOR,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            &self.core.device,
-        );
-    }
-
     /// Helper function that creates a command pool
     fn create_command_pool(
         device: &ash::Device,
@@ -631,7 +411,7 @@ impl RendererInner {
 
     fn init_desc_set_layouts(
         device: &ash::Device,
-        desc_set_layouts: &mut DescriptorSetLayouts,
+        desc_set_layouts: &mut HashMap<String, vk::DescriptorSetLayout>,
     ) -> Result<()> {
         let compute_texture_layout = DescriptorSetLayoutBuilder::new()
             .add_binding(
@@ -640,7 +420,8 @@ impl RendererInner {
                 vk::ShaderStageFlags::COMPUTE,
             )
             .build(device)?;
-        desc_set_layouts.add_layout("compute texture", compute_texture_layout);
+        desc_set_layouts
+            .insert("compute texture".into(), compute_texture_layout);
 
         let graphics_texture_layout = DescriptorSetLayoutBuilder::new()
             .add_binding(
@@ -650,7 +431,7 @@ impl RendererInner {
             )
             .build(device)?;
         desc_set_layouts
-            .add_layout("graphics texture", graphics_texture_layout);
+            .insert("graphics texture".into(), graphics_texture_layout);
 
         let scene_layout = DescriptorSetLayoutBuilder::new()
             .add_binding(
@@ -659,59 +440,78 @@ impl RendererInner {
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
             )
             .build(device)?;
-        desc_set_layouts.add_layout("scene buffer", scene_layout);
+        desc_set_layouts.insert("scene buffer".into(), scene_layout);
 
         Ok(())
     }
 
     /// Upload all models to the GPU
-    fn init_models(&mut self, resources: &mut RenderResources) -> Result<()> {
-        let mut allocator = self.core.get_allocator()?;
+    fn init_models(
+        &mut self,
+        models: &mut HashMap<String, ModelAssetData>,
+    ) -> Result<()> {
+        let mut resources = self.get_resources()?;
 
         // Upload asset models to the GPU
-        for (_, model) in resources.models.iter_mut() {
-            model.upload(
+        for (name, mut model) in models.drain() {
+            model.model.upload(
                 &self.core.device,
-                &mut allocator,
+                &mut *self.get_allocator()?,
                 &self.upload_context,
             )?;
+            resources.models.insert(name, model.model);
         }
         // Upload other models to the GPU
         let quad = Mesh::new_quad();
         let mut quad = Model::new(vec![quad]);
-        quad.upload(&self.core.device, &mut allocator, &self.upload_context)?;
+        quad.upload(
+            &self.core.device,
+            &mut *self.get_allocator()?,
+            &self.upload_context,
+        )?;
         resources.models.insert("quad".into(), quad);
 
         Ok(())
     }
 
-    /// Upload all textures to the GPU
-    fn init_textures(&mut self, resources: &mut RenderResources) -> Result<()> {
-        for (name, texture) in resources.textures.iter_mut() {
-            let flipv = name == "backpack";
+    fn init_textures(
+        &mut self,
+        textures: &mut HashMap<String, TextureAssetData>,
+    ) -> Result<()> {
+        let mut resources = self.get_resources()?;
 
-            texture.init_graphics_texture(
+        for (name, data) in textures.drain() {
+            if !resources.samplers.contains_key(&data.filter) {
+                resources.create_sampler(data.filter, &self.core.device)?;
+            }
+            let sampler = resources.samplers[&data.filter];
+            let texture = Texture::new_graphics_texture(
+                data,
+                sampler,
                 &self.core.device,
-                &mut *self.core.get_allocator()?,
-                &mut self.desc_allocator,
+                &mut *self.get_allocator()?,
                 &self.upload_context,
-                flipv,
             )?;
+            resources.textures.insert(name, texture);
         }
+
         Ok(())
     }
 
     /// Create materials and insert them into RenderResources
-    fn init_materials(&self, resources: &mut RenderResources) -> Result<()> {
+    fn init_materials(&mut self) -> Result<()> {
+        let mut resources = self.get_resources()?;
+
         let scene_camera_layout =
-            self.desc_allocator.get_layout("scene-camera buffer")?;
+            resources.desc_set_layouts["scene-camera buffer"];
         let graphics_texture_layout =
-            self.desc_allocator.get_layout("graphics texture")?;
+            resources.desc_set_layouts["graphics texture"];
+        #[allow(unused_variables)]
         let compute_texture_layout =
-            self.desc_allocator.get_layout("compute texture")?;
+            resources.desc_set_layouts["compute texture"];
 
         let default_mat = {
-            let set_layouts = [*scene_camera_layout];
+            let set_layouts = [scene_camera_layout];
             let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
                 .set_layouts(&set_layouts)
                 .build();
@@ -730,7 +530,7 @@ impl RendererInner {
         resources.materials.insert("default".into(), default_mat);
 
         let grid_mat = {
-            let set_layouts = [*scene_camera_layout];
+            let set_layouts = [scene_camera_layout];
             let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
                 .set_layouts(&set_layouts)
                 .build();
@@ -749,7 +549,7 @@ impl RendererInner {
         resources.materials.insert("grid".into(), grid_mat);
 
         let textured_mat = {
-            let set_layouts = [*scene_camera_layout, *graphics_texture_layout];
+            let set_layouts = [scene_camera_layout, graphics_texture_layout];
             let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
                 .set_layouts(&set_layouts)
                 .build();

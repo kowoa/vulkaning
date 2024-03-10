@@ -17,9 +17,9 @@ static MESH_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug)]
 pub struct Mesh {
-    pub id: usize,
-    pub vertices: Option<Vec<Vertex>>,
-    pub indices: Option<Vec<u32>>,
+    id: usize,
+    pub vertices: Option<Vec<Vertex>>, // None after vertex buffer is created
+    pub indices: Option<Vec<u32>>,     // None after index buffer is created
     pub vertex_count: u32,
     pub index_count: u32,
 }

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use ash::vk;
 use bevy::{asset::Asset, reflect::TypePath};
 use color_eyre::eyre::{eyre, OptionExt, Result};
@@ -8,6 +10,11 @@ use crate::renderer::{
 };
 
 use super::mesh::Mesh;
+
+/// Asset data sent from the asset loader
+pub struct ModelAssetData {
+    pub model: Model,
+}
 
 #[derive(Asset, TypePath, Debug)]
 pub struct Model {

@@ -37,8 +37,6 @@ pub struct Core {
     pub graphics_queue: vk::Queue,
     pub present_queue: vk::Queue,
     pub queue_family_indices: QueueFamilyIndices,
-
-    allocator: ManuallyDrop<Arc<Mutex<Allocator>>>,
 }
 
 impl Core {
@@ -86,22 +84,6 @@ impl Core {
                 &req_device_exts,
             )?;
 
-        let allocator = Allocator::new(&AllocatorCreateDesc {
-            instance: instance.clone(),
-            device: device.clone(),
-            physical_device,
-            debug_settings: AllocatorDebugSettings {
-                log_memory_information: true,
-                log_leaks_on_shutdown: true,
-                store_stack_traces: false,
-                log_allocations: true,
-                log_frees: true,
-                log_stack_traces: false,
-            },
-            buffer_device_address: true,
-            allocation_sizes: Default::default(),
-        })?;
-
         Ok(Self {
             entry,
             instance,
@@ -115,17 +97,12 @@ impl Core {
             graphics_queue,
             present_queue,
             queue_family_indices,
-            allocator: ManuallyDrop::new(Arc::new(Mutex::new(allocator))),
         })
     }
 
     pub fn cleanup(mut self) {
         log::info!("Cleaning up core ...");
         unsafe {
-            // We need to do this because the allocator doesn't destroy all
-            // memory blocks (VkDeviceMemory) until it is dropped.
-            ManuallyDrop::drop(&mut self.allocator);
-
             self.device.destroy_device(None);
             // Segfault occurs here if window gets destroyed before surface
             self.surface_loader.destroy_surface(self.surface, None);
@@ -135,17 +112,6 @@ impl Core {
             }
             self.instance.destroy_instance(None);
         }
-    }
-
-    pub fn get_allocator(&self) -> Result<MutexGuard<Allocator>> {
-        match self.allocator.lock() {
-            Ok(allocator) => Ok(allocator),
-            Err(err) => Err(eyre!(err.to_string())),
-        }
-    }
-
-    pub fn get_allocator_ref(&self) -> Arc<Mutex<Allocator>> {
-        Arc::clone(&self.allocator)
     }
 
     pub fn min_uniform_buffer_offset_alignment(&self) -> u64 {
