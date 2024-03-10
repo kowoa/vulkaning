@@ -1,6 +1,6 @@
 use bevy::log;
 use color_eyre::eyre::{eyre, OptionExt, Result};
-use std::ffi::CString;
+use std::{ffi::CString, sync::Arc};
 
 use ash::vk;
 
@@ -8,6 +8,18 @@ use super::{
     shader::{ComputeShader, GraphicsShader},
     vertex::VertexInputDescription,
 };
+
+pub struct MaterialInstance {
+    pub material: Arc<Material>,
+    pub desc_set: vk::DescriptorSet,
+    pub pass: MaterialPass,
+}
+
+pub enum MaterialPass {
+    Opaque,
+    Transparent,
+    Other,
+}
 
 #[derive(PartialEq, Clone)]
 pub struct Material {

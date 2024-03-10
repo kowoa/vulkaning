@@ -126,7 +126,7 @@ impl AllocatedImage {
             aspect_flags: vk::ImageAspectFlags::DEPTH,
             name: "Depth Image".into(),
         };
-        Ok(Self::new(&create_info, device, allocator)?)
+        Self::new(&create_info, device, allocator)
     }
 
     /// Create a special type of image used by compute shaders
