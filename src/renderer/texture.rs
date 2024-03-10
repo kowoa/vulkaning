@@ -99,10 +99,5 @@ impl Texture {
 
     pub fn cleanup(self, device: &ash::Device, allocator: &mut Allocator) {
         self.image.cleanup(device, allocator);
-        if let Some(sampler) = self.sampler {
-            unsafe {
-                device.destroy_sampler(sampler, None);
-            }
-        }
     }
 }

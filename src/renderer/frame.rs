@@ -125,11 +125,7 @@ impl Frame {
         //----------------------------------------------------------------------
 
         // Compute operations
-        self.draw_background(
-            cmd,
-            &ctx,
-            &mut ctx.background_texture.lock().unwrap(),
-        )?;
+        self.draw_background(cmd, &ctx)?;
         self.copy_background_texture_to_swapchain(
             cmd,
             &ctx.device,
@@ -184,8 +180,8 @@ impl Frame {
         &mut self,
         cmd: vk::CommandBuffer,
         ctx: &DrawContext,
-        background_texture: &mut Texture,
     ) -> Result<()> {
+        let mut background_texture = ctx.background_texture.lock().unwrap();
         background_texture.image_mut().transition_layout(
             cmd,
             vk::ImageLayout::UNDEFINED,
@@ -263,7 +259,6 @@ impl Frame {
             &[],
         );
         monkey_model.draw(cmd, &ctx.device)?;
-        self.draw_grid(cmd, ctx, scene_desc_set)?;
 
         Ok(())
     }

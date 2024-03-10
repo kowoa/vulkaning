@@ -149,9 +149,7 @@ impl RendererInner {
             present_queue: self.core.present_queue,
             background_texture: self.background_texture.clone(),
         };
-        log::error!("before");
         self.get_current_frame().draw(ctx)?;
-        log::error!("after");
         self.frame_number += 1;
 
         Ok(())
