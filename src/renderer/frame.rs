@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 use ash::vk;
 use bevy::log;
 use color_eyre::eyre::Result;
@@ -73,13 +71,38 @@ impl Frame {
             ctx.device.reset_fences(&fences)?;
         }
 
-        self.desc_allocator.clear_pools(&ctx.device);
+        self.desc_allocator.clear_pools(&ctx.device)?;
 
         // Create a descriptor set for the scene buffer
         let scene_desc_set = self.desc_allocator.allocate(
             &ctx.device,
             ctx.resources.lock().unwrap().desc_set_layouts["scene buffer"],
         )?;
+
+        // Write to the buffer
+        let scene_data = GpuSceneData {
+            cam_data: GpuCameraData {
+                viewproj: ctx.camera.viewproj_mat(
+                    ctx.swapchain.image_extent.width as f32,
+                    ctx.swapchain.image_extent.height as f32,
+                ),
+                near: ctx.camera.near,
+                far: ctx.camera.far,
+            },
+            ..Default::default()
+        };
+        self.scene_buffer.write(&[scene_data], 0)?;
+
+        // Update the scene descriptor set with the updated scene buffer
+        let mut writer = DescriptorWriter::new();
+        writer.write_buffer(
+            0,
+            self.scene_buffer.buffer,
+            self.scene_buffer.size,
+            0,
+            vk::DescriptorType::UNIFORM_BUFFER,
+        );
+        writer.update_set(&ctx.device, scene_desc_set);
 
         // Request image from swapchain (1 sec timeout)
         let swapchain_image_index = unsafe {
@@ -105,12 +128,12 @@ impl Frame {
         self.draw_background(
             cmd,
             &ctx,
-            &mut *ctx.background_texture.lock().unwrap(),
-        );
+            &mut ctx.background_texture.lock().unwrap(),
+        )?;
         self.copy_background_texture_to_swapchain(
             cmd,
             &ctx.device,
-            &mut *ctx.background_texture.lock().unwrap(),
+            &mut ctx.background_texture.lock().unwrap(),
             ctx.swapchain.images[swapchain_image_index as usize],
             ctx.swapchain.image_extent,
         );
@@ -124,7 +147,7 @@ impl Frame {
             ctx.swapchain.image_extent.height,
         );
         self.draw_geometry(cmd, &mut ctx, scene_desc_set)?;
-        self.draw_grid(cmd, &mut ctx, scene_desc_set)?;
+        self.draw_grid(cmd, &ctx, scene_desc_set)?;
         self.end_renderpass(swapchain_image_index, cmd, &ctx);
 
         //----------------------------------------------------------------------
@@ -163,12 +186,6 @@ impl Frame {
         ctx: &DrawContext,
         background_texture: &mut Texture,
     ) -> Result<()> {
-        let resources = ctx.resources.lock().unwrap();
-        let compute_texture_desc_set = self.desc_allocator.allocate(
-            &ctx.device,
-            resources.desc_set_layouts["compute texture"],
-        )?;
-
         background_texture.image_mut().transition_layout(
             cmd,
             vk::ImageLayout::UNDEFINED,
@@ -224,30 +241,16 @@ impl Frame {
             resources.desc_set_layouts["graphics texture"],
         )?;
 
-        // Write to the buffer
-        let scene_data = GpuSceneData {
-            cam_data: GpuCameraData {
-                viewproj: ctx.camera.viewproj_mat(
-                    ctx.swapchain.image_extent.width as f32,
-                    ctx.swapchain.image_extent.height as f32,
-                ),
-                near: ctx.camera.near,
-                far: ctx.camera.far,
-            },
-            ..Default::default()
-        };
-        self.scene_buffer.write(&[scene_data], 0)?;
-
-        // Update the scene descriptor set with the updated scene buffer
+        // Update the texture descriptor set
         let mut writer = DescriptorWriter::new();
-        writer.write_buffer(
+        writer.write_image(
             0,
-            self.scene_buffer.buffer,
-            self.scene_buffer.size,
-            0,
-            vk::DescriptorType::UNIFORM_BUFFER,
+            resources.textures["backpack"].image().view,
+            resources.textures["backpack"].sampler().unwrap(),
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
         );
-        writer.update_set(&ctx.device, scene_desc_set);
+        writer.update_set(&ctx.device, graphics_texture_desc_set);
 
         let monkey_mat = &resources.materials["textured"];
         let monkey_model = &resources.models["backpack"];

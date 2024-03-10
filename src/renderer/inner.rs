@@ -137,24 +137,6 @@ impl RendererInner {
         Ok(())
     }
 
-    fn get_current_frame(&mut self) -> &mut Frame {
-        &mut self.frames[(self.frame_number % FRAME_OVERLAP) as usize]
-    }
-
-    fn get_allocator(&self) -> Result<MutexGuard<Allocator>> {
-        match self.allocator.lock() {
-            Ok(allocator) => Ok(allocator),
-            Err(err) => Err(eyre!(err.to_string())),
-        }
-    }
-
-    fn get_resources(&self) -> Result<MutexGuard<RenderResources>> {
-        match self.resources.lock() {
-            Ok(resources) => Ok(resources),
-            Err(err) => Err(eyre!(err.to_string())),
-        }
-    }
-
     pub fn draw_frame(&mut self, camera: &Camera) -> Result<()> {
         let ctx = DrawContext {
             device: self.core.device.clone(),
@@ -167,7 +149,9 @@ impl RendererInner {
             present_queue: self.core.present_queue,
             background_texture: self.background_texture.clone(),
         };
+        log::error!("before");
         self.get_current_frame().draw(ctx)?;
+        log::error!("after");
         self.frame_number += 1;
 
         Ok(())
@@ -242,6 +226,24 @@ impl RendererInner {
 
         // Clean up core Vulkan objects
         self.core.cleanup();
+    }
+
+    fn get_current_frame(&mut self) -> &mut Frame {
+        &mut self.frames[(self.frame_number % FRAME_OVERLAP) as usize]
+    }
+
+    fn get_allocator(&self) -> Result<MutexGuard<Allocator>> {
+        match self.allocator.lock() {
+            Ok(allocator) => Ok(allocator),
+            Err(err) => Err(eyre!(err.to_string())),
+        }
+    }
+
+    fn get_resources(&self) -> Result<MutexGuard<RenderResources>> {
+        match self.resources.lock() {
+            Ok(resources) => Ok(resources),
+            Err(err) => Err(eyre!(err.to_string())),
+        }
     }
 
     /// Helper function that creates a command pool
@@ -353,8 +355,7 @@ impl RendererInner {
     fn init_materials(&mut self) -> Result<()> {
         let mut resources = self.get_resources()?;
 
-        let scene_camera_layout =
-            resources.desc_set_layouts["scene-camera buffer"];
+        let scene_buffer_layout = resources.desc_set_layouts["scene buffer"];
         let graphics_texture_layout =
             resources.desc_set_layouts["graphics texture"];
         #[allow(unused_variables)]
@@ -362,7 +363,7 @@ impl RendererInner {
             resources.desc_set_layouts["compute texture"];
 
         let default_mat = {
-            let set_layouts = [scene_camera_layout];
+            let set_layouts = [scene_buffer_layout];
             let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
                 .set_layouts(&set_layouts)
                 .build();
@@ -381,7 +382,7 @@ impl RendererInner {
         resources.materials.insert("default".into(), default_mat);
 
         let grid_mat = {
-            let set_layouts = [scene_camera_layout];
+            let set_layouts = [scene_buffer_layout];
             let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
                 .set_layouts(&set_layouts)
                 .build();
@@ -400,7 +401,7 @@ impl RendererInner {
         resources.materials.insert("grid".into(), grid_mat);
 
         let textured_mat = {
-            let set_layouts = [scene_camera_layout, graphics_texture_layout];
+            let set_layouts = [scene_buffer_layout, graphics_texture_layout];
             let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
                 .set_layouts(&set_layouts)
                 .build();

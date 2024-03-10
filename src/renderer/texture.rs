@@ -85,6 +85,10 @@ impl Texture {
         &mut self.image
     }
 
+    pub fn sampler(&self) -> Option<vk::Sampler> {
+        self.sampler
+    }
+
     pub fn width(&self) -> u32 {
         self.image.extent.width
     }

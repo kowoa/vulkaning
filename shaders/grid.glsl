@@ -10,14 +10,17 @@ layout (location = 3) in vec2 v_texcoord;
 layout (location = 0) out vec3 near_world_point;
 layout (location = 1) out vec3 far_world_point;
 
-layout (set = 0, binding = 1) uniform CameraUniforms {
+layout(set = 0, binding = 0) uniform GpuSceneData {
     mat4 viewproj;
     float near;
     float far;
-} Camera;
+    vec4 ambient_color;
+    vec4 sunlight_direction;
+    vec4 sunlight_color;
+} scene;
 
 vec3 clip_to_world(vec3 clip_pos) {
-    mat4 viewproj_inv = inverse(Camera.viewproj);
+    mat4 viewproj_inv = inverse(scene.viewproj);
     vec4 world_pos = viewproj_inv * vec4(clip_pos, 1.0);
     world_pos /= world_pos.w; // Undo perspective projection
     return world_pos.xyz;
@@ -42,11 +45,14 @@ layout (location = 1) in vec3 far_world_point;
 
 layout (location = 0) out vec4 f_color;
 
-layout (set = 0, binding = 1) uniform CameraUniforms {
+layout(set = 0, binding = 0) uniform GpuSceneData {
     mat4 viewproj;
     float near;
     float far;
-} Camera;
+    vec4 ambient_color;
+    vec4 sunlight_direction;
+    vec4 sunlight_color;
+} scene;
 
 // frag_pos_world is the position of the fragment in world space
 // lines_per_unit is the number of grid lines per world space unit
@@ -79,19 +85,19 @@ vec4 grid_color(vec3 frag_pos_world, float lines_per_unit, float line_weight) {
 
 // Compute the depth of the fragment from the camera's perspective in clip space
 float clip_pos_depth(vec3 world_pos) {
-    vec4 clip_pos = Camera.viewproj * vec4(world_pos.xyz, 1.0);
+    vec4 clip_pos = scene.viewproj * vec4(world_pos.xyz, 1.0);
     return (clip_pos.z / clip_pos.w);
 }
 
 // Linear depth is the depth that is linearly interpolated between the near and far planes
 float clip_pos_linear_depth(vec3 world_pos) {
     // Transform world pos to clip space
-    vec4 clip_pos = Camera.viewproj * vec4(world_pos.xyz, 1.0);
+    vec4 clip_pos = scene.viewproj * vec4(world_pos.xyz, 1.0);
     // Calculate clip space depth and scale to range [-1, 1]
     float clip_depth = (clip_pos.z / clip_pos.w) * 2.0 - 1.0;
     // Get linear depth value between near and far
-    float linear_depth = (2.0 * Camera.near * Camera.far) / (Camera.far + Camera.near - clip_depth * (Camera.far - Camera.near));
-    return linear_depth / Camera.far; // Normalize
+    float linear_depth = (2.0 * scene.near * scene.far) / (scene.far + scene.near - clip_depth * (scene.far - scene.near));
+    return linear_depth / scene.far; // Normalize
 }
 
 void main() {
