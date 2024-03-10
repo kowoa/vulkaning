@@ -18,19 +18,17 @@ opt-level = 3
 [dependencies]
 ash = { version = "0.37.3", features = ["linked"] }
 ash-window = "0.12.0"
-bevy_gltf = "0.13.0"
 bevy_utils = "0.13.0"
 bytemuck = { version = "1.14.0", features = ["derive"] }
 color-eyre = "0.6.2"
 glam = { version = "0.25", features = ["bytemuck"] }
-gpu-allocator = { version = "0.25.0", features = ["egui", "egui_extras"] }
+gpu-allocator = "0.25.0"
 image = "0.24"
-#imgui = "0.11.0"
-#imgui-rs-vulkan-renderer = { version = "1.12.0", features = [
-#  "gpu-allocator",
-#  "dynamic-rendering",
-#] }
-#imgui-winit-support = "0.11.0"
+imgui = "0.11.0"
+imgui-rs-vulkan-renderer = { version = "1.12.0", features = [
+  "gpu-allocator",
+  "dynamic-rendering",
+] }
 num = "0.4"
 presser = "0.3.1"
 raw-window-handle = "0.5"

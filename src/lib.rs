@@ -1,5 +1,4 @@
 use bevy::{prelude::*, window::WindowResolution};
-use bevy_gltf::GltfPlugin;
 use color_eyre::eyre::{eyre, Result};
 use renderer::{plugins::RenderPlugin, ASSETS_DIR, SHADERBUILD_DIR};
 use std::process::ExitCode;
@@ -24,7 +23,6 @@ pub fn run() -> Result<ExitCode> {
             }),
             RenderPlugin,
         ))
-        .add_plugins(GltfPlugin::default())
         .run();
 
     Ok(ExitCode::SUCCESS)
