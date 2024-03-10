@@ -1,7 +1,5 @@
-use std::collections::HashMap;
-
 use ash::vk;
-use bevy::{asset::Asset, reflect::TypePath};
+use bevy::{asset::Asset, ecs::system::Resource, reflect::TypePath};
 use color_eyre::eyre::{eyre, OptionExt, Result};
 use gpu_allocator::vulkan::Allocator;
 
@@ -11,12 +9,7 @@ use crate::renderer::{
 
 use super::mesh::Mesh;
 
-/// Asset data sent from the asset loader
-pub struct ModelAssetData {
-    pub model: Model,
-}
-
-#[derive(Asset, TypePath, Debug)]
+#[derive(Debug)]
 pub struct Model {
     pub meshes: Vec<Mesh>,
     vertex_buffer: Option<AllocatedBuffer>,

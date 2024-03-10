@@ -8,11 +8,15 @@ use bevy::{
     prelude::*,
 };
 use bevy_utils::BoxedFuture;
-use image::ImageError;
+use image::{ImageBuffer, ImageError, Rgba};
 
-use crate::renderer::{render_resources::RenderResources, texture::Texture};
+use crate::renderer::{texture::TextureAssetData, AssetData};
 
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "png"];
+
+// Wrapper around the ImageBuffer
+#[derive(Asset, TypePath)]
+pub struct ImageAssetData(pub ImageBuffer<Rgba<u8>, Vec<u8>>);
 
 #[derive(States, Debug, Hash, Eq, PartialEq, Clone, Copy)]
 pub enum ImageAssetsLoadState {
@@ -21,7 +25,9 @@ pub enum ImageAssetsLoadState {
 }
 
 #[derive(Resource, Default)]
-pub struct ImageAssetsLoading(pub HashMap<String, Handle<Texture>>);
+pub struct ImageAssetsLoading(
+    pub HashMap<String, (Handle<ImageAssetData>, TextureAssetData)>,
+);
 
 pub struct ImageAssetsPlugin;
 impl Plugin for ImageAssetsPlugin {
@@ -43,29 +49,36 @@ impl Plugin for ImageAssetsPlugin {
 
 fn check_all_image_assets_loaded(
     asset_server: Res<AssetServer>,
-    mut loading_textures: ResMut<ImageAssetsLoading>,
-    mut loaded_textures: ResMut<Assets<Texture>>,
+    mut loading_assets: ResMut<ImageAssetsLoading>,
+    mut loaded_assets: ResMut<Assets<ImageAssetData>>,
     mut state: ResMut<NextState<ImageAssetsLoadState>>,
-    mut resources: ResMut<RenderResources>,
+    mut asset_data: ResMut<AssetData>,
 ) {
     let mut to_remove = Vec::new();
-    for (name, handle) in loading_textures.0.iter_mut() {
+    for (name, (handle, data)) in loading_assets.0.iter_mut() {
         // Check if model has fully loaded
         let state = asset_server.recursive_dependency_load_state(handle.id());
         if state == RecursiveDependencyLoadState::Loaded {
             to_remove.push(name.clone());
             // Insert model into render resources
-            let texture = loaded_textures.remove(handle.clone_weak()).unwrap();
-            resources.textures.insert(name.to_owned(), texture);
+            let image = loaded_assets.remove(handle.clone_weak()).unwrap();
+            asset_data.textures.insert(
+                name.to_owned(),
+                TextureAssetData {
+                    data: Some(image.0),
+                    flipv: data.flipv,
+                    filter: data.filter,
+                },
+            );
         }
     }
 
     for name in to_remove {
-        loading_textures.0.remove(&name);
+        loading_assets.0.remove(&name);
     }
 
     // If all models are loaded, change the state to Loaded
-    if loading_textures.0.is_empty() {
+    if loading_assets.0.is_empty() {
         state.set(ImageAssetsLoadState::Loaded);
     }
 }
@@ -74,7 +87,7 @@ struct ImageLoader;
 impl AssetLoader for ImageLoader {
     type Error = ImageError;
     type Settings = ();
-    type Asset = Texture;
+    type Asset = ImageAssetData;
 
     fn load<'a>(
         &'a self,
@@ -97,7 +110,7 @@ impl AssetLoader for ImageLoader {
 async fn load_image<'a, 'b>(
     bytes: &'a [u8],
     _load_context: &'a mut LoadContext<'b>,
-) -> Result<Texture, ImageError> {
+) -> Result<ImageAssetData, ImageError> {
     let image = image::load_from_memory(bytes)?.into_rgba8();
-    Ok(Texture::new_uninitialized(image))
+    Ok(ImageAssetData(image))
 }

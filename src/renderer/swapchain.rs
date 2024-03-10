@@ -19,6 +19,7 @@ pub struct Swapchain {
 impl Swapchain {
     pub fn new(
         core: &mut Core,
+        allocator: &mut Allocator,
         window: &winit::window::Window,
     ) -> Result<Self> {
         let (swapchain, swapchain_loader, images, image_format, image_extent) =
@@ -29,7 +30,7 @@ impl Swapchain {
             image_extent.width,
             image_extent.height,
             &core.device,
-            &mut *core.get_allocator()?,
+            allocator,
         )?;
 
         let objs = Self {

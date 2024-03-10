@@ -69,7 +69,7 @@ impl Material {
         &self,
         cmd: vk::CommandBuffer,
         device: &ash::Device,
-        set_number: u32,
+        first_set: u32,
         desc_sets: &[vk::DescriptorSet],
         dynamic_offsets: &[u32],
     ) {
@@ -78,7 +78,7 @@ impl Material {
                 cmd,
                 self.pipeline_bind_point,
                 self.pipeline_layout,
-                set_number,
+                first_set,
                 desc_sets,
                 dynamic_offsets,
             );
@@ -100,6 +100,8 @@ pub struct GraphicsMaterialBuilder<'a> {
     rendering_info: vk::PipelineRenderingCreateInfo,
     shader: Option<GraphicsShader>,
     pipeline_layout: Option<vk::PipelineLayout>,
+
+    desc_sets: Vec<vk::DescriptorSet>,
 }
 
 impl<'a> GraphicsMaterialBuilder<'a> {
@@ -134,6 +136,8 @@ impl<'a> GraphicsMaterialBuilder<'a> {
             rendering_info,
             shader,
             pipeline_layout,
+
+            desc_sets: Vec::new(),
         }
     }
 
@@ -247,6 +251,11 @@ impl<'a> GraphicsMaterialBuilder<'a> {
             .vertex_binding_descriptions(&self.vertex_input_desc.bindings)
             .flags(self.vertex_input_desc.flags)
             .build();
+        self
+    }
+
+    pub fn desc_sets(mut self, desc_sets: Vec<vk::DescriptorSet>) -> Self {
+        self.desc_sets = desc_sets;
         self
     }
 

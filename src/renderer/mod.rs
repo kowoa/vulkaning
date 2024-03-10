@@ -31,7 +31,7 @@ use std::{
 };
 
 use self::{
-    camera::Camera, inner::RendererInner, model::ModelAssetData,
+    camera::Camera, inner::RendererInner, model::Model,
     texture::TextureAssetData,
 };
 
@@ -40,7 +40,7 @@ pub static mut SHADERBUILD_DIR: Option<String> = None;
 
 #[derive(Default, Resource)]
 pub struct AssetData {
-    models: HashMap<String, ModelAssetData>,
+    models: HashMap<String, Model>,
     textures: HashMap<String, TextureAssetData>,
 }
 

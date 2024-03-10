@@ -19,13 +19,13 @@ use super::{
     frame::Frame,
     material::Material,
     mesh::Mesh,
-    model::{Model, ModelAssetData},
+    model::Model,
     render_resources::RenderResources,
     shader::GraphicsShader,
     swapchain::Swapchain,
     texture::{Texture, TextureAssetData},
     upload_context::UploadContext,
-    vkutils, AssetData,
+    AssetData,
 };
 
 pub const FRAME_OVERLAP: u32 = 2;
@@ -38,6 +38,9 @@ pub struct DrawContext<'a> {
     pub camera: &'a Camera,
     pub frame_number: u32,
     pub resources: Arc<Mutex<RenderResources>>,
+    pub graphics_queue: vk::Queue,
+    pub present_queue: vk::Queue,
+    pub background_texture: Arc<Mutex<Texture>>,
 }
 
 pub struct RendererInner {
@@ -51,7 +54,7 @@ pub struct RendererInner {
     upload_context: UploadContext,
     resources: Arc<Mutex<RenderResources>>,
 
-    background_texture: Texture,
+    background_texture: Arc<Mutex<Texture>>,
 }
 
 impl RendererInner {
@@ -59,7 +62,6 @@ impl RendererInner {
         log::info!("Initializing renderer ...");
 
         let mut core = Core::new(window)?;
-        let swapchain = Swapchain::new(&mut core, window)?;
         let mut allocator = Allocator::new(&AllocatorCreateDesc {
             instance: core.instance.clone(),
             device: core.device.clone(),
@@ -75,6 +77,7 @@ impl RendererInner {
             buffer_device_address: true,
             allocation_sizes: Default::default(),
         })?;
+        let swapchain = Swapchain::new(&mut core, &mut allocator, window)?;
 
         let mut resources = RenderResources::default();
         Self::init_desc_set_layouts(
@@ -99,7 +102,6 @@ impl RendererInner {
                 // Call Frame constructor
                 frames.push(Frame::new(
                     &mut core,
-                    &swapchain,
                     &mut allocator,
                     &command_pool,
                 )?);
@@ -123,7 +125,7 @@ impl RendererInner {
             command_pool,
             upload_context,
             resources: Arc::new(Mutex::new(resources)),
-            background_texture,
+            background_texture: Arc::new(Mutex::new(background_texture)),
         })
     }
 
@@ -153,159 +155,21 @@ impl RendererInner {
         }
     }
 
-    fn begin_renderpass(
-        &self,
-        cmd: vk::CommandBuffer,
-        image_view: vk::ImageView,
-        image_width: u32,
-        image_height: u32,
-    ) {
-        let color_attachments = [vk::RenderingAttachmentInfo::builder()
-            .image_view(image_view)
-            .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .load_op(vk::AttachmentLoadOp::LOAD)
-            .store_op(vk::AttachmentStoreOp::STORE)
-            .clear_value(vk::ClearValue {
-                color: vk::ClearColorValue {
-                    float32: [0.0, 0.0, 0.0, 1.0],
-                },
-            })
-            .build()];
-        let depth_attachment = vk::RenderingAttachmentInfo::builder()
-            .image_view(self.swapchain.depth_image.view)
-            .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-            .load_op(vk::AttachmentLoadOp::CLEAR)
-            .store_op(vk::AttachmentStoreOp::STORE)
-            .clear_value(vk::ClearValue {
-                depth_stencil: vk::ClearDepthStencilValue {
-                    depth: 1.0,
-                    stencil: 0,
-                },
-            })
-            .build();
-
-        let rendering_info = vk::RenderingInfo::builder()
-            .render_area(vk::Rect2D {
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent: vk::Extent2D {
-                    width: image_width,
-                    height: image_height,
-                },
-            })
-            .layer_count(1)
-            .color_attachments(&color_attachments)
-            .depth_attachment(&depth_attachment)
-            .build();
-
-        // Begin a render pass connected to the draw image
-        unsafe {
-            self.core.device.cmd_begin_rendering(cmd, &rendering_info);
-        }
-    }
-
-    fn end_renderpass(
-        &self,
-        cmd: vk::CommandBuffer,
-        swapchain_image: vk::Image,
-    ) {
-        unsafe {
-            self.core.device.cmd_end_rendering(cmd);
-        }
-        vkutils::transition_image_layout(
-            cmd,
-            swapchain_image,
-            vk::ImageAspectFlags::COLOR,
-            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            vk::ImageLayout::PRESENT_SRC_KHR,
-            &self.core.device,
-        );
-    }
-
-    fn begin_command_buffer(&self, cmd: vk::CommandBuffer) -> Result<()> {
-        // Reset the command buffer to begin recording
-        unsafe {
-            self.core.device.reset_command_buffer(
-                cmd,
-                vk::CommandBufferResetFlags::empty(),
-            )?;
-        }
-
-        // Begin command buffer recording
-        let cmd_begin_info = vk::CommandBufferBeginInfo {
-            flags: vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
-            ..Default::default()
-        };
-        unsafe {
-            self.core
-                .device
-                .begin_command_buffer(cmd, &cmd_begin_info)?;
-        }
-
-        Ok(())
-    }
-
-    fn end_command_buffer(
-        &self,
-        cmd: vk::CommandBuffer,
-        render_semaphore: vk::Semaphore,
-        present_semaphore: vk::Semaphore,
-        render_fence: vk::Fence,
-    ) -> Result<()> {
-        unsafe {
-            // Finalize the main command buffer
-            self.core.device.end_command_buffer(cmd)?;
-
-            // Prepare submission to the graphics queue
-            let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-            let submit_info = vk::SubmitInfo {
-                p_wait_dst_stage_mask: wait_stages.as_ptr(),
-                wait_semaphore_count: 1,
-                p_wait_semaphores: &present_semaphore, // Wait for presentation to finish
-                signal_semaphore_count: 1,
-                p_signal_semaphores: &render_semaphore, // Signal rendering is done
-                command_buffer_count: 1,
-                p_command_buffers: &cmd,
-                ..Default::default()
-            };
-            self.core.device.queue_submit(
-                self.core.graphics_queue,
-                &[submit_info],
-                render_fence, // Signal when the command buffer finishes executing
-            )?;
-        }
-        Ok(())
-    }
-
     pub fn draw_frame(&mut self, camera: &Camera) -> Result<()> {
         let ctx = DrawContext {
             device: self.core.device.clone(),
-            allocator: Arc::clone(&mut self.allocator),
+            allocator: Arc::clone(&self.allocator),
             camera,
             frame_number: self.frame_number,
             swapchain: self.swapchain.clone(),
             resources: self.resources.clone(),
+            graphics_queue: self.core.graphics_queue,
+            present_queue: self.core.present_queue,
+            background_texture: self.background_texture.clone(),
         };
-        self.get_current_frame().draw(ctx)
-    }
+        self.get_current_frame().draw(ctx)?;
+        self.frame_number += 1;
 
-    fn present_frame(
-        &mut self,
-        swapchain_image_index: u32,
-        render_semaphore: vk::Semaphore,
-    ) -> Result<()> {
-        let present_info = vk::PresentInfoKHR {
-            p_swapchains: &self.swapchain.swapchain,
-            swapchain_count: 1,
-            p_wait_semaphores: &render_semaphore, // Wait until rendering is done before presenting
-            wait_semaphore_count: 1,
-            p_image_indices: &swapchain_image_index,
-            ..Default::default()
-        };
-        unsafe {
-            self.swapchain
-                .swapchain_loader
-                .queue_present(self.core.present_queue, &present_info)?;
-        }
         Ok(())
     }
 
@@ -315,7 +179,7 @@ impl RendererInner {
             unsafe {
                 self.core
                     .device
-                    .wait_for_fences(&[frame.render_fence], true, 1000000000)
+                    .wait_for_fences(&[frame.render_fence()], true, 1000000000)
                     .unwrap();
             }
         }
@@ -325,10 +189,13 @@ impl RendererInner {
             let mut allocator = self.allocator.lock().unwrap();
 
             match Arc::try_unwrap(self.resources) {
-                Ok(resources) => Ok(resources
-                    .into_inner()
-                    .unwrap()
-                    .cleanup(device, &mut allocator)),
+                Ok(resources) => {
+                    resources
+                        .into_inner()
+                        .unwrap()
+                        .cleanup(device, &mut allocator);
+                    Ok(())
+                }
                 Err(_) => Err(eyre!("Failed to cleanup resources")),
             }
             .unwrap();
@@ -342,14 +209,28 @@ impl RendererInner {
 
             // Clean up all frames
             for frame in self.frames.drain(..) {
-                frame.cleanup(device);
+                frame.cleanup(device, &mut allocator);
             }
 
-            self.background_texture.cleanup(device, &mut allocator);
+            // Clean up background texture
+            match Arc::try_unwrap(self.background_texture) {
+                Ok(texture) => {
+                    texture
+                        .into_inner()
+                        .unwrap()
+                        .cleanup(device, &mut allocator);
+                    Ok(())
+                }
+                Err(_) => Err(eyre!("Failed to cleanup background texture")),
+            }
+            .unwrap();
 
             // Clean up swapchain
             match Arc::try_unwrap(self.swapchain) {
-                Ok(swapchain) => Ok(swapchain.cleanup(device, &mut allocator)),
+                Ok(swapchain) => {
+                    swapchain.cleanup(device, &mut allocator);
+                    Ok(())
+                }
                 Err(_) => Err(eyre!("Failed to cleanup swapchain")),
             }
             .unwrap()
@@ -361,36 +242,6 @@ impl RendererInner {
 
         // Clean up core Vulkan objects
         self.core.cleanup();
-    }
-
-    /// Set dynamic viewport and scissor
-    fn set_viewport_scissor(
-        &self,
-        cmd: vk::CommandBuffer,
-        width: u32,
-        height: u32,
-    ) {
-        let viewport = vk::Viewport::builder()
-            .x(0.0)
-            .y(0.0)
-            //.width(swapchain_image.extent.width as f32)
-            //.height(swapchain_image.extent.height as f32)
-            .width(width as f32)
-            .height(height as f32)
-            .min_depth(0.0)
-            .max_depth(1.0)
-            .build();
-        unsafe {
-            self.core.device.cmd_set_viewport(cmd, 0, &[viewport]);
-        }
-
-        let scissor = vk::Rect2D::builder()
-            .offset(vk::Offset2D { x: 0, y: 0 })
-            .extent(vk::Extent2D { width, height })
-            .build();
-        unsafe {
-            self.core.device.cmd_set_scissor(cmd, 0, &[scissor]);
-        }
     }
 
     /// Helper function that creates a command pool
@@ -448,18 +299,18 @@ impl RendererInner {
     /// Upload all models to the GPU
     fn init_models(
         &mut self,
-        models: &mut HashMap<String, ModelAssetData>,
+        models: &mut HashMap<String, Model>,
     ) -> Result<()> {
         let mut resources = self.get_resources()?;
 
         // Upload asset models to the GPU
         for (name, mut model) in models.drain() {
-            model.model.upload(
+            model.upload(
                 &self.core.device,
                 &mut *self.get_allocator()?,
                 &self.upload_context,
             )?;
-            resources.models.insert(name, model.model);
+            resources.models.insert(name, model);
         }
         // Upload other models to the GPU
         let quad = Mesh::new_quad();

@@ -9,10 +9,14 @@ use thiserror::Error;
 
 use crate::renderer::mesh::Mesh;
 use crate::renderer::model::Model;
-use crate::renderer::render_resources::RenderResources;
 use crate::renderer::vertex::Vertex;
+use crate::renderer::AssetData;
 
 const OBJ_EXTENSIONS: &[&str] = &["obj"];
+
+// Wrapper around the Model
+#[derive(Asset, TypePath)]
+pub struct ObjAssetData(pub Model);
 
 #[derive(States, Debug, Hash, Eq, PartialEq, Clone, Copy)]
 pub enum ObjAssetsLoadState {
@@ -21,7 +25,7 @@ pub enum ObjAssetsLoadState {
 }
 
 #[derive(Resource, Default)]
-pub struct ObjAssetsLoading(pub HashMap<String, Handle<Model>>);
+pub struct ObjAssetsLoading(pub HashMap<String, Handle<ObjAssetData>>);
 
 pub struct ObjAssetsPlugin;
 impl Plugin for ObjAssetsPlugin {
@@ -44,9 +48,9 @@ impl Plugin for ObjAssetsPlugin {
 fn check_all_obj_assets_loaded(
     asset_server: Res<AssetServer>,
     mut loading_models: ResMut<ObjAssetsLoading>,
-    mut loaded_models: ResMut<Assets<Model>>,
+    mut loaded_models: ResMut<Assets<ObjAssetData>>,
     mut state: ResMut<NextState<ObjAssetsLoadState>>,
-    mut resources: ResMut<RenderResources>,
+    mut asset_data: ResMut<AssetData>,
 ) {
     let mut to_remove = Vec::new();
     for (name, handle) in loading_models.0.iter_mut() {
@@ -54,9 +58,9 @@ fn check_all_obj_assets_loaded(
         let state = asset_server.recursive_dependency_load_state(handle.id());
         if state == RecursiveDependencyLoadState::Loaded {
             to_remove.push(name.clone());
-            // Insert model into render resources
+            // Insert model into asset data
             let model = loaded_models.remove(handle.clone_weak()).unwrap();
-            resources.models.insert(name.to_owned(), model);
+            asset_data.models.insert(name.to_owned(), model.0);
         }
     }
 
@@ -75,7 +79,7 @@ struct ObjLoader;
 impl AssetLoader for ObjLoader {
     type Error = ObjError;
     type Settings = ();
-    type Asset = Model;
+    type Asset = ObjAssetData;
 
     fn load<'a>(
         &'a self,
@@ -119,14 +123,14 @@ pub enum ObjError {
 async fn load_obj<'a, 'b>(
     bytes: &'a [u8],
     load_context: &'a mut LoadContext<'b>,
-) -> Result<Model, ObjError> {
+) -> Result<ObjAssetData, ObjError> {
     load_obj_model(bytes, load_context).await
 }
 
 async fn load_obj_model<'a, 'b>(
     bytes: &'a [u8],
     load_context: &'a mut LoadContext<'b>,
-) -> Result<Model, ObjError> {
+) -> Result<ObjAssetData, ObjError> {
     let (models, materials) = load_obj_data(bytes, load_context).await?;
 
     #[allow(unused_variables)]
@@ -181,7 +185,7 @@ async fn load_obj_model<'a, 'b>(
         })
         .collect();
     let mesh = Mesh::new(vertices, indices);
-    Ok(Model::new(vec![mesh]))
+    Ok(ObjAssetData(Model::new(vec![mesh])))
 }
 
 async fn load_obj_data<'a, 'b>(
@@ -205,19 +209,3 @@ async fn load_obj_data<'a, 'b>(
     })
     .await
 }
-
-/*
-fn load_mat_texture(
-    texture: &Option<String>,
-    load_context: &mut LoadContext,
-) -> Option<Handle<Image>> {
-    if let Some(texture) = texture {
-        let path = PathBuf::from(load_context.asset_path().to_string())
-            .with_file_name(texture);
-        let asset_path = AssetPath::from(path.to_string_lossy().into_owned());
-        Some(load_context.load(&asset_path))
-    } else {
-        None
-    }
-}
-*/

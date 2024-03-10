@@ -1,19 +1,28 @@
 use crate::renderer::{image::AllocatedImage, upload_context::UploadContext};
 use ash::vk;
-use bevy::{asset::Asset, reflect::TypePath};
 use color_eyre::eyre::Result;
 use gpu_allocator::vulkan::Allocator;
 use image::{ImageBuffer, Rgba};
 
 /// Asset data sent from the asset loader
 pub struct TextureAssetData {
-    pub data: ImageBuffer<Rgba<u8>, Vec<u8>>,
+    pub data: Option<ImageBuffer<Rgba<u8>, Vec<u8>>>,
     pub flipv: bool,
     pub filter: vk::Filter,
 }
 
+impl Default for TextureAssetData {
+    fn default() -> Self {
+        Self {
+            data: None,
+            flipv: false,
+            filter: vk::Filter::NEAREST,
+        }
+    }
+}
+
 /// A texture is an image with a sampler and descriptor set
-#[derive(Asset, TypePath, Debug)]
+#[derive(Debug)]
 pub struct Texture {
     image: AllocatedImage,
     sampler: Option<vk::Sampler>, // Only Some if texture is not used for compute
@@ -36,20 +45,21 @@ impl Texture {
     }
 
     pub fn new_graphics_texture(
-        data: TextureAssetData,
+        asset: TextureAssetData,
         sampler: vk::Sampler,
         device: &ash::Device,
         allocator: &mut Allocator,
         upload_context: &UploadContext,
     ) -> Result<Self> {
-        let width = data.data.width();
-        let height = data.data.height();
-        let data = if data.flipv {
-            let mut img = image::DynamicImage::ImageRgba8(data.data);
+        let image_data = asset.data.unwrap();
+        let width = image_data.width();
+        let height = image_data.height();
+        let data = if asset.flipv {
+            let mut img = image::DynamicImage::ImageRgba8(image_data);
             img = img.flipv();
             img.into_bytes()
         } else {
-            data.data.into_raw()
+            image_data.into_raw()
         };
 
         let image = AllocatedImage::new_color_image(
