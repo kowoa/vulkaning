@@ -11,6 +11,7 @@ use shaderc::CompilationArtifact;
 
 const COMBINED_SHADER_EXT: &str = "combined";
 const COMP_SHADER_EXT: &str = "comp";
+const INCLUDE_SHADER_EXT: &str = "glsl";
 
 fn main() -> Result<()> {
     println!("cargo:rerun-if-changed=shaders/*");
@@ -120,8 +121,23 @@ fn parse_combined_shaderfile(filepath: &PathBuf) -> Result<(String, String)> {
                 shaderc::ShaderKind::Fragment => Ok(&mut frag_glsl),
                 _ => Err(eyre!("Invalid shadertype")),
             }?;
-            str_buf.push_str(&line);
-            str_buf.push('\n');
+
+            // Handle #include directives
+            if line.trim_start().starts_with("#include") {
+                if let Some(filename) = line.split_whitespace().nth(1) {
+                    // Open file and append its contents to the the current string buffer
+                    let path =
+                        filepath.parent().unwrap().join(strip_quotes(filename));
+                    eprintln!("path: {:?}", path);
+                    if path.is_file() {
+                        str_buf.push_str(&std::fs::read_to_string(path)?);
+                    }
+                }
+            } else {
+                // No #include directive, just append the line to the current string buffer
+                str_buf.push_str(&line);
+                str_buf.push('\n');
+            }
         }
     }
 
@@ -132,32 +148,6 @@ fn parse_combined_shaderfile(filepath: &PathBuf) -> Result<(String, String)> {
     } else {
         Ok((vert_glsl, frag_glsl))
     }
-}
-
-fn compile_shaders(
-    vert_glsl: &str,
-    frag_glsl: &str,
-    compiler: &shaderc::Compiler,
-    options: &shaderc::CompileOptions,
-    filename: &str,
-) -> Result<(CompilationArtifact, CompilationArtifact)> {
-    let vert_spirv = compiler.compile_into_spirv(
-        vert_glsl,
-        shaderc::ShaderKind::Vertex,
-        filename,
-        "main",
-        Some(options),
-    )?;
-
-    let frag_spirv = compiler.compile_into_spirv(
-        frag_glsl,
-        shaderc::ShaderKind::Fragment,
-        filename,
-        "main",
-        Some(options),
-    )?;
-
-    Ok((vert_spirv, frag_spirv))
 }
 
 fn compile_shader(
@@ -174,4 +164,12 @@ fn compile_shader(
         "main",
         Some(options),
     )?)
+}
+
+fn strip_quotes(s: &str) -> &str {
+    if s.len() >= 2 && s.starts_with('"') && s.ends_with('"') {
+        &s[1..s.len() - 1]
+    } else {
+        s
+    }
 }

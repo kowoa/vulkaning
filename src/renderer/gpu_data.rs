@@ -3,6 +3,7 @@
 use ash::vk;
 use glam::{Mat4, Vec3, Vec4};
 
+#[derive(Default, Copy, Clone)]
 #[repr(C)]
 pub struct GpuVertexData {
     pub position: Vec3,

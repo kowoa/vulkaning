@@ -1,7 +1,6 @@
 use ash::vk;
-use bevy::log;
 use bytemuck::{offset_of, Pod, Zeroable};
-use glam::{Vec2, Vec3};
+use glam::{Vec2, Vec3, Vec4};
 
 use super::gpu_data::GpuVertexData;
 

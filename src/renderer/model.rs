@@ -2,7 +2,7 @@ use ash::vk;
 use color_eyre::eyre::{eyre, OptionExt, Result};
 use gpu_allocator::vulkan::Allocator;
 
-use crate::renderer::{buffer::AllocatedBuffer, vertex::Vertex};
+use crate::renderer::buffer::AllocatedBuffer;
 
 use super::{context::Context, gpu_data::GpuVertexData, mesh::Mesh};
 
@@ -136,7 +136,8 @@ impl Model {
                 buffer_size,
                 // Use this buffer to render meshes and copy data into
                 vk::BufferUsageFlags::VERTEX_BUFFER
-                    | vk::BufferUsageFlags::TRANSFER_DST,
+                    | vk::BufferUsageFlags::TRANSFER_DST
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 "Model vertex buffer",
                 gpu_allocator::MemoryLocation::GpuOnly,
             )?;
